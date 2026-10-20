@@ -1,0 +1,72 @@
+[project]
+name = "sessionkit"
+version = "0.2.0"
+description = "Session Kit gives your Claude Code sessions voice, mail, a phone line and a tmux sidebar, in one install."
+license = "AGPL-3.0-or-later"
+license-files = ["LICENSE"]
+classifiers = ["Development Status :: 3 - Alpha"]
+authors = [
+    { name = "Mike Bailey", email = "mike@sessionkit.ai" }
+]
+requires-python = ">=3.11,<3.15"
+# The family, one install. Floored at 0.1.0: every family package is alpha at 0.1.0.
+# PyPI's 0.0.1 name placeholders must never satisfy these.
+# sessionvoice with its capture extra, so the ears can hear the room.
+dependencies = [
+    "click>=8.1",
+    "sessionmail>=0.1.0",
+    "sessiontools>=0.1.0",
+    "sessionphone>=0.1.0",
+    "sessionview>=0.1.0",
+    "sessionvoice[capture]>=0.1.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/sessionkit/sessionkit"
+Repository = "https://github.com/sessionkit/sessionkit"
+
+# The kit's own command, then every child command RE-DECLARED (the
+# recommended re-export). `uv tool install` links only the executables of the
+# package it is asked for, never its dependencies', so without these lines
+# `uv tool install sessionkit` would put `sessionkit` alone on the PATH.
+# Each entry point is the child's own target, copied verbatim; re-measure them
+# at each child's HEAD whenever a child adds, renames or drops a command.
+# Measured from each child's built wheel (entry_points.txt) at mail 471a6f7,
+# tools ab62717, phone 02d8cf7, view 3fada19, voice eda3f94.
+# sessionview's four commands share one target: `sessionview:main` reads the
+# name it was run as and runs that command.
+# The kit itself still ships no `session` of its own: `session` below is
+# sessiontools' command, re-exported, not a second implementation.
+[project.scripts]
+sessionkit = "sessionkit.cli:main"
+# sessionmail
+message = "sessionmail.message:cli"
+pager = "sessionmail.pager:cli"
+memory = "sessionmail.memory:cli"
+# sessiontools
+session = "sessiontools.cli:main"
+# sessionphone
+sessionphone = "sessionphone.cli:main"
+# sessionview
+sessionview = "sessionview:main"
+sessionview-config = "sessionview:main"
+sessionview-session = "sessionview:main"
+sessionview-messages = "sessionview:main"
+# sessionvoice
+ears = "ears.cli:main"
+ears-serve = "ears.serve:main"
+mouth = "mouth.__main__:main"
+talk = "talk.cli:main"
+
+[build-system]
+requires = ["uv_build>=0.11.9,<0.12.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
+    "ruff>=0.6",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

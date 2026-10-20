@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'">
+  <meta name="robots" content="noindex">
+  <title>Session Kit (draft)</title>
+  <meta name="description" content="Session Kit lets your Claude Code sessions hear you, answer aloud, pick up when you ring from your phone, and mail each other.">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <p class="draft-banner" role="note">DRAFT: this page is not hosted anywhere yet. Anything marked <em class="coming">coming</em> is not available yet.</p>
+
+  <header class="hero">
+    <h1>Session Kit</h1>
+    <p class="lede">Session Kit lets your Claude Code sessions hear you, answer aloud, pick up when you ring from your phone, and mail each other.</p>
+    <p>Voice when your hands are busy, a phone line when you are away, and mail so one agent can hand work to another. One install brings the whole family.</p>
+  </header>
+
+  <main>
+    <section id="moment" aria-labelledby="moment-title">
+      <h2 id="moment-title">One agent hands work to another</h2>
+      <p>An idle agent wakes when mail lands.</p>
+      <pre class="scene"><code><span class="who">reviewer</span>   pager listen        <span class="note"># idle, listening in the background</span>
+<span class="who">you</span>        message send reviewer -s "PR ready, please review" -f note.md</code></pre>
+      <p>The reviewer sits idle with <code>pager listen</code> running in the background. The mail lands and the reviewer wakes. The pager judges each mail, <em>wake</em> or <em>ride</em>, and records the rule that decided it. Its mailbox is also its memory.</p>
+      <p class="source">Source: <a href="../README.md">the README</a> · <a href="../docs/agent-letter.md">the agent letter</a></p>
+    </section>
+
+    <section id="family" aria-labelledby="family-title">
+      <h2 id="family-title">Six packages, one install</h2>
+      <ul class="family">
+        <li><strong>sessionkit</strong>: installs the family together.</li>
+        <li><strong>sessionmail</strong>: mail for coding agents. <code>message</code>, <code>pager</code> and <code>memory</code> over one maildir.</li>
+        <li><strong>sessiontools</strong>: the harness layer. <code>session list</code> shows every live Claude Code session and how full its context window is.</li>
+        <li><strong>sessionvoice</strong>: ambient voice. <code>ears</code> turns a microphone into turns; <code>mouth</code> speaks.</li>
+        <li><strong>sessionphone</strong>: ring your Claude Code session from your phone over Delta Chat.</li>
+        <li><strong>sessionview</strong>: a tmux sidebar of your projects and your agents.</li>
+      </ul>
+      <p class="source">Source: <a href="../README.md">the README</a></p>
+    </section>
+
+    <section id="install" aria-labelledby="install-title">
+      <h2 id="install-title">Install</h2>
+      <p>You need macOS, Claude Code and uv.</p>
+      <pre class="install"><code id="install-line">uv tool install --python 3.14 sessionkit</code></pre>
+      <p>Keep <code>--python 3.14</code>: on Python 3.15 the install falls back to an empty 0.0.1 release. It puts nine commands on your PATH.</p>
+      <p>The plugins are a second step. The one-step plugin install is <em class="coming">coming</em>: the kit's own plugin does not load yet, so each plugin installs from its own clone.</p>
+      <p class="source">Source: <a href="../README.md#installation">the README's Installation section</a></p>
+    </section>
+
+    <section id="status" aria-labelledby="status-title">
+      <h2 id="status-title">Status</h2>
+      <p><strong>Alpha, 0.1.0.</strong> Tested on macOS 27 on Apple silicon.</p>
+      <p>Not yet:</p>
+      <ul>
+        <li>Hearing needs a speech-to-text server that you bring.</li>
+        <li>Mail between agents needs a local postfix, and no setup script ships yet.</li>
+        <li>Linux and Windows are untested.</li>
+      </ul>
+      <p>Stuck? The troubleshooting hub has one line per symptom and a check you can paste.</p>
+      <p class="source">Source: <a href="../README.md">the README</a> · <a href="../docs/troubleshooting.md">troubleshooting</a></p>
+    </section>
+
+    <section id="more" aria-labelledby="more-title">
+      <h2 id="more-title">Read more</h2>
+      <ul>
+        <li><a href="../README.md#installation">Installation, step by step</a></li>
+        <li><a href="../docs/troubleshooting.md">Troubleshooting</a></li>
+        <li><a href="../docs/agent-letter.md">The agent letter</a></li>
+        <li>Source code: the <code>sessionkit</code> organisation on GitHub</li>
+        <li>PyPI: the <code>sessionkit</code> project</li>
+      </ul>
+    </section>
+  </main>
+
+  <footer>
+    <p>Licence: AGPL-3.0. · DRAFT</p>
+  </footer>
+</body>
+</html>

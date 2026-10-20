@@ -1,0 +1,162 @@
+/* Session Kit overview (draft). Plain CSS: no fonts, no imports, no URLs.
+   Future part pages (site/<part>/index.html) link ../style.css. */
+
+:root {
+  --bg: #fdfdfb;
+  --fg: #1d1d1f;
+  --muted: #5c5c66;
+  --rule: #e2e2e6;
+  --code-bg: #f2f2f0;
+  --accent: #2f5fb3;
+  --coming: #8a5a00;
+  --banner-bg: #fff3c4;
+  --banner-fg: #4a3800;
+  color-scheme: light dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #141416;
+    --fg: #ececf0;
+    --muted: #a3a3ad;
+    --rule: #2c2c32;
+    --code-bg: #1f1f24;
+    --accent: #8fb3ff;
+    --coming: #f0c060;
+    --banner-bg: #3a2f00;
+    --banner-fg: #ffe9a0;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: system-ui, -apple-system, sans-serif;
+  font-size: 1.0625rem;
+  line-height: 1.6;
+}
+
+.draft-banner {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  margin: 0;
+  padding: 0.5rem 1rem;
+  background: var(--banner-bg);
+  color: var(--banner-fg);
+  font-size: 0.9rem;
+  font-weight: 600;
+  text-align: center;
+}
+
+.draft-banner .coming {
+  color: inherit;
+}
+
+.hero,
+main,
+footer {
+  max-width: 42rem;
+  margin: 0 auto;
+  padding: 0 1.25rem;
+}
+
+.hero {
+  padding-top: 3rem;
+  padding-bottom: 1rem;
+}
+
+h1 {
+  margin: 0 0 0.75rem;
+  font-size: 2.5rem;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+}
+
+.lede {
+  font-size: 1.25rem;
+}
+
+h2 {
+  margin: 2.5rem 0 0.75rem;
+  font-size: 1.4rem;
+  line-height: 1.25;
+}
+
+section + section {
+  border-top: 1px solid var(--rule);
+}
+
+a {
+  color: var(--accent);
+}
+
+code,
+pre {
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 0.9em;
+}
+
+:not(pre) > code {
+  padding: 0.1em 0.3em;
+  border-radius: 4px;
+  background: var(--code-bg);
+}
+
+pre {
+  overflow-x: auto;
+  padding: 0.9rem 1rem;
+  border-radius: 6px;
+  background: var(--code-bg);
+  line-height: 1.5;
+}
+
+.scene .who {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.scene .note {
+  color: var(--muted);
+}
+
+.install code {
+  font-size: 1rem;
+}
+
+.family {
+  padding-left: 1.25rem;
+}
+
+.family li + li {
+  margin-top: 0.35rem;
+}
+
+.coming {
+  color: var(--coming);
+  font-style: italic;
+}
+
+.source {
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+
+footer {
+  margin-top: 3rem;
+  padding-top: 1rem;
+  padding-bottom: 2rem;
+  border-top: 1px solid var(--rule);
+  color: var(--muted);
+  font-size: 0.875rem;
+}

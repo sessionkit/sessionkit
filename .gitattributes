@@ -1,0 +1,39 @@
+# Release archives (`git archive`, the GitHub tarball) leave these out. They stay
+# in the tree and in history; only the shipped archive drops them.
+# CLAUDE.md is agent context for this checkout, not for a plugin user, and
+# `claude plugin validate --strict` fails on it at the plugin root.
+/CLAUDE.md export-ignore
+# openspec/specs/ is the published specification and ships. openspec/changes/
+# (proposals while they are worked on) and openspec/RATIFICATION.md are the
+# maintainers' working record and are left out. A pattern that matches a
+# directory does not match the paths inside it, so `/openspec/changes/**` sets
+# export-ignore on each file, and `/openspec/changes` drops the directory entry
+# that would otherwise be left in the archive, empty. Every line is anchored
+# with a leading `/`. docs/internal/ does not exist in this repo; add its two
+# lines here if it is ever created.
+/openspec/changes export-ignore
+/openspec/changes/** export-ignore
+/openspec/RATIFICATION.md export-ignore
+# The docs below are the maintainers' working notes (the family's conventions
+# and the docs/family-*.md files each area of them has, the pre-release
+# checklist, how versions are numbered). They are not for a user of the
+# package, so the archive leaves them out; the tests that read them skip there
+# and run in a checkout. A new docs/family-*.md gets its own line here, and so
+# does an image under docs/images/ that only these notes show.
+/docs/family-build.md export-ignore
+/docs/family-contributing.md export-ignore
+/docs/family-conventions.md export-ignore
+/docs/family-docs-agents.md export-ignore
+/docs/family-docs-changelog.md export-ignore
+/docs/family-docs-license.md export-ignore
+/docs/family-docs-readme.md export-ignore
+/docs/family-docs.md export-ignore
+/docs/family-file-structure.md export-ignore
+/docs/family-release.md export-ignore
+/docs/family-settings.md export-ignore
+/docs/family-tests.md export-ignore
+/docs/images/settings-order.svg export-ignore
+/docs/pre-public-checklist.md export-ignore
+/docs/release-numbering.md export-ignore
+# CHANGELOG.md: every branch adds a bullet under [Unreleased]; union keeps both.
+CHANGELOG.md merge=union

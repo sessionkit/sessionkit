@@ -1,0 +1,18 @@
+{
+  "name": "sessionkit",
+  "version": "0.2.0",
+  "description": "Session Kit gives your Claude Code sessions voice, mail, a phone line and a tmux sidebar, in one install.",
+  "author": {
+    "name": "Mike Bailey",
+    "email": "mike@sessionkit.ai"
+  },
+  "homepage": "https://github.com/sessionkit/sessionkit",
+  "repository": "https://github.com/sessionkit/sessionkit",
+  "dependencies": [
+    "sessionmail",
+    "sessiontools",
+    "sessionphone",
+    "sessionview",
+    "sessionvoice"
+  ]
+}

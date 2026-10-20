@@ -1,0 +1,88 @@
+{
+  "name": "sessionkit",
+  "metadata": {
+    "description": "Self-hosting marketplace for the sessionkit plugin and the session family it installs - add with `claude plugin marketplace add <path or url>`.",
+    "version": "0.2.0"
+  },
+  "owner": {
+    "name": "Mike Bailey",
+    "email": "mike@sessionkit.ai"
+  },
+  "plugins": [
+    {
+      "name": "sessionkit",
+      "description": "Session Kit gives your Claude Code sessions voice, mail, a phone line and a tmux sidebar, in one install.",
+      "author": {
+        "name": "Mike Bailey",
+        "email": "mike@sessionkit.ai"
+      },
+      "source": "./",
+      "category": "productivity"
+    },
+    {
+      "name": "sessionmail",
+      "description": "Mail for coding agents: message moves messages, pager alerts, memory is the filesystem view - three commands over one maildir.",
+      "author": {
+        "name": "Mike Bailey",
+        "email": "mike@sessionkit.ai"
+      },
+      "source": {
+        "source": "github",
+        "repo": "sessionkit/sessionmail"
+      },
+      "category": "productivity"
+    },
+    {
+      "name": "sessiontools",
+      "description": "The session command for coding agents: list the live sessions, read a seat's properties and context, start one from an agent file.",
+      "author": {
+        "name": "Mike Bailey",
+        "email": "mike@sessionkit.ai"
+      },
+      "source": {
+        "source": "github",
+        "repo": "sessionkit/sessiontools"
+      },
+      "category": "productivity"
+    },
+    {
+      "name": "sessionphone",
+      "description": "Ring your Claude Code session from your phone over Delta Chat",
+      "author": {
+        "name": "Mike Bailey",
+        "email": "mike@sessionkit.ai"
+      },
+      "source": {
+        "source": "github",
+        "repo": "sessionkit/sessionphone"
+      },
+      "category": "productivity"
+    },
+    {
+      "name": "sessionview",
+      "description": "A sidebar for tmux: your projects (sessions) and your agents (seats), here and on remote hosts.",
+      "author": {
+        "name": "Mike Bailey",
+        "email": "mike@sessionkit.ai"
+      },
+      "source": {
+        "source": "github",
+        "repo": "sessionkit/sessionview"
+      },
+      "category": "productivity"
+    },
+    {
+      "name": "sessionvoice",
+      "description": "Ears and a mouth for a Claude Code agent: always-on listening (the room, or a phone call), a waiter that wakes the agent on the user's finished turn, and a mouth that speaks without blocking.",
+      "author": {
+        "name": "Mike Bailey",
+        "email": "mike@sessionkit.ai"
+      },
+      "source": {
+        "source": "github",
+        "repo": "sessionkit/sessionvoice"
+      },
+      "category": "productivity"
+    }
+  ]
+}
