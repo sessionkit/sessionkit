@@ -7,8 +7,13 @@ it works. Part of the [README's Components](../README.md#components).
 
 - `sessionkit setup`: sets up mail on this Mac (it runs sessionmail's
   `message setup`), then writes you as the operator, the human other seats
-  ask, at `~/.sessionkit/tools/settings/session.d/10-operator.json`. It never
-  overwrites an operator already set. `--dry-run` prints what it would write.
+  ask, at `~/.sessionkit/tools/settings/session.d/10-operator.json`. Then it
+  writes your assistant's agent file, `~/.session/agents/claude.md`, where
+  `session start` finds it (`--agent NAME` names another), asks mail setup for
+  that agent's box, and ends with the one launch step:
+  `To hear Delta messages, start Claude with: session start claude`. It never
+  overwrites an operator already set, or an agent file already there.
+  `--dry-run` prints what it would write.
   Exit 0 all done, 1 refused or failed, 2 usage, 4 done what it could with
   mail steps left for you. See [INSTALL.md](../INSTALL.md), "Operator and
   administrators" and "Mail between agents".

@@ -14,11 +14,13 @@ import re
 import shutil
 import subprocess
 import sys
+import tomllib
 from pathlib import Path
 
 import pytest
 
 from sessionkit import cli
+from sessionkit import setup as kit_setup
 
 ROOT = Path(__file__).resolve().parent.parent
 README = (ROOT / "README.md").read_text(encoding="utf-8")
@@ -49,8 +51,9 @@ def test_the_hooks_note_follows_the_install_block():
 def test_every_hooks_command_names_sessionmails_file():
     install = _section("Installation")
     note = install[install.index("mail hooks start off"):]
-    commands = re.findall(r"^> ```bash\n(.*?)^> ```", note, re.MULTILINE | re.DOTALL)
+    commands = re.findall(r"^ *```bash\n(.*?)^ *```", note, re.MULTILINE | re.DOTALL)
     assert len(commands) == 2, "a create-it block and an edit-it block"
+    commands = ["\n".join(line.strip() for line in c.splitlines()) + "\n" for c in commands]
     create, edit = commands
     assert f"mkdir -p {MAIL_SETTINGS.rsplit('/', 1)[0]}\n" in create
     assert f"""'{{"version": 1, "hooks": true}}' > {MAIL_SETTINGS}""" in create
@@ -70,118 +73,193 @@ def test_installation_says_new_terminal_between_uv_installer_and_first_uv():
     install = _section("Installation")
     installer = install.index(UV_INSTALLER)
     first_uv = install.index("uv tool install")
-    between = install[installer:first_uv]
-    assert "open a new" in between and UV_ENV in between
+    between = " ".join(install[installer:first_uv].split())
+    assert "open a new terminal" in between and UV_ENV in between
 
 
-def test_quick_start_sends_a_reader_without_uv_to_installation():
-    quick = _section("Quick start")
-    before_block = quick[:quick.index("```bash")]
-    assert "uv" in before_block and "(#installation)" in before_block
+def test_installation_is_the_first_section():
+    # Progressive disclosure: the first screen gets a stranger installed.
+    h2s = re.findall(r"^## (.+)$", README, re.MULTILINE)
+    assert h2s[:2] == ["Installation", "Quick start"], h2s
 
 
-# SK-58: install the plugins from local clones. A marketplace's local
-# plugin source must start with `./`, so the recipe is a folder of `./`
-# symlinks, one per clone. The install is a cached copy, so a pull needs a
-# marketplace update and a plugin update; `--plugin-dir` reads a clone live.
-# The Installation step links to this heading, so it must stay put.
-CLONES = "Install the plugins from your clones"
-LOCAL = "sessionkit-local"
-# The `claude` verbs the section may name, each read from `claude plugin
-# --help`, `claude plugin marketplace --help` and `claude --help` on Claude
-# Code 2.1.296. A verb outside this set is one nobody checked.
-CHECKED_VERBS = {
-    "plugin marketplace add",
-    "plugin marketplace update",
-    "plugin install",
-    "plugin update",
-    "plugin uninstall",
-}
+# The install at 0.2.0, as a fresh Mac measured it: `uv tool install` pinned
+# to Python 3.14, then the one-step plugin install from the kit's marketplace
+# (the kit's plugin and the five it depends on). The README once said these two
+# plugin lines failed and sent a reader to a folder of local clones; both
+# claims are false at 0.2.0, and the clone route is gone from the README.
+UV_LINE = "uv tool install --python 3.14 sessionkit"
+PLUGIN_LINES = (
+    "claude plugin marketplace add sessionkit/sessionkit",
+    "claude plugin install sessionkit@sessionkit",
+)
 
 
 def _bash_blocks(text: str) -> list[str]:
-    return re.findall(r"^```bash\n(.*?)^```", text, re.MULTILINE | re.DOTALL)
+    return re.findall(r"^ *```bash\n(.*?)^ *```", text, re.MULTILINE | re.DOTALL)
 
 
-def test_the_clones_section_has_its_stable_heading():
-    assert f"\n## {CLONES}\n" in README
-    assert _section(CLONES)
+def test_installation_leads_with_the_pinned_install_and_the_plugin_lines():
+    install = _section("Installation")
+    first = _bash_blocks(install)[0].splitlines()
+    assert first == [UV_LINE, *PLUGIN_LINES], first
 
 
-def test_the_local_marketplace_lists_each_family_plugin_by_a_dot_slash_source():
-    setup = _bash_blocks(_section(CLONES))[0]
-    body = re.search(r"<<'EOF'\n(.*?)^EOF$", setup, re.MULTILINE | re.DOTALL)
-    assert body, "the marketplace.json heredoc"
-    market = json.loads(body.group(1))
-    assert market["name"] == LOCAL
-    plugins = market["plugins"]
-    assert [p["name"] for p in plugins] == list(cli.FAMILY)
-    for plugin in plugins:
-        assert plugin["source"] == f"./{plugin['name']}"
+def test_installation_says_why_the_pin_and_that_the_kit_is_tested_on_3_14():
+    install = " ".join(_section("Installation").split())
+    assert "**Keep `--python 3.14`.**" in install
+    assert "3.15" in install and "the install fails" in install
+    assert "Command Line Tools' 3.11" in install
+    assert "The kit is tested on 3.14." in install
 
 
-def test_each_listed_plugin_gets_a_symlink_and_an_install():
-    setup = _bash_blocks(_section(CLONES))[0]
-    loops = re.findall(r"^for r in (.+); do$", setup, re.MULTILINE)
-    assert [loop.split() for loop in loops] == [list(cli.FAMILY)] * 2
-    assert 'ln -sfn "$SRC/$r" "$MKT/$r"' in setup
-    assert setup.index('claude plugin marketplace add "$MKT"') < setup.index(
-        f'claude plugin install "$r@{LOCAL}"'
-    )
+def test_installation_warns_of_the_command_line_tools_dialog_before_git_is_needed():
+    install = " ".join(_section("Installation").split())
+    assert "**A dialog may ask to install the Command Line Tools.**" in install
+    assert "the first `uv tool install` opens it" in install
+    assert "the plugin lines need the git it brings" in install
 
 
-def test_after_a_pull_the_section_gives_the_two_commands():
-    section = _section(CLONES)
-    assert "cache" in section and "copy" in section
-    blocks = _bash_blocks(section[section.index("### After a git pull"):])
-    pull = blocks[0]
-    assert f"claude plugin marketplace update {LOCAL}" in pull
-    assert f"claude plugin update sessionmail@{LOCAL}" in pull
-
-
-def test_plugin_dir_is_the_live_read_alternative():
-    section = _section(CLONES)
-    live = section[section.index("--plugin-dir"):]
-    assert "claude --plugin-dir" in live
-
-
-def test_every_claude_verb_in_the_section_was_checked_against_help():
-    section = _section(CLONES)
-    named = set(re.findall(r"claude (plugin (?:marketplace )?[a-z]+)", section))
-    assert named, "the section names claude plugin verbs"
-    assert named <= CHECKED_VERBS, named - CHECKED_VERBS
-
-
-# SK-58: a command on the family's GitHub org (github.com/sessionkit)
-# that an installer might paste must say what it is: the one-step plugin
-# install is "coming" (the kit's own plugin does not load yet), and the
-# development clone is NOT YET MEASURED from its URL. The README must send
-# them to the clones section, the path that works today.
-ORG_COMMAND = re.compile(
-    r"github\.com/sessionkit/|marketplace add sessionkit/|@sessionkit(?![-\w])"
+# SK-88 do-015 (DESIGN-2): sessionphone OWNS the signing paragraph, at
+# docs/bot-mail-signing.md (landed on its master at cac59f5). The README's
+# calls passage is ONE line and a link to it, absolute like the other child
+# links, and copies none of its text. Calls are installed, not yet walked: the
+# README never says they work until a fresh-Mac walk has a receipt.
+PHONE_SIGNING = "https://github.com/sessionkit/sessionphone/blob/HEAD/docs/bot-mail-signing.md"
+# Distinctive sentences of sessionphone's paragraph; none may be copied here.
+PHONE_PARAGRAPH = (
+    "Nothing on this Mac could tell a signed file from an unsigned one",
+    "anything that could forge the file could also use the key",
+    "the doorbell rings only for a session started as that agent",
+    "A plain `claude` gets no copy of the mail, and nothing tells it so",
+    "There is no switch for it",
 )
-CLONES_ANCHOR = "#install-the-plugins-from-your-clones"
 
 
-def test_the_clones_anchor_is_the_clones_heading():
-    slug = "#" + re.sub(r"[^a-z0-9 -]", "", CLONES.lower()).replace(" ", "-")
-    assert slug == CLONES_ANCHOR
-    assert f"\n[clones]: {CLONES_ANCHOR}\n" in README
+def test_installation_gives_the_calls_passage_as_one_line_and_a_link():
+    install = _section("Installation")
+    flat = " ".join(install.split())
+    bullet = ("- **Phone calls are installed, not yet walked.** Whether the phone bot signs its mail "
+              "to your Claude follows your mail carrier: [bot mail signing][phone-signing].")
+    assert bullet in flat
+    # The 0.2.0 hand-install of the extra is gone: 0.2.1 floors sessionphone[media].
+    assert "--with 'sessionphone[media]'" not in README
+    assert "not yet available" not in README
+    assert re.search(rf"^\[phone-signing\]: {re.escape(PHONE_SIGNING)}$", README, re.MULTILINE)
+    assert not re.search(r"calls? (now )?work", flat, re.IGNORECASE)
 
 
-def _marked(text):
-    return "coming" in text.lower() or "NOT YET MEASURED" in text
+@pytest.mark.parametrize("sentence", PHONE_PARAGRAPH)
+def test_no_kit_doc_copies_sessionphones_signing_paragraph(sentence):
+    for name, text in (("README.md", README), ("INSTALL.md", INSTALL_DOC), ("site/index.html", SITE)):
+        assert sentence.lower() not in " ".join(text.split()).lower(), (name, sentence)
 
 
-def test_every_command_on_the_org_is_marked_coming_or_not_yet_measured():
-    org_blocks = [b for b in _bash_blocks(README) if ORG_COMMAND.search(b)]
-    assert org_blocks, "the README still shows the one-step install"
-    for block in org_blocks:
-        head = block.splitlines()[0]
-        marked_block = head.startswith("#") and _marked(head)
-        for line in block.splitlines():
-            if ORG_COMMAND.search(line):
-                assert marked_block or _marked(line), line
+def test_quick_start_sends_the_stranger_to_session_start_and_says_why():
+    quick = " ".join(_section("Quick start").split())
+    assert ("Start Claude with `session start claude`, never a bare `claude`: mail to your agent's "
+            "box, your phone's included, reaches only a session started as that agent.") in quick
+    assert "`sessionkit setup` makes the box and the agent first: [first checks][checks]." in quick
+    assert quick.index("session start claude") < quick.index("from your agent inside a Claude Code session")
+
+
+# The calls are installed with the kit, never promised to work: a fresh Mac
+# cannot finish their setup yet. No passage may offer to ring a session.
+CALL_PROMISES = (
+    r"\bring (a|your) session",
+    r"\bring from",
+    r"\bringing a session",
+    r"pick up when you ring",
+    r"calls? (now )?work",
+    r"from anywhere",
+)
+
+
+@pytest.mark.parametrize("pattern", CALL_PROMISES)
+def test_no_doc_promises_that_calls_work(pattern):
+    components = (ROOT / "docs" / "components.md").read_text(encoding="utf-8")
+    for name, text in (("README.md", README), ("docs/components.md", components)):
+        assert not re.search(pattern, " ".join(text.split()), re.IGNORECASE), (name, pattern)
+
+
+def test_every_calls_passage_says_installed_not_yet_walked():
+    flat = " ".join(README.split())
+    assert flat.count("not yet walked") == 2, "the Installation line, The family"
+    assert "Installed, not yet walked." in " ".join(_section("The family").split())
+    # One calls passage: Usage no longer repeats it, and the link is given once.
+    assert "phone" not in _section("Usage").lower()
+    assert flat.count("[phone-signing]") == 2, "one use, one definition"
+
+
+# The setup verbs are the part a fresh Mac cannot finish yet, so the first
+# commands in docs/components.md never walk a reader into them.
+CALL_SETUP_VERBS = ("sessionphone setup", "sessionphone qr", "sessionphone link")
+
+
+def test_components_first_commands_do_not_show_the_call_setup():
+    components = (ROOT / "docs" / "components.md").read_text(encoding="utf-8")
+    first = re.search(r"^### First commands\n(.*?)(?=^#{2,3} |\Z)", components, re.MULTILINE | re.DOTALL)
+    assert first, "docs/components.md has no '### First commands' section"
+    body = first.group(1)
+    for verb in CALL_SETUP_VERBS:
+        assert verb not in body, verb
+    assert "installed, not yet walked on a fresh Mac" in " ".join(body.split())
+
+
+FALSE_AT_0_2_0 = (
+    "fail today",
+    "does not load yet",
+    "do not install `sessionkit@sessionkit`",
+    "install the plugins from your clones",
+    "sessionkit-local",
+    "coming",
+    "NOT YET MEASURED",
+)
+
+
+@pytest.mark.parametrize("claim", FALSE_AT_0_2_0)
+def test_the_readme_no_longer_says_the_plugin_install_fails(claim):
+    assert claim.lower() not in " ".join(README.split()).lower(), claim
+
+
+def test_quick_start_shows_the_measured_version_lines():
+    quick = _section("Quick start")
+    [text] = re.findall(r"^```text\n(.*?)^```", quick, re.MULTILINE | re.DOTALL)
+    assert text.splitlines()[0] == "sessionkit, version 0.2.1"
+    # The kit's floors: sessionmail, sessionphone and sessionvoice at 0.2.1,
+    # the other two at 0.2.0 (tests/_ruled_deps.py), as a fresh install prints.
+    measured = {"sessionmail": "0.2.1", "sessiontools": "0.2.0", "sessionphone": "0.2.1",
+                "sessionview": "0.2.0", "sessionvoice": "0.2.1"}
+    assert [line.split() for line in text.splitlines()[1:]] == [
+        [name, measured[name]] for name in cli.FAMILY]
+
+
+def test_status_names_the_version_pyproject_ships():
+    # The README's one written-down release label is the release it describes,
+    # as the site's is (tests/test_site.py).
+    version = tomllib.loads((ROOT / "pyproject.toml").read_text())["project"]["version"]
+    labels = re.findall(r"\bAlpha, ([0-9][0-9.]*[0-9])\.", _section("Status"))
+    assert labels == [version], labels
+
+
+def test_quick_start_says_mail_needs_a_session_and_the_mouth_a_device():
+    quick = _section("Quick start")
+    flat = " ".join(quick.split())
+    assert "no seat in the environment ... set an identity" in flat
+    assert 'mouth say --device default "the build is green"' in quick
+    assert "A send never makes a box" in flat
+
+
+def test_uninstall_removes_the_marketplace_then_the_commands():
+    block = _bash_blocks(_section("Uninstall"))[0].splitlines()
+    assert block == ["claude plugin marketplace remove sessionkit", "uv tool uninstall sessionkit"]
+    assert "removes its six plugins too" in _section("Uninstall")
+
+
+def test_development_clones_the_public_url():
+    dev = _section("Development")
+    assert "git clone https://github.com/sessionkit/sessionkit\n" in dev
+    assert "make install" in dev and "make check" in dev
 
 
 def test_no_doc_says_the_repos_are_not_public():
@@ -195,96 +273,19 @@ def test_no_doc_says_the_repos_are_not_public():
         assert "repos are public" not in flat, name
 
 
-def test_development_clone_names_the_url_not_yet_measured():
-    dev = _section("Development")
-    assert "git clone https://github.com/sessionkit/sessionkit" in dev
-    assert "**NOT YET\nMEASURED:** nobody has yet cloned from this URL" in dev
-    assert "coming" not in dev.lower()
-
-
-def test_installation_marks_the_plugin_step_coming_and_points_at_clones():
-    install = _section("Installation")
-    plugin_step = install.index("marketplace add sessionkit/sessionkit")
-    before = install[:plugin_step]
-    after = install[plugin_step:]
-    assert "coming: the kit's own plugin does not load yet" in before
-    assert "fail today" in before
-    assert "[clones]" in after[: after.index("mail hooks start off")]
-
-
-def test_uninstall_removes_the_local_marketplace_it_installed():
-    install = _section("Installation")
-    uninstall = install[install.index("### Uninstall"):]
-    first = _bash_blocks(uninstall)[0]
-    assert "claude" not in first, "the uv line stands alone; it works today"
-    local = _bash_blocks(uninstall)[1]
-    assert f'claude plugin uninstall "$r@{LOCAL}"' in local
-    assert f"claude plugin marketplace remove {LOCAL}" in local
-
-
-def test_status_points_at_the_clones_section():
-    status = _section("Status")
-    assert "[clones]" in status
-    assert "untested from the public repos" not in status
-
-
-# SK-58 (SK-54): README's Installation and
-# Uninstall must agree with INSTALL.md sections 3 and 8. Section 3
-# installs each child from its clone's own marketplace and says not to
-# install the kit plugin; section 8 removes those child marketplaces.
+# INSTALL.md sections 3 and 8: section 3 installs each child from its
+# clone's own marketplace, and section 8 removes those child marketplaces.
+# (The README's clone-era copies of these steps are gone: at 0.2.0 it installs
+# and removes the kit's own marketplace instead.)
 INSTALL_DOC = (ROOT / "INSTALL.md").read_text(encoding="utf-8")
-
-
-def _install_children() -> set[str]:
-    section = INSTALL_DOC[INSTALL_DOC.index("## 3. Install the plugins"):INSTALL_DOC.index("## 4.")]
-    loop = re.search(r"^for r in (.*?); do$", section, re.MULTILINE)
-    assert loop, "INSTALL.md section 3 loops over the children"
-    return set(loop.group(1).split())
-
-
-def test_installation_says_not_to_install_the_kit_plugin_today():
-    install = _section("Installation")
-    before_hooks = install[: install.index("mail hooks start off")]
-    assert "do not install `sessionkit@sessionkit`" in before_hooks
-    assert "fails to load" in before_hooks
-    assert "Do **not** install\n`sessionkit@sessionkit`" in INSTALL_DOC
-
-
-def test_uninstall_removes_each_child_marketplace_of_the_manual_install():
-    install = _section("Installation")
-    uninstall = install[install.index("### Uninstall"):]
-    block = next(
-        b for b in _bash_blocks(uninstall)
-        if 'claude plugin marketplace remove "$r"' in b
-    )
-    loop = re.search(r"^for r in (.*?); do$", block.replace("\\\n", " "),
-                     re.MULTILINE)
-    assert loop, block
-    assert set(loop.group(1).split()) == _install_children()
-    assert len(_install_children()) == 5
-    assert "claude plugin marketplace remove <r>` for each of the five" in INSTALL_DOC
 
 
 # SK-100 made the notes plugin opt-in for the kit (SK-46); SK-107 takes it
 # out of the shipped docs for 0.2.0, because it is not in the release set.
-# Both install-all loops, INSTALL.md section 3's install and README's
-# uninstall of it, name exactly the five children, and the plugin count
-# read back is five. The name is spelled in two halves here so that
-# `git grep -i` for it over the shipped tree finds only CHANGELOG history.
+# INSTALL.md section 3's install-all loop names exactly the five children, and
+# the plugin count read back is five. The name is spelled in two halves here so
+# that `git grep -i` for it over the shipped tree finds only CHANGELOG history.
 _DROPPED = "atom" + "note"
-
-
-def _readme_uninstall_children() -> list[str]:
-    install = _section("Installation")
-    uninstall = install[install.index("### Uninstall"):]
-    block = next(
-        b for b in _bash_blocks(uninstall)
-        if 'claude plugin marketplace remove "$r"' in b
-    )
-    loop = re.search(r"^for r in (.*?); do$", block.replace("\\\n", " "),
-                     re.MULTILINE)
-    assert loop, block
-    return loop.group(1).split()
 
 
 def test_install_loop_names_exactly_the_five_children():
@@ -292,13 +293,6 @@ def test_install_loop_names_exactly_the_five_children():
     loops = re.findall(r"^for r in (.*?); do$", section, re.MULTILINE)
     assert len(loops) == 1, "one install-all loop in section 3"
     names = loops[0].split()
-    assert sorted(names) == sorted(cli.FAMILY)
-    assert len(names) == len(set(names)) == 5
-    assert _DROPPED not in names
-
-
-def test_readme_uninstall_loop_names_exactly_the_five_children():
-    names = _readme_uninstall_children()
     assert sorted(names) == sorted(cli.FAMILY)
     assert len(names) == len(set(names)) == 5
     assert _DROPPED not in names
@@ -340,13 +334,44 @@ def test_no_tracked_file_names_the_dropped_plugin_outside_changelog():
     assert hits == [], hits
 
 
-def test_the_plugin_count_read_back_is_five():
+def test_the_plugin_count_read_back_is_six_then_five_from_clones():
+    # The kit's two lines read back six (the kit's plugin and its five); the
+    # optional clone route reads back the five children.
+    route, clones = _install_section(3).split(CLONE_NOTE, 1)
+    assert "should show six plugins" in route
+    assert "should see five plugins" in clones
+    assert "**Fewer than five?**" in clones
+    assert "Fewer than six" not in _install_section(3)
+
+
+# INSTALL.md section 3 at 0.2.0 (SK-151): the one-step route the README gives,
+# measured on an empty Claude Code config (the kit's plugin and its five, all
+# 0.2.0, enabled). The clone loop is only an optional note after it, for
+# working on the plugins, and section 7 no longer says the kit plugin fails.
+CLONE_NOTE = "### From your own clones, to work on the plugins (optional)"
+INSTALL_NO_LONGER = (
+    "does not load",
+    "Do **not** install `sessionkit@sessionkit`",
+    "Install the five plugins instead",
+    "you install the five plugins one at a time",
+)
+
+
+def test_install_section_3_leads_with_the_one_step_route():
     section = _install_section(3)
-    assert "should see five plugins" in section
-    assert "**Fewer than five?**" in section
-    assert "six plugins" not in section
-    assert "Fewer than six" not in section
-    assert "Install the five plugins instead" in _install_section(7)
+    route, clones = section.split(CLONE_NOTE, 1)
+    first = _bash_blocks(route)[0].splitlines()
+    assert first[:2] == list(PLUGIN_LINES)
+    assert "after the Command Line Tools" in route
+    assert "marketplace add \"$SRC/$r\"" not in route
+    assert "marketplace add \"$SRC/$r\"" in clones
+    assert "INSTEAD of the lines above" in clones
+
+
+@pytest.mark.parametrize("claim", INSTALL_NO_LONGER)
+def test_install_sections_3_and_7_no_longer_say_the_kit_plugin_fails(claim):
+    for n in (3, 7):
+        assert claim.lower() not in " ".join(_install_section(n).split()).lower(), (n, claim)
 
 
 # SK-64: the install doc after the 0.1.0 release. 0.1.0 is on PyPI for all
@@ -369,8 +394,72 @@ def test_install_doc_no_longer_waits_for_the_release():
     assert "needs the 0.1.0 release" not in INSTALL_DOC
     assert "until the release" not in INSTALL_DOC.lower()
     assert "--find-links" not in INSTALL_DOC
-    assert "0.1.0 is on PyPI for all six" in kit
+    flat = " ".join(kit.split())
+    assert "the five packages this release needs are on PyPI: sessionmail, sessionphone and sessionvoice 0.2.1, sessiontools and sessionview 0.2.0" in flat
     assert "**MEASURED** (2030-06-09, read-only against PyPI)" in kit
+
+
+def test_install_doc_states_the_size_and_when_calls_download():
+    # SK-88 (0.2.1): the kit installs sessionphone[media]. Section 2 states
+    # the measured install size, and says the calls packages download with
+    # everything else at `uv tool install`, installed but not set up.
+    kit = _install_section(2)
+    flat = " ".join(kit.split())
+    assert "**The install size.**" in kit
+    assert "uv downloaded about 93 MB, and the kit's tool folder is about 280 MB on disk" in flat
+    assert "about 52 MB of the 280 MB" in flat
+    assert "61 packages" in flat and "14 commands" in flat
+    assert "**Phone calls are installed, not yet walked.**" in kit
+    assert "They download with everything else, during `uv tool install`, with no separate step" in flat
+    assert "Setting them up is section 6, and no fresh Mac has walked it yet." in flat
+    # The Linux line: sessionvoice 0.2.1's base dependency sounddevice brings no
+    # PortAudio on Linux.
+    assert "`libportaudio2`" in kit
+    optional = _install_section(6)
+    assert "Phone calls are installed, not yet walked." in " ".join(optional.split())
+    assert "https://github.com/sessionkit/sessionphone" in optional
+    assert "not yet available" not in INSTALL_DOC
+
+
+# SK-88 do-015 (the corrections measured on sessionmail 0.2.0 and the drop
+# checks): section 6 says signing follows the carrier, the key a reader
+# types is `sendmail` (a `carrier` key is ignored), postfix installed does not
+# decide it, the signing claim is the BOT's, and the two conditions for the
+# bot's mail to reach Claude: the box exists, and Claude started as the agent.
+def test_section_6_says_signing_follows_the_carrier_and_links_the_phone():
+    phone = _flat(_install_section(6))
+    assert "**Signing follows the carrier.** From sessionphone 0.2.1, the bot's mail" in phone
+    assert "Under the drop, sessionmail's default, it goes straight into your own mailbox, as you" in phone
+    assert "The carrier is the `sendmail` setting (section 5, step 2), not whether postfix is installed." in phone
+    assert f"[bot mail signing]({PHONE_SIGNING})" in phone
+
+
+def test_section_6_names_the_two_conditions_and_the_start_line():
+    phone = _flat(_install_section(6))
+    assert "**Two things decide whether its mail reaches your Claude.**" in phone
+    assert "the drop never makes one: `sessionkit setup` makes `claude` (section 5, step 4)" in phone
+    assert "`session start claude` (section 4), never a bare `claude`" in phone
+    # Not walked: the caveat stays until a fresh-Mac walk has a receipt.
+    assert "**NOT YET** end to end on a fresh Mac." in phone
+    assert "no fresh Mac has walked it yet" in phone
+
+
+def _calls_passages() -> dict[str, str]:
+    """The passages do-015 owns: the whole README and site, INSTALL's summary,
+    section 2 and section 6."""
+    summary = INSTALL_DOC[:INSTALL_DOC.index("## 1. ")]
+    return {"README.md": README, "site/index.html": SITE, "INSTALL.md summary": summary,
+            "INSTALL.md section 2": _install_section(2), "INSTALL.md section 6": _install_section(6)}
+
+
+@pytest.mark.parametrize("name", ["README.md", "site/index.html", "INSTALL.md summary",
+                                  "INSTALL.md section 2", "INSTALL.md section 6"])
+def test_no_calls_passage_makes_no_mail_server_the_drop_condition(name):
+    # Postfix is opt-in: a Mac with postfix still drops unless `sendmail` names
+    # it. And the settings key is `sendmail`; a `carrier` key is never read.
+    text = _flat(_calls_passages()[name])
+    for wrong in ("with no mail server", "with no postfix", '"carrier":'):
+        assert wrong not in text, (name, wrong)
 
 
 def test_install_doc_keeps_the_python_pin():
@@ -429,31 +518,64 @@ def test_install_doc_disk_line_matches_the_measured_install():
     assert "At least 2.1 GB free disk" in prereqs
 
 
+# SK-88 (0.2.1): section 1's kit figure agrees with section 2's measured size.
+def test_install_doc_disk_line_agrees_with_the_install_size():
+    prereqs = " ".join(_install_section(1).split())
+    kit = " ".join(_install_section(2).split())
+    assert "the kit about 280 MB" in prereqs
+    assert "277 MB" not in prereqs
+    assert "the kit's tool folder is about 280 MB on disk" in kit
+
+
+# SK-88 (0.2.1): the monitor paragraph speaks of section 3's plugin, not a clone.
+def test_install_doc_monitor_names_the_installed_plugin_not_a_clone():
+    checks = " ".join(_install_section(4).split())
+    assert "Your sessionmail clone" not in checks
+    assert "an older clone has none" not in checks
+    assert "The sessionmail plugin section 3 installs, 0.2.0, has that `monitors/monitors.json`" in checks
+
+
+# SK-88 (0.2.1): this INSTALL ships in 0.2.1, whose setup has the agent step:
+# its three lines are measured on the 0.2.1 wheel; NOT YET says what is unrun.
+def test_install_doc_setup_agent_lines_measured_on_this_release():
+    kit = " ".join(_install_section(2).split())
+    assert "this release's assistant step (below), which sessionkit 0.2.0 does not have" in kit
+    assert "run with `--address`): the last three lines, exit 4" in kit
+    assert "**NOT YET** run on a fresh Mac." in kit
+    assert "and 0.2.0 has none: read in its source" not in kit
+
+
+# SK-88 (0.2.1, do-010 review N1): the labels dry run names its exit 2.
+def test_install_doc_labels_dry_run_names_its_refusal():
+    hearing = " ".join(_install_section(5).split())
+    assert "It exited 2, `silero MISSING`, because `ears install` had not fetched" in hearing
+
+
 def test_install_doc_says_the_plugin_loop_exits_0_and_to_count_five():
     plugins = _install_section(3)
     assert "https://github.com/sessionkit/<name>" in plugins
-    assert "**NOT YET MEASURED:** nobody has yet\ncloned from these URLs" in plugins
     assert "stops here" not in plugins
     assert "private" not in plugins
     assert "exits 0 even when nothing installed" in plugins
     assert "`✘ Path does not exist: <SRC>/sessionmail`" in plugins
     assert "**Fewer than five?**" in plugins
-    # The measured repair for a clone with nothing checked out is a fresh clone
-    # naming its branch; a checkout in place was never run, so the doc must not
-    # say it. The public repositories are on master, so the fresh clone names
-    # master. The run that was measured named the branch the clones had then,
-    # not master, so the doc says which, and claims no -b master run.
+    # The repair for a clone with nothing checked out is a fresh clone naming
+    # its branch; a checkout in place was never run, so the doc must not say
+    # it. The public repositories are on master, and at 0.2.0 a clone of each
+    # made with -b master was measured to install (SK-151), so the doc no
+    # longer calls that clone unmeasured.
     flat = " ".join(plugins.split())
     assert "Check out its `master` branch" not in plugins
     assert "clone it again with `-b master`, the branch the public repositories are on" in flat
-    assert "with its branch named, `main` then, it installed" in flat
-    assert "**NOT YET MEASURED** with `-b master`" in flat
+    assert "clones of the public repositories made with `-b master`): five of five" in flat
+    assert "NOT YET MEASURED" not in plugins
 
 
 def test_install_doc_says_plugins_run_from_the_cache_copy():
-    plugins = _install_section(3)
-    assert "`Read from` names the clone, but the plugin runs from a copy." in plugins
-    assert "`~/.claude/plugins/cache/<r>/<r>/<version>/`" in plugins
+    route, clones = _install_section(3).split(CLONE_NOTE, 1)
+    assert "**The plugins run from a copy.**" in route
+    assert "`~/.claude/plugins/cache/sessionkit/<name>/<version>/`" in route
+    assert "`~/.claude/plugins/cache/<r>/<r>/<version>/`, not from the clone" in clones
 
 
 def test_install_doc_quotes_the_no_identity_refusals():
@@ -526,26 +648,12 @@ def test_install_doc_launchctl_greps_find_the_dev_sessionkit_labels():
 def test_install_doc_runs_the_kits_own_ears_and_gives_the_hook_json():
     hearing = _install_section(5)
     assert "`ears services install`, the kit's own `ears`" in hearing
-    # SK-74: 0.1.0 (PyPI today) keeps case 82's plugin bin/ears
-    # workaround, tagged as 0.1.0's; 0.2.0's step stays the kit's own ears.
-    zero_one = hearing[hearing.index("   - **On sessionvoice 0.1.0** (what section 2") :]
-    zero_one = zero_one[: zero_one.index("On 0.2.0, a bare")]
-    assert hearing.index("`ears services install`, the kit's own `ears`") < hearing.index(
-        "   - **On sessionvoice 0.1.0** (what section 2"
-    )
-    assert (
-        "~/.claude/plugins/cache/sessionvoice/sessionvoice/0.1.0/bin/ears services install"
-        in zero_one
-    )
-    assert "`find ~/.claude/plugins/cache -path '*/bin/ears' -type f`" in zero_one
-    assert "**MEASURED**\n     (2030-06-09, a fresh macOS 27 VM" in zero_one
-    assert "two\n     plists, the mouth's and the keeper's" in zero_one
-    assert "com.voicemode.ears-mouth" not in hearing.replace(zero_one, "")
-    for m in re.finditer(r"bin/ears(?![-\w])", hearing):
-        before = hearing[: m.start()]
-        assert before.rfind("**On sessionvoice 0.1.0**") > before.rfind("On 0.2.0, a bare"), (
-            "every plugin bin/ears in section 5 sits in the 0.1.0 branch"
-        )
+    # SK-88 (0.2.1): the kit floors sessionvoice at 0.2.0, which ships the
+    # keeper in its package, so 0.1.0's plugin bin/ears detour is gone.
+    assert "**On sessionvoice 0.1.0**" not in hearing
+    assert not re.search(r"bin/ears(?![-\w])", hearing)
+    assert "sessionvoice/sessionvoice/0.1.0" not in hearing
+    assert "com.voicemode.ears-mouth" not in hearing
     for label in VOICE_LABELS:
         assert f"`{label}`" in hearing
     assert "loads `speech`, `mouth`, `keeper` and `mail`" in hearing
@@ -581,8 +689,10 @@ def test_install_doc_links_the_hosted_speech_endpoint_with_no_key():
     assert (
         "[sessionvoice's docs/models.md, A hosted speech endpoint instead][sv-hosted]"
     ) in hearing
-    # SK-74: 0.2.0-only behaviour is tagged as such.
-    assert re.search(r"From\s+sessionvoice 0\.2\.0 \(not in 0\.1\.0\), the mouth can speak", hearing)
+    # SK-88 (0.2.1): the kit installs sessionvoice 0.2.0 or later, so the
+    # hosted endpoint is no longer tagged against 0.1.0.
+    assert re.search(r"The mouth can also speak through a hosted", hearing)
+    assert "(not in 0.1.0)" not in hearing
     assert "`MOUTH_TTS_KEY`" in hearing
     assert "MOUTH_TTS_KEY=" not in INSTALL_DOC
     assert (
@@ -591,15 +701,15 @@ def test_install_doc_links_the_hosted_speech_endpoint_with_no_key():
     ) in INSTALL_DOC
 
 
-def test_install_doc_tags_ears_arm_on_path_as_0_2_0():
-    # SK-74: ears-arm on the Bash tool's PATH is
-    # 0.2.0's (EARS-363, bin/ears-arm); "not on your PATH" and the 0.1.0 cache
-    # path are 0.1.0's. Each is tagged with its version, never written bare.
+def test_install_doc_puts_ears_arm_on_path_through_the_plugin():
+    # SK-74: ears-arm on the Bash tool's PATH is 0.2.0's (bin/ears-arm).
+    # SK-88 (0.2.1): the kit floors sessionvoice at 0.2.0, so 0.1.0's
+    # full-path branch is gone.
     hearing = _install_section(5)
-    assert re.search(r"\*\*From sessionvoice 0\.2\.0\*\* \(not in 0\.1\.0\):\s+`ears-arm`\s+is\s+on", hearing)
+    assert re.search(r"`ears-arm`\s+is\s+on\s+the\s+Bash\s+tool's\s+PATH", hearing)
     assert re.search(r"the\s+plugin's\s+`bin/ears-arm`\.\s+That shim runs", hearing)
-    assert "**On 0.1.0** it is not on your PATH: run it by its full" in hearing
-    assert "sessionvoice/sessionvoice/0.1.0/skills/ears/scripts/ears-arm" in hearing
+    assert "**On 0.1.0** it is not on your PATH" not in hearing
+    assert "sessionvoice/sessionvoice/0.1.0/skills/ears/scripts/ears-arm" not in hearing
     assert "It is not on your PATH." not in hearing
 
 
@@ -666,13 +776,18 @@ def test_first_agent_names_only_verbs_and_flags_that_ship():
         assert flag in start_help, f"`session start {flag}` does not ship"
 
 
-def test_first_agent_says_mail_is_not_yet_and_points_at_the_step():
+def test_first_agent_mails_by_the_drop_and_points_at_the_step():
+    # SK-88 (0.2.1): sessionmail 0.2.0 is the floor, so step 5 is the drop,
+    # measured on a fresh VM; agent to agent stays NOT YET.
     part = _first_agent()
+    flat = " ".join(part.split())
     assert part.startswith(f"{FIRST_AGENT_HEADING}\n\n**NOT YET** as a whole")
-    assert "**Mail it: NOT YET.**" in part
+    assert "**Mail it.**" in part and "**Mail it: NOT YET.**" not in part
     assert f"[{MAIL_HEADING}]({MAIL_ANCHOR}) in section 5" in part
     assert f"\n### {MAIL_HEADING}\n" in _install_section(5)
-    assert "`message send` refuses (**MEASURED** in the release rehearsal)" in part
+    assert "`message send admin` printed `sent via mail drop (no MTA)`, exit 0" in flat
+    assert "**NOT YET** as mail from one agent to another on a fresh Mac" in flat
+    assert "sessionmail 0.1.0" not in part
 
 
 # A stranger's mail path with no postfix assumed. From sessionmail
@@ -729,10 +844,13 @@ def test_mail_section_postfix_is_named_in_the_file_and_never_edited():
 
 def test_mail_section_names_every_drop_step():
     mail = _mail_section()
-    assert "sessionmail 0.2.0" in mail and "not released yet" in mail
+    flat_mail = " ".join(mail.split())
+    assert "sessionmail 0.2.0" in mail and "not released yet" not in mail
+    assert "the kit asks for 0.2.0 or later" in flat_mail
+    assert "**Get sessionmail 0.2.0.**" in mail and "**Get sessionmail 0.2.0. NOT YET.**" not in mail
     [index, boxes] = re.findall(r"^ *```bash\n(.*?)^ *```", mail, re.MULTILINE | re.DOTALL)
     # The drop is the default from sessionmail 0.2.0: no line to set, so no
-    # `~/.zshenv` edit and no suffix line (measured on the unreleased code with
+    # `~/.zshenv` edit and no suffix line (measured on sessionmail 0.2.0 with
     # no variable, no settings file, no suffix and no tailscale). First boxes
     # come from mail setup, not mkdir.
     assert "**Nothing to set.**" in mail
@@ -782,7 +900,12 @@ def test_mail_section_uses_its_own_notmuch_profile_and_never_yours():
 def test_sessionkit_setup_names_mail_setup_and_its_exits():
     two = INSTALL_DOC[INSTALL_DOC.index("## 2. Install the kit"):INSTALL_DOC.index("### Operator and administrators")]
     assert "**Mail first.** It runs sessionmail's mail setup, `message setup`" in two
-    assert "this sessionmail has no `message setup` (`message setup --help` exited 2)" in two
+    # 0.2.x: the kit floors sessionmail at 0.2.0, which has mail setup, so a
+    # fresh Mac meets exit 4 (notmuch BLOCKED), not 0.1.0's refusal text.
+    assert "**On a fresh Mac it exits 4, and that is expected.**" in two
+    assert "1 step(s) left for you: notmuch-hook (BLOCKED)" in two
+    assert "On a fresh install it refuses, and that is expected." not in two
+    assert "this sessionmail has no `message setup` (`message setup --help` exited 2)" not in two
     assert "**Its exit:** 0 all done; 1 " in two and "; 4 the" in two
     # A dry run on a fresh host: the verb exits 4 and makes no box, so the
     # operator check refuses and the kit exits 1 (measured on the real verb).
@@ -827,6 +950,35 @@ def test_the_registry_note_says_no_command_creates_one():
     assert "the command that creates" not in flat
 
 
+def test_the_registry_refusal_is_said_as_sessionmail_0_2_0s():
+    """sessionmail 0.2.0, the release the kit floors, already ships the
+    registry refusal that names the key, says no registry is created and
+    points at the doc: the letter says so, and calls none of it unreleased."""
+    flat = " ".join(AGENT_LETTER.split())
+    assert "A sessionmail change, not yet released" not in flat
+    assert "not yet released" not in flat
+    assert (
+        "In sessionmail 0.2.0 that refusal says what the key names, says that "
+        "sessionmail does not create a registry today, and points at that doc "
+        "(read in its source, sessionmail 0.2.0 from PyPI, 2030-06-09:"
+    ) in flat
+
+
+def test_mail_setup_boxes_are_measured_on_sessionmail_0_2_0():
+    """INSTALL section 6 step 4's MEASURED line names the release it ran on,
+    never pre-release code, and lists the agent's box `claude`."""
+    flat = " ".join(INSTALL_DOC.split())
+    assert "sessionmail's unreleased code" not in flat
+    assert (
+        "**MEASURED** (2030-06-09, this release's sessionkit with sessionmail 0.2.0 "
+        "from PyPI, a temporary home directory): `sessionkit setup --mailbox <box>` "
+        "ran the real `message setup`, which made the mail folder, the operator's "
+        "box, that box and `claude`, and wrote the notmuch profile; setup then "
+        "wrote the operator, exit 4"
+    ) in flat
+    assert "`claude` and wrote the notmuch profile" not in flat
+
+
 # The staged placeholders (one per open setting, an HTML comment) are all
 # filled: none may come back. The marker is built, so this file holds none.
 PLACEHOLDER = "PICK" + "-"
@@ -838,12 +990,12 @@ def test_no_staged_placeholder_is_left(name):
     assert PLACEHOLDER not in (ROOT / name).read_text(encoding="utf-8"), name
 
 
-def test_mail_section_launchd_senders_ride_the_drop_from_their_next_releases():
+def test_mail_section_launchd_senders_ride_the_drop_from_their_0_2_0_releases():
     # launchd reads no shell file, and from sessionmail 0.2.0 none is needed:
-    # `message send` reads the carrier from the settings file. The three
-    # senders have moved onto `message send` (landed, not released), so the
-    # note says they ride the drop from their next releases, and keeps 0.1.0's
-    # `/usr/sbin/sendmail` as NOT YET.
+    # `message send` reads the carrier from the settings file. SK-88 (0.2.1):
+    # the three senders' 0.2.1 releases, which the kit installs, hand their
+    # mail to `message send` (read in their 0.2.1 source); 0.1.0's
+    # `/usr/sbin/sendmail` is named only as history. Not walked: NOT YET.
     mail = _mail_section()
     start = mail.index("**Jobs launchd starts.**")
     note = mail[start:mail.index("\n3. ", start)]
@@ -854,8 +1006,10 @@ def test_mail_section_launchd_senders_ride_the_drop_from_their_next_releases():
                    "**ears-mail's heard turns**"):
         assert sender in note
     assert "all three hand their mail to `message send`, so they ride the drop" in flat
-    assert "**NOT YET:** none of these releases is out" in flat
-    assert "`/usr/sbin/sendmail`" in note
+    assert "From sessionvoice 0.2.1 and sessionphone 0.2.1, the releases the kit installs" in flat
+    assert "**NOT YET:** none of these releases is out" not in flat
+    assert "**NOT YET** walked" in flat
+    assert "Their 0.1.0 releases, before the kit floored them at 0.2.0, handed it to `/usr/sbin/sendmail`" in flat
     assert "None of these three changes has shipped." not in note
 
 
@@ -865,17 +1019,17 @@ def test_every_mail_pointer_uses_the_anchor():
             r"no (postfix )?runbook|no (mail )?setup script|needs a local postfix",
             doc, re.IGNORECASE,
         )
-    assert f"(INSTALL.md{MAIL_ANCHOR})" in README
+    assert f"\n[mail]: INSTALL.md{MAIL_ANCHOR}\n" in README
     assert INSTALL_DOC.count(f"({MAIL_ANCHOR})") >= 4
 
 
 # SK-68: the pager monitor is on by default since SM-726. It ships in the root
 # sessionmail plugin (monitors/monitors.json -> hooks/pager-monitor ->
 # `pager listen --monitor`), and sessionmail's plugins/pager-monitor is retired.
-# The off switch and mute/unmute are in sessionmail's pager after SM-726, not in
-# the 0.1.0 pager on PyPI that the kit installs, so the docs mark them NOT YET.
+# The off switch and mute/unmute are in sessionmail's pager from 0.2.0, the
+# floor the kit installs (SK-88, 0.2.1), so the docs say so, MEASURED.
 AGENT_LETTER = (ROOT / "docs" / "agent-letter.md").read_text(encoding="utf-8")
-MONITOR_DOCS = {"README.md": README, "INSTALL.md": INSTALL_DOC, "docs/agent-letter.md": AGENT_LETTER}
+MONITOR_DOCS = {"INSTALL.md": INSTALL_DOC, "docs/agent-letter.md": AGENT_LETTER}
 
 
 def test_no_doc_calls_the_pager_monitor_opt_in():
@@ -888,14 +1042,22 @@ def test_no_doc_calls_the_pager_monitor_opt_in():
         assert "on by default" in flat, name
 
 
-def test_the_monitor_off_switch_and_mute_are_not_promised_to_a_0_1_0_pager():
+def test_the_monitor_off_switch_and_mute_ship_in_the_0_2_0_pager():
     for name in ("INSTALL.md", "docs/agent-letter.md"):
         flat = " ".join(MONITOR_DOCS[name].split())
         assert "SESSIONMAIL_MONITOR=off" in flat, name
-        assert "`pager mute` / `pager unmute` are **NOT YET**" in flat or (
-            "**NOT YET** for a kit install" in flat and "`pager mute` / `pager unmute`" in flat
-        ), name
         assert "0.1.0" in flat, name
+    # SK-88 (0.2.1): INSTALL.md section 4 and the agent letter are both
+    # MEASURED against sessionmail 0.2.0 from PyPI.
+    install = " ".join(INSTALL_DOC.split())
+    assert "`pager mute` / `pager unmute` are **NOT YET**" not in install
+    assert ("`pager mute` / `pager unmute` ship in sessionmail 0.2.0, the release the kit "
+            "installs") in install
+    assert "Claude Code showed `1 monitor`" in install
+    assert "the `--monitor` flag in the 0.1.0 `pager` the kit installs" not in install
+    letter = " ".join(AGENT_LETTER.split())
+    assert "`pager stop --kill` ship in sessionmail 0.2.0, the release the kit installs." in letter
+    assert "**NOT YET** for a kit install: sessionmail's off switch" not in letter
 
 
 def test_the_monitor_docs_say_claude_code_runs_it_only_when_interactive():
@@ -907,19 +1069,19 @@ def test_the_monitor_docs_say_claude_code_runs_it_only_when_interactive():
         flat = " ".join(MONITOR_DOCS[name].split())
         assert "only in an interactive session (never `claude -p`)" in flat, name
         assert "nothing in Claude Code says so" in flat, name
-    assert "on by default in an interactive `claude` session" in " ".join(README.split())
 
 
 def test_the_agent_letter_tags_what_pager_off_and_stop_do_by_version():
     # SK-68: `pager off`/`stop` end the monitor for good on the 0.1.0
     # pager from PyPI (measured: it has no `mute` and no `stop --kill`). From
-    # SM-726 (sessionmail master, not yet released) they REFUSE on the monitor
+    # sessionmail 0.2.0 (SM-726, measured from PyPI) they REFUSE on the monitor
     # with exit 4, write nothing, and name `pager mute` and `pager stop --kill`;
     # a hand `pager listen` still stops as before.
     flat = " ".join(AGENT_LETTER.split())
     assert "Either one ends the monitor for good" not in flat
-    assert "**The kit's `pager` today, sessionmail 0.1.0 from PyPI:** either one ends the monitor for good" in flat
-    assert "**NOT YET for a kit install, the next sessionmail release:**" in flat
+    assert "**On sessionmail 0.1.0, before the kit floored it at 0.2.0:** either one ends the monitor for good" in flat
+    assert "**The kit's `pager`, sessionmail 0.2.0 and later:**" in flat
+    assert "**NOT YET for a kit install, the next sessionmail release:**" not in flat
     assert "on the monitor, both REFUSE. They exit 4, write nothing" in flat
     assert "`--kill` is the only way to end the monitor" in flat
     # SM-726 master: after `stop --kill` the ride-along says the monitor was
@@ -1253,3 +1415,100 @@ def test_the_family_url_guard_hits(planted):
 ])
 def test_the_family_url_guard_leaves_repos_outside_the_kit(outside):
     assert _family_urls_off_the_org(outside) == []
+
+
+# SK-153: a stranger's Claude hears its Delta messages by ONE launch,
+# `session start claude`. INSTALL section 4 (the first check and the first
+# agent's step 3) names it, with the launch sentence `sessionkit setup`
+# prints, read from setup's own constant so the two cannot drift, and the
+# cost: two windows started as `claude` share one box, and a second
+# assistant takes another name at setup. Section 5's "Make the boxes" names
+# the agent's box. Section 2's quoted refusal is setup's real output. The
+# site promises no call it has not walked.
+LAUNCH = kit_setup.launch_sentence(kit_setup.DEFAULT_AGENT)
+SITE = (ROOT / "site" / "index.html").read_text(encoding="utf-8")
+
+
+def _flat(text: str) -> str:
+    return " ".join(text.split())
+
+
+def test_the_launch_sentence_is_setups_and_names_session_start_claude():
+    assert LAUNCH == "To hear Delta messages, start Claude with: session start claude"
+
+
+def test_section_4_names_the_one_launch_and_its_sentence():
+    checks = _install_section(4)
+    first = checks[:checks.index(FIRST_AGENT_HEADING)]
+    assert "- Start Claude with `session start claude` in the directory" in first
+    assert LAUNCH in first, "the first check quotes setup's launch sentence verbatim"
+    assert "Start `claude` in the directory" not in checks
+    step3 = _flat(_first_agent())
+    assert "3. **Start your first agent** inside it: `session start claude`." in step3
+    assert LAUNCH in step3
+
+
+def test_section_4_names_the_shared_box_cost_and_the_way_out():
+    first = _flat(_install_section(4))
+    assert "**two windows started as `claude` share one box**" in first
+    assert "`sessionkit setup --agent NAME`, then `session start NAME`" in first
+    # `claude` is Claude Code's built-in agent: the file's body promises nothing.
+    assert "`claude` is Claude Code's own built-in agent" in first
+    assert "its text does nothing" in first
+
+
+def test_section_4_puts_dry_run_before_the_agent_name():
+    step3 = _flat(_first_agent())
+    assert "`session start --dry-run claude`" in step3
+    assert "Launcher flags go before the name" in step3
+    # The wrong order is named only as the refusal it is.
+    assert step3.count("`session start claude --dry-run`") == 2
+    assert "refuses, names the right order and exits 2" in step3
+
+
+def test_section_5_make_the_boxes_names_the_agents_box():
+    mail = _flat(_mail_section())
+    assert "and your assistant's box, `claude` (or the name you gave `--agent`)" in mail
+    assert "Your agent's own box is made when its pager first listens" not in mail
+
+
+def test_section_2_quotes_setups_real_refusal_and_its_agent_lines():
+    two = INSTALL_DOC[INSTALL_DOC.index("## 2. Install the kit"):INSTALL_DOC.index("### Operator and administrators")]
+    [block] = re.findall(r"^```text\n(.*?)^```", two, re.MULTILINE | re.DOTALL)
+    lines = block.splitlines()
+    # SK-88 (0.2.1): the 0.1.0 refusal is gone; the block is 0.2.0's exit 4
+    # on a fresh Mac, and SK-153's three agent lines end it.
+    assert lines[0] == (
+        "message setup: done what it can; 1 step(s) left for you: notmuch-hook (BLOCKED)"
+    )
+    assert lines[-3:] == [
+        "Wrote /Users/<you>/.session/agents/claude.md: the agent 'claude', not keyed.",
+        "session start --list-agents: lists 'claude'.",
+        LAUNCH,
+    ]
+    flat = _flat(two)
+    assert "the first four lines, exit 4. The last three are this release's assistant step" in flat
+    assert "those seven lines" not in flat and "Mail not set up" not in two
+    # The ONE line section 2 gains: what setup now writes.
+    assert ("**Then your assistant:** it writes `~/.session/agents/claude.md`, the agent "
+            "`session start claude` starts (section 4)") in flat
+
+
+def test_docs_sessionkit_names_the_agent_file_and_the_launch():
+    doc = _flat((ROOT / "docs" / "sessionkit.md").read_text(encoding="utf-8"))
+    assert "`~/.session/agents/claude.md`" in doc
+    assert f"`{LAUNCH}`" in doc
+
+
+def test_the_site_promises_no_call_it_has_not_walked():
+    for promise in ("pick up when you ring", "ring your Claude Code session"):
+        assert promise not in SITE, promise
+    flat = _flat(SITE)
+    assert "The phone line installs, but no Delta message or call has yet been walked to a session." in flat
+    # The site links nothing outside its folder and never names the install doc
+    # (tests/test_site.py): it points to the README's Installation, whose calls
+    # line links sessionphone's page.
+    assert 'whether it signs follows the mail carrier (<a href="../README.md#installation">the README</a>)' in flat
+    assert "never a bare <code>claude</code>" in flat
+    assert "no Delta message or call has yet been walked to a session" in SITE
+    assert "<code>session start claude</code>" in SITE

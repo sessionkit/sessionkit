@@ -91,12 +91,21 @@ def _shape(check):
     "instead of a mail box.",
 )
 @click.option(
+    "--agent",
+    metavar="NAME",
+    default=operator_setup.DEFAULT_AGENT,
+    show_default=True,
+    callback=_shape(operator_setup.check_agent_shape),
+    help="Your assistant's name: setup writes its agent file and makes its "
+    "mail box, so `session start NAME` starts Claude as NAME, hearing mail to NAME.",
+)
+@click.option(
     "--dry-run",
     is_flag=True,
     help="Run every check and print what would be written; write nothing.",
 )
-def setup(mailbox: str | None, address: str | None, dry_run: bool) -> None:
-    """Set up mail on this Mac, then write you as the operator: the human other seats ask.
+def setup(mailbox: str | None, address: str | None, agent: str, dry_run: bool) -> None:
+    """Set up mail on this Mac, write you as the operator, and define your assistant.
 
     Mail first: it runs sessionmail's mail setup (`message setup`), which
     makes the mail root and your box, and prints what it did and what is
@@ -109,13 +118,24 @@ def setup(mailbox: str | None, address: str | None, dry_run: bool) -> None:
     confirm who you are: then it says how to name yourself, with --address
     or --mailbox. It writes nothing, too, while the operator file an earlier
     release wrote is still in place and none is at the new path: it names
-    both. Exit 0 all done, 1 refused or failed, 2 usage, 4 done what it
-    could, mail steps left for you. See INSTALL.md, "Operator and
-    administrators" and "Mail between agents".
+    both.
+
+    Then your assistant (--agent, default claude): it writes NAME.md where
+    `session start` looks for agents (~/.session/agents, unless
+    $AGENTS_DIR or ~/.session/agent/config says otherwise), not keyed, and
+    asks `message setup` for the box NAME. A file already there, in either
+    layout, is left as it is. It ends with the one launch step:
+    `session start NAME`.
+
+    Exit 0 all done, 1 refused or failed, 2 usage, 4 done what it could,
+    mail steps left for you. See INSTALL.md, "Operator and administrators"
+    and "Mail between agents".
     """
     if mailbox is not None and address is not None:
         raise click.UsageError("give --mailbox or --address, not both")
-    outcome = operator_setup.run_setup(mailbox=mailbox, address=address, dry_run=dry_run)
+    outcome = operator_setup.run_setup(
+        mailbox=mailbox, address=address, agent=agent, dry_run=dry_run
+    )
     for line in outcome.lines:
         click.echo(line, err=outcome.code != 0)
     raise SystemExit(outcome.code)

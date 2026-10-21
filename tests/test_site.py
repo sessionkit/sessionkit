@@ -9,6 +9,7 @@ ships.
 from __future__ import annotations
 
 import re
+import tomllib
 from html.parser import HTMLParser
 from pathlib import Path
 
@@ -138,3 +139,11 @@ def test_no_internal_notes_in_what_ships():
         assert "lands with its merge" not in text, f"{name}: a stale mark"
     title = (SITE / "README.md").read_text().splitlines()[0]
     assert "DRAFT" not in title, title
+
+
+def test_status_names_the_version_pyproject_ships():
+    # The page's one written-down version is the release it describes.
+    version = tomllib.loads((ROOT / "pyproject.toml").read_text())["project"]["version"]
+    status = (SITE / "index.html").read_text()
+    labels = re.findall(r"<strong>Alpha, ([0-9][^<]*)\.</strong>", status)
+    assert labels == [version], labels

@@ -11,6 +11,104 @@ stamps this file.
 
 ### Added
 
+- A dependency gate in the tests. The kit's ruled dependency list (the five
+  family packages floored at 0.2.0, sessionmail, sessionphone and
+  sessionvoice at 0.2.1, sessionphone with its media extra and sessionvoice
+  with its capture extra) lives in one place,
+  `tests/_ruled_deps.py`, with the ruling beside it.
+  `tests/test_dependency_gate.py` holds pyproject.toml, the built wheel's
+  `Requires-Dist` and uv.lock to it, and `make test` fails, naming the
+  package and the drift, when any of them departs from it.
+- `sessionkit setup` defines your assistant, so its Claude hears Delta
+  messages. It writes the agent file `session start` reads,
+  `~/.session/agents/claude.md` (not keyed, never over one already there),
+  asks mail setup for the agent's box, `claude`, and ends with the one launch
+  step: "To hear Delta messages, start Claude with: session start claude".
+  `--agent NAME` names another assistant; two windows started as one name
+  share its box. INSTALL.md's first agent starts with `session start claude`.
+  No Delta message has yet been walked to a session started this way.
+
+### Changed
+
+- The README is rewritten for 0.2.0, short and install first. It leads with
+  `uv tool install --python 3.14 sessionkit` and the one-step plugin install,
+  which works at 0.2.0; the plugins-from-your-clones route is gone from it. It
+  says why the Python pin, that a Command Line Tools dialog may come first,
+  how to install the calls pack on 0.2.0, that mail works inside a session,
+  and that `mouth say` needs `--device`. It says phone calls are installed,
+  never that they work: their setup is not yet available on a fresh Mac, and
+  it links sessionphone's own docs. Everything else is one line and a
+  link. The commands, services, folders and logs move to
+  `docs/components.md`, and the family's configuration pages to
+  `docs/configuration.md`. A new test, `tests/test_readme_links.py`, holds
+  the README to reference-style links, relative for the kit's own files, no
+  emoji, and labels that all resolve.
+- The five family packages are floored at 0.2.0, sessionmail,
+  sessionphone and sessionvoice at 0.2.1, and sessionphone comes
+  with its `media` extra, so the kit's install includes the phone's calls
+  packages (aiortc, av and their dependencies). Installed is not set up:
+  a call's setup is not yet available on a fresh Mac, and INSTALL.md
+  section 6 points to sessionphone's own docs. The version is `0.2.1` in
+  `pyproject.toml`, mirrored into `.claude-plugin/plugin.json` and
+  `marketplace.json`, and `uv.lock` is re-locked against the 0.2.0 and
+  0.2.1 releases on PyPI. pyproject gains `readme = "README.md"`, so the
+  published page has a description.
+- The README's `sessionkit --version` sample and INSTALL.md's voice and
+  phone lines are re-measured on the 0.2.1 children: section 5's
+  `ears services install --dry-run`, section 8's
+  `ears services uninstall --dry-run` and `sessionphone bot uninstall
+  --help`, and the three senders read in their 0.2.1 source.
+- INSTALL.md section 2 follows 0.2.x: 14 commands install, the install
+  size is measured (61 packages, about 93 MB downloaded, about 280 MB on
+  disk), the calls packages download with the rest at `uv tool install`,
+  and a Linux line names the PortAudio library sessionvoice's
+  `sounddevice` needs there. On a fresh Mac `sessionkit setup` makes your
+  box, writes the operator and exits 4 while notmuch is missing; the 0.1.0
+  refusal text is gone. The agent letter's pager notes (`pager mute`,
+  `pager unmute`, `pager stop --kill`, the monitor's off switch) and its
+  `memory run` opt-in are marked as measured on sessionmail 0.2.0.
+- INSTALL.md drops what 0.1.0 needed, now that the kit floors every family
+  package at 0.2.0. The intro no longer says mail needs postfix or a later
+  release. Section 4: the pager monitor, its off switch and `pager mute` /
+  `pager unmute` are measured on sessionmail 0.2.0, and mailing your agent
+  goes by the file drop. Section 5: the steps are sessionvoice 0.2.0's, the
+  job labels are measured on it (`dev.sessionkit.voice.*`, four agents
+  including ears-mail), the plugin `bin/ears` and `ears-arm` detours for
+  0.1.0 are gone, and the mail steps say sessionmail 0.2.0 is the release
+  the kit installs. Section 7 loses its three 0.1.0 gaps.
+- INSTALL.md section 8, the uninstall, drops its 0.1.0 branches: the plugin
+  `bin/ears` route and the warning that `ears services uninstall` has no dry
+  run are gone. Its dry run, the `sessionphone bot uninstall` help and
+  `uv tool uninstall sessionkit` (14 commands) are measured on this release.
+  Section 4's monitor paragraph names the sessionmail plugin section 3
+  installs, not a clone; section 2's assistant step is measured on this
+  release; section 1's kit size agrees with section 2's.
+- The agent letter says the trust-registry refusal is sessionmail 0.2.0's:
+  that release already names the key, says no registry is created and
+  points at the doc (read in its source). INSTALL.md section 6's boxes line
+  is measured on sessionmail 0.2.0, and names the agent's box `claude`.
+- `docs/ears.md` is re-imported from sessionvoice. Its turn-mail passage no
+  longer says the launch agents deliver nothing, or that a heard turn reads
+  as plain mail, "until sessionmail" ships something. It says how
+  sessionmail 0.2.0's mail drop delivers the turns with no mail server,
+  that the `heard` box must exist first (`message setup --box heard`), and
+  how to send by postfix instead.
+- Phone calls are installed, not yet walked, and the words follow
+  sessionphone 0.2.1: whether its bot signs follows the mail carrier, and
+  under the drop it needs no key. The README's calls passage is one line
+  and a link to sessionphone's own page on it, `docs/bot-mail-signing.md`,
+  and its 0.2.0 hand-install of the calls pack is gone. The quick start
+  sends you to `session start claude`, never a bare `claude`, and says
+  why. INSTALL.md section 6 says the carrier is the `sendmail` setting,
+  not whether postfix is installed, and names the two things the bot's
+  mail needs to reach Claude: the agent's box, and Claude started as the
+  agent. The site's Status and `docs/components.md` agree. No fresh Mac has
+  walked a call yet, so nothing says calls work.
+
+## [0.2.0] - 2026-10-21
+
+### Added
+
 - `sessionkit setup` sets up mail first. It runs sessionmail's mail setup
   verb, `message setup`, before it writes the operator, because that verb
   makes the operator's box. A sessionmail without the verb gets the step

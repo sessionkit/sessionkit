@@ -7,7 +7,9 @@ Every test runs in a temp HOME with a PATH holding only two fake programs:
   maps key by key, reads as NOTHING CONFIGURED when any file there is bad,
   and, like sessiontools, lets AGENT_OPERATOR_ADDR fill the `operator` (ask
   address) field without granting privilege. A mode file switches it to
-  absent-verb (exit 2), garbage, "disagree" or slow.
+  absent-verb (exit 2), garbage, "disagree" or slow. It also answers
+  `session start --list-agents` by sessiontools' agents-folder rule; a
+  `session.agents` file switches that to `absent` (exit 2) or `empty`.
 - `message`: `message box path NAME` exits 0 when `$HOME/.mail/agents/NAME`
   is a maildir (`new/`, `cur/`, `tmp/`: a bare directory is no box to the
   real `message`), else 2. A mode file switches it to exit 3 or slow.
@@ -47,6 +49,31 @@ import json, os, sys, time
 from pathlib import Path
 mode_file = Path(__file__).with_name("session.mode")
 mode = mode_file.read_text().strip() if mode_file.exists() else "model"
+if sys.argv[1:] == ["start", "--list-agents"]:
+    agents_file = Path(__file__).with_name("session.agents")
+    agents = agents_file.read_text().strip() if agents_file.exists() else "model"
+    if agents == "absent":
+        print("session: unknown verb 'start'", file=sys.stderr)
+        sys.exit(2)
+    if agents == "empty":
+        sys.exit(0)
+    dot = Path(os.environ["HOME"]) / ".session"
+    if os.environ.get("AGENTS_DIR"):
+        root = Path(os.path.expanduser(os.environ["AGENTS_DIR"]))
+    elif (dot / "agent" / "config").is_dir():
+        root = dot / "agent" / "config"
+    else:
+        root = dot / "agents"
+    names = set()
+    for entry in (root.iterdir() if root.is_dir() else ()):
+        if entry.name.startswith("."):
+            continue
+        if entry.is_dir() and (entry / (entry.name + ".md")).is_file():
+            names.add(entry.name)
+        elif not entry.is_dir() and entry.name.endswith(".md"):
+            names.add(entry.name[:-3])
+    print("\n".join(sorted(names)))
+    sys.exit(0)
 if sys.argv[1:] != ["operator"] or mode == "exit2":
     print("session: unknown verb 'operator'", file=sys.stderr)
     sys.exit(2)
@@ -223,6 +250,15 @@ class Rig(SimpleNamespace):
     def run(self, *args: str):
         return CliRunner().invoke(main, ["setup", *args])
 
+    @property
+    def agents(self) -> Path:
+        """The agents folder `session start` reads, under the temp HOME."""
+        return setup_mod.agents_root(self.home, os.environ)
+
+    def agent(self, name: str = setup_mod.DEFAULT_AGENT) -> Path:
+        """NAME's agent file, flat layout: the one setup writes."""
+        return self.agents / f"{name}.md"
+
 
 @pytest.fixture
 def rig(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Rig:
@@ -236,7 +272,7 @@ def rig(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Rig:
         script.chmod(0o755)
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.setenv("PATH", str(bindir))
-    for var in ("AGENT_OPERATOR_ADDR", "USER", "LOGNAME", "MAIL"):
+    for var in ("AGENT_OPERATOR_ADDR", "USER", "LOGNAME", "MAIL", "AGENTS_DIR"):
         monkeypatch.delenv(var, raising=False)
     account = SimpleNamespace(pw_name=STRANGER)
     monkeypatch.setattr(setup_mod, "pwd", SimpleNamespace(getpwuid=lambda uid: account))
@@ -246,6 +282,16 @@ def rig(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Rig:
 
 def expected(block: dict) -> str:
     return json.dumps({"_about": ABOUT, "operator": block}, indent=2) + "\n"
+
+
+def agent_step_lines(rig: Rig, name: str = setup_mod.DEFAULT_AGENT) -> list[str]:
+    """What a real run's agent half prints on a fresh home: the write, the
+    verify, the launch step."""
+    return [
+        f"Wrote {rig.agent(name)}: the agent {name!r}, not keyed.",
+        f"session start --list-agents: lists {name!r}.",
+        setup_mod.launch_sentence(name),
+    ]
 
 
 def assert_nothing_written(rig: Rig, before: list[Path] | None = None) -> None:
@@ -300,6 +346,7 @@ def test_no_flag_and_no_box_writes_nothing_and_says_how(rig: Rig) -> None:
         line
         for line in result.output.strip().splitlines()
         if not line.startswith("message setup:")  # the fake verb's DONE line
+        and line not in agent_step_lines(rig)  # the agent half, its own lines
     ]
     assert len(lines) <= 2
     assert "sessionkit setup --address" in result.output
@@ -452,6 +499,7 @@ def test_user_mail_and_ask_address_do_not_change_the_output(
     baseline = rig.run()
     written = rig.target.read_bytes()
     rig.target.unlink()
+    rig.agent().unlink()  # so the agent half writes again, as the baseline did
     monkeypatch.setenv("USER", "someone-else")
     monkeypatch.setenv("LOGNAME", "someone-else")
     monkeypatch.setenv("MAIL", str(tmp_path / "someone-else"))
@@ -511,7 +559,7 @@ def test_our_drop_in_emptied_by_hand_is_refused_not_raced(
     assert result.exit_code == 1, result.output
     assert "exists and holds no operator" in result.output
     assert "appeared while this ran" not in result.output
-    assert "Would write" not in result.output
+    assert f"Would write {rig.target}" not in result.output
     assert seeded.read_text() == "{}\n"
     assert assert_no_stray_json(rig) == ["10-operator.json"]
 
@@ -556,8 +604,9 @@ def test_the_temp_file_name_is_never_read_by_the_cascade(rig: Rig) -> None:
     with pytest.MonkeyPatch.context() as mp:
         mp.setattr(setup_mod.os, "link", watching)
         assert rig.run().exit_code == 0
-    assert len(seen) == 1 and not seen[0].endswith(".json")
-    assert Path(seen[0]).suffix != ".json"
+    ours = [name for name in seen if setup_mod.DROP_IN_NAME in name]
+    assert len(ours) == 1 and not ours[0].endswith(".json")
+    assert Path(ours[0]).suffix != ".json"
 
 
 # --- Q3: --dry-run runs steps 1-3, same exits, writes nothing ------------------
@@ -762,7 +811,7 @@ def test_mail_setup_runs_first_by_the_one_argv(rig: Rig) -> None:
     calls = rig.calls()
     verb = list(setup_mod.MAIL_SETUP_ARGV[1:])
     assert calls[0] == [*verb, "--help"]  # the probe
-    assert calls[1] == verb  # the run: no --mailbox, so no --box
+    assert calls[1] == [*verb, "--box", "claude"]  # the run: the agent's box only
     assert calls[2][:2] == ["box", "path"]  # the operator's box check, after
     assert "message setup: every step DONE" in result.output
     assert rig.target.read_text() == expected({"mailbox": STRANGER})
@@ -807,23 +856,27 @@ def test_the_box_set_hook_feeds_the_argv(
     rig: Rig, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     rig.box(STRANGER)
-    monkeypatch.setattr(setup_mod, "mail_setup_boxes", lambda m, a: ("one", "two"))
+    monkeypatch.setattr(
+        setup_mod, "mail_setup_boxes", lambda m, a, agent: ("one", "two")
+    )
     assert rig.run().exit_code == 0
     assert rig.setup_calls() == [["setup", "--box", "one", "--box", "two"]]
 
 
-def test_no_mailbox_passes_no_box(rig: Rig) -> None:
-    """No --mailbox: no --box, so the verb's floor (the operator's box) is
-    all that is made."""
+def test_no_mailbox_passes_only_the_agents_box(rig: Rig) -> None:
+    """No --mailbox: one --box, the agent's (default claude); the verb's
+    floor (the operator's box) is made besides."""
     rig.setup_mode("makes-boxes")
     (rig.bin / "message.account").write_text(STRANGER)
     result = rig.run()
     assert result.exit_code == 0, result.output
-    assert rig.setup_calls() == [["setup"]]
-    assert setup_mod.mail_setup_boxes(None, None) == ()
-    assert setup_mod.mail_setup_boxes(None, "someone@stranger.test") == ()
+    assert rig.setup_calls() == [["setup", "--box", "claude"]]
+    assert setup_mod.mail_setup_boxes(None, None, None) == ()
+    assert setup_mod.mail_setup_boxes(None, "someone@stranger.test", None) == ()
+    assert setup_mod.mail_setup_boxes(None, "a@host.test", "claude") == ("claude",)
     assert sorted(p.name for p in (rig.home / ".mail" / "agents").iterdir()) == [
-        STRANGER
+        "claude",
+        STRANGER,
     ]
 
 
@@ -834,8 +887,9 @@ def test_a_mailbox_passes_exactly_that_box(rig: Rig) -> None:
     (rig.bin / "message.account").write_text(STRANGER)
     result = rig.run("--mailbox", "named")
     assert result.exit_code == 0, result.output
-    assert rig.setup_calls() == [["setup", "--box", "named"]]
-    assert setup_mod.mail_setup_boxes("named", None) == ("named",)
+    assert rig.setup_calls() == [["setup", "--box", "named", "--box", "claude"]]
+    assert setup_mod.mail_setup_boxes("named", None, "claude") == ("named", "claude")
+    assert setup_mod.mail_setup_boxes("same", None, "same") == ("same",)
     assert (rig.home / ".mail" / "agents" / "named" / "new").is_dir()
     assert rig.target.read_text() == expected({"mailbox": "named"})
 
@@ -844,7 +898,9 @@ def test_a_dry_run_with_a_mailbox_passes_the_box_too(rig: Rig) -> None:
     rig.box("named")
     result = rig.run("--dry-run", "--mailbox", "named")
     assert result.exit_code == 0, result.output
-    assert rig.setup_calls() == [["setup", "--dry-run", "--box", "named"]]
+    assert rig.setup_calls() == [
+        ["setup", "--dry-run", "--box", "named", "--box", "claude"]
+    ]
     assert_nothing_written(rig)
 
 
@@ -857,8 +913,8 @@ def test_the_kit_names_the_account_box_the_verb_made(rig: Rig) -> None:
     result = rig.run()
     assert result.exit_code == 0, result.output
     made = sorted(p.name for p in (rig.home / ".mail" / "agents").iterdir())
-    assert made == [STRANGER]
-    assert rig.target.read_text() == expected({"mailbox": made[0]})
+    assert made == ["claude", STRANGER]  # the agent's box, and the account's
+    assert rig.target.read_text() == expected({"mailbox": STRANGER})
 
 
 def test_the_kit_names_the_operator_box_the_verb_made(rig: Rig) -> None:
@@ -870,7 +926,7 @@ def test_the_kit_names_the_operator_box_the_verb_made(rig: Rig) -> None:
     result = rig.run()
     assert result.exit_code == 0, result.output
     made = sorted(p.name for p in (rig.home / ".mail" / "agents").iterdir())
-    assert made == ["ops"]
+    assert made == ["claude", "ops"]  # the agent's box, and the operator's
     assert "An operator is already configured (ops); nothing written." in result.output
     assert not rig.target.exists()
 
@@ -883,7 +939,7 @@ def test_a_dry_run_passes_dry_run_and_writes_nothing(rig: Rig) -> None:
     (rig.bin / "message.account").write_text("made-by-setup")
     result = rig.run("--dry-run")
     assert result.exit_code == setup_mod.EXIT_STEPS_LEFT, result.output
-    assert rig.setup_calls() == [["setup", "--dry-run"]]
+    assert rig.setup_calls() == [["setup", "--dry-run", "--box", "claude"]]
     assert "dry run: nothing applied (1 step(s) TODO)" in result.output
     assert "Dry run: mail setup has steps still to do (above)." in result.output
     assert "Without --dry-run it does what it can and names the rest." in result.output
@@ -897,7 +953,7 @@ def test_a_dry_run_on_a_done_host_exits_0(rig: Rig) -> None:
     rig.box(STRANGER)
     result = rig.run("--dry-run")
     assert result.exit_code == 0, result.output
-    assert rig.setup_calls() == [["setup", "--dry-run"]]
+    assert rig.setup_calls() == [["setup", "--dry-run", "--box", "claude"]]
     assert_nothing_written(rig)
 
 
@@ -926,9 +982,33 @@ def test_a_sessionmail_without_the_verb_gets_the_exact_step(rig: Rig) -> None:
     assert "this sessionmail has no `message setup`" in result.output
     assert "exited 2" in result.output
     assert 'INSTALL.md, "Mail between agents"' in result.output
-    assert "run: message setup" in result.output
+    assert "run: message setup --box claude" in result.output  # the agent's box
     # The operator still runs, and is written.
     assert rig.target.read_text() == expected({"mailbox": STRANGER})
+
+
+@pytest.mark.parametrize(
+    ("args", "step"),
+    [
+        ((), "message setup --box claude"),
+        (("--agent", "alice"), "message setup --box alice"),
+        (("--mailbox", "named"), "message setup --box named --box claude"),
+        (("--dry-run",), "message setup --box claude"),  # the step to run is the real one
+    ],
+)
+def test_the_printed_step_carries_the_boxes_setup_would_ask_for(
+    rig: Rig, args: tuple[str, ...], step: str
+) -> None:
+    """SK-153: the sessionmail this kit installs today has no `message setup`,
+    so this printed step is how a stranger's agent box gets made. Without
+    `--box NAME` it would make only the account's box, and `session start
+    NAME` would hear a box that does not exist."""
+    rig.box(STRANGER)
+    rig.box("named")
+    rig.setup_mode("absent")
+    result = rig.run(*args)
+    assert result.exit_code == setup_mod.EXIT_STEPS_LEFT, result.output
+    assert result.output.count(f"once you do, run: {step}\n") == 1, result.output
 
 
 def test_no_message_on_the_path_gets_the_step(rig: Rig) -> None:
@@ -936,6 +1016,7 @@ def test_no_message_on_the_path_gets_the_step(rig: Rig) -> None:
     result = rig.run("--address", "someone@stranger.test")
     assert result.exit_code == setup_mod.EXIT_STEPS_LEFT
     assert "`message` is not on the PATH" in result.output
+    assert "run: message setup --box claude" in result.output
     assert rig.target.read_text() == expected({"address": "someone@stranger.test"})
 
 
@@ -1280,3 +1361,407 @@ def test_the_docs_name_the_old_file_once_in_the_upgrade_note() -> None:
     assert f"`~/{OLD_DROP_IN}`" in note
     assert f"`~/{OPERATOR_DROP_IN}`" in note
     assert "exits 1" in note and "--dry-run" in note
+
+
+# --- the agent: `sessionkit setup --agent NAME` (SK-153) -----------------------
+# Setup writes NAME's agent file where `session start NAME` resolves it, NOT
+# keyed, never over a file already there; asks the mail verb for the box NAME;
+# and ends on the one launch step. The fake `session` answers `start
+# --list-agents` by sessiontools' rule; the drift test below holds the kit's
+# rule to the INSTALLED sessiontools' own.
+
+# The literal file, spelled out, not built from setup's constants: a change to
+# what setup writes fails here.
+CLAUDE_AGENT_FILE = """\
+You are claude, a Claude Code assistant.
+
+Written by `sessionkit setup`. `session start claude` starts Claude as
+claude, so the session hears mail to the box claude. Edit this file as you
+like: setup never writes over it.
+"""
+SENTENCE = "To hear Delta messages, start Claude with: session start {}"
+
+
+def keyed(text: str) -> bool:
+    """TEXT asks for a keyed launch: any `keyed:` key, at any depth."""
+    return re.search(r"(?m)^\s*keyed\s*:", text) is not None
+
+
+def test_keyed_grep_fires_on_a_keyed_file() -> None:
+    """The control for every `not keyed(...)` below."""
+    assert keyed("---\nstart:\n  keyed: true\n---\nbody\n")
+    assert keyed("---\nkeyed: false\n---\n")
+    assert not keyed(CLAUDE_AGENT_FILE)
+
+
+def test_setup_writes_the_default_agent_exactly(rig: Rig) -> None:
+    rig.box(STRANGER)
+    result = rig.run()
+    assert result.exit_code == 0, result.output
+    path = rig.home / ".session/agents/claude.md"
+    assert path.read_text() == CLAUDE_AGENT_FILE
+    assert not keyed(path.read_text())
+    assert "start:" not in path.read_text()
+    assert f"Wrote {path}: the agent 'claude', not keyed." in result.output
+    assert "session start --list-agents: lists 'claude'." in result.output
+    assert [p.name for p in path.parent.iterdir()] == ["claude.md"]  # no temp left
+
+
+def test_a_named_agent_is_written_by_its_name(rig: Rig) -> None:
+    rig.box(STRANGER)
+    result = rig.run("--agent", "alice")
+    assert result.exit_code == 0, result.output
+    path = rig.home / ".session/agents/alice.md"
+    assert path.read_text() == CLAUDE_AGENT_FILE.replace("claude,", "alice,").replace(
+        "start claude", "start alice"
+    ).replace("box claude", "box alice")
+    assert not (rig.home / ".session/agents/claude.md").exists()
+    assert result.output.strip().splitlines()[-1] == SENTENCE.format("alice")
+
+
+def test_the_file_is_one_sessiontools_reads_with_no_key(rig: Rig) -> None:
+    """The real parser (sessiontools' agentfile): a valid file, no front
+    matter, so no `start:` switch at all and `keyed` stays its default, false."""
+    agentfile = pytest.importorskip("sessiontools.start.agentfile")
+    rig.box(STRANGER)
+    assert rig.run().exit_code == 0
+    front, body = agentfile.parse_agent_markdown(rig.agent().read_text())
+    assert front == {}
+    assert "You are claude" in body
+
+
+# --- the agents folder: the three roots `session start` reads -------------------
+
+
+def test_root_one_the_default_is_dot_session_agents(rig: Rig) -> None:
+    rig.box(STRANGER)
+    assert rig.run().exit_code == 0
+    assert (rig.home / ".session/agents/claude.md").is_file()
+    assert setup_mod.agents_root(rig.home, {}) == rig.home / ".session/agents"
+
+
+def test_root_two_agent_config_once_it_is_a_folder(rig: Rig) -> None:
+    (rig.home / ".session/agent/config").mkdir(parents=True)
+    rig.box(STRANGER)
+    result = rig.run()
+    assert result.exit_code == 0, result.output
+    assert (rig.home / ".session/agent/config/claude.md").read_text() == CLAUDE_AGENT_FILE
+    assert not (rig.home / ".session/agents").exists()
+    assert "lists 'claude'" in result.output  # the fake reader looked there too
+
+
+def test_root_two_is_not_taken_when_it_is_a_file(rig: Rig) -> None:
+    (rig.home / ".session/agent").mkdir(parents=True)
+    (rig.home / ".session/agent/config").write_text("not a folder\n")
+    rig.box(STRANGER)
+    assert rig.run().exit_code == 0
+    assert (rig.home / ".session/agents/claude.md").is_file()
+
+
+@pytest.mark.parametrize("config", [False, True])
+def test_root_three_agents_dir_wins(
+    rig: Rig, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, config: bool
+) -> None:
+    if config:
+        (rig.home / ".session/agent/config").mkdir(parents=True)
+    elsewhere = tmp_path / "elsewhere-agents"
+    monkeypatch.setenv("AGENTS_DIR", str(elsewhere))
+    rig.box(STRANGER)
+    result = rig.run()
+    assert result.exit_code == 0, result.output
+    assert (elsewhere / "claude.md").read_text() == CLAUDE_AGENT_FILE
+    assert not (rig.home / ".session/agents").exists()
+    assert not (rig.home / ".session/agent/config/claude.md").exists()
+
+
+def test_agents_dir_expands_a_tilde(rig: Rig, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("AGENTS_DIR", "~/my-agents")
+    rig.box(STRANGER)
+    assert rig.run().exit_code == 0
+    assert (rig.home / "my-agents/claude.md").is_file()
+
+
+def test_an_empty_agents_dir_is_unset(rig: Rig, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("AGENTS_DIR", "")
+    rig.box(STRANGER)
+    assert rig.run().exit_code == 0
+    assert (rig.home / ".session/agents/claude.md").is_file()
+
+
+@pytest.mark.parametrize("case", ["default", "config", "config-file", "env", "env-empty"])
+def test_the_rule_matches_the_installed_sessiontools(tmp_path: Path, case: str) -> None:
+    """Drift: the kit mirrors sessiontools' `agents_root`; hold it to the one
+    installed, for each root."""
+    agents = pytest.importorskip("sessiontools.start.agents")
+    home = tmp_path / "home"
+    home.mkdir()
+    env = {"HOME": str(home)}
+    if case in ("config", "env"):
+        (home / ".session/agent/config").mkdir(parents=True)
+    if case == "config-file":
+        (home / ".session/agent").mkdir(parents=True)
+        (home / ".session/agent/config").write_text("")
+    if case == "env":
+        env["AGENTS_DIR"] = str(tmp_path / "named")
+    if case == "env-empty":
+        env["AGENTS_DIR"] = ""
+    assert setup_mod.agents_root(home, env) == Path(agents.agents_root(env))
+
+
+# --- never clobber, either layout; a re-run writes nothing ---------------------
+
+
+def test_a_flat_file_already_there_is_left_alone(rig: Rig) -> None:
+    mine = rig.home / ".session/agents/claude.md"
+    mine.parent.mkdir(parents=True)
+    mine.write_text("---\nmodel: opus\n---\nMine.\n")
+    before = mine.stat().st_mtime_ns
+    rig.box(STRANGER)
+    result = rig.run()
+    assert result.exit_code == 0, result.output
+    assert mine.read_text() == "---\nmodel: opus\n---\nMine.\n"
+    assert mine.stat().st_mtime_ns == before
+    assert f"Agent 'claude' is already in {mine}; left as it is." in result.output
+    assert result.output.strip().splitlines()[-1] == SENTENCE.format("claude")
+
+
+def test_a_directory_agent_already_there_is_left_alone(rig: Rig) -> None:
+    mine = rig.home / ".session/agents/claude/claude.md"
+    mine.parent.mkdir(parents=True)
+    mine.write_text("Mine.\n")
+    rig.box(STRANGER)
+    result = rig.run()
+    assert result.exit_code == 0, result.output
+    assert mine.read_text() == "Mine.\n"
+    assert not (rig.home / ".session/agents/claude.md").exists()  # no flat beside it
+    assert f"Agent 'claude' is already in {mine}; left as it is." in result.output
+
+
+def test_a_folder_without_its_file_is_refused(rig: Rig) -> None:
+    """`session start claude` refuses that folder (the directory layout wins),
+    so a flat file beside it would never be read: refuse, write nothing."""
+    folder = rig.home / ".session/agents/claude"
+    folder.mkdir(parents=True)
+    rig.box(STRANGER)
+    result = rig.run()
+    assert result.exit_code == 1
+    assert sorted(p.name for p in folder.parent.iterdir()) == ["claude"]
+    assert list(folder.iterdir()) == []
+    assert f"{folder} exists without claude.md in it" in result.output
+    assert "start Claude with" not in result.output  # no launch step that fails
+    assert rig.target.read_text() == expected({"mailbox": STRANGER})  # operator still ran
+
+
+def test_a_dangling_link_at_the_flat_path_is_refused(rig: Rig) -> None:
+    link = rig.home / ".session/agents/claude.md"
+    link.parent.mkdir(parents=True)
+    link.symlink_to(rig.home / "nowhere.md")
+    rig.box(STRANGER)
+    result = rig.run()
+    assert result.exit_code == 1
+    assert link.is_symlink() and not (rig.home / "nowhere.md").exists()
+    assert "is not a file session start can read" in result.output
+
+
+@pytest.mark.parametrize("case", ["session-is-a-file", "agents-is-a-file", "read-only"])
+def test_an_agents_folder_that_cannot_be_made_is_refused_not_a_traceback(
+    rig: Rig, case: str
+) -> None:
+    """The write comes last, after mail and the operator have run: a folder
+    it cannot make must be a refusal that prints, so their lines print too."""
+    session = rig.home / ".session"
+    if case == "session-is-a-file":
+        session.write_text("x")
+    elif case == "agents-is-a-file":
+        session.mkdir()
+        (session / "agents").write_text("x")
+    else:
+        session.mkdir()
+        session.chmod(0o500)
+    rig.box(STRANGER)
+    try:
+        result = rig.run()
+    finally:
+        if session.is_dir():
+            session.chmod(0o700)
+    assert result.exception is None or isinstance(result.exception, SystemExit), (
+        result.exception
+    )
+    assert result.exit_code == 1, result.output
+    assert f"No agent file written: could not make {session / 'agents'} (" in (
+        result.output
+    )
+    assert "start Claude with" not in result.output  # no launch step that fails
+    assert rig.target.read_text() == expected({"mailbox": STRANGER})  # operator ran
+
+
+def test_a_second_run_writes_no_agent_and_exits_as_the_first(rig: Rig) -> None:
+    rig.box(STRANGER)
+    first = rig.run()
+    assert first.exit_code == 0, first.output
+    path = rig.agent()
+    stamp = path.read_bytes(), path.stat().st_mtime_ns
+    again = rig.run()
+    assert again.exit_code == first.exit_code
+    assert (path.read_bytes(), path.stat().st_mtime_ns) == stamp
+    assert f"Agent 'claude' is already in {path}; left as it is." in again.output
+    assert again.output.strip().splitlines()[-1] == SENTENCE.format("claude")
+
+
+# --- the box: `--box NAME` to the mail verb ---------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("args", "boxes"),
+    [
+        ((), ["claude"]),
+        (("--agent", "alice"), ["alice"]),
+        (("--mailbox", "named", "--agent", "alice"), ["named", "alice"]),
+        (("--address", "a@host.test", "--agent", "alice"), ["alice"]),
+        (("--mailbox", "alice", "--agent", "alice"), ["alice"]),
+    ],
+)
+def test_the_agents_box_rides_the_verbs_argv(rig: Rig, args, boxes) -> None:
+    rig.box(STRANGER)
+    rig.box("named")
+    rig.box("alice")
+    rig.run(*args)
+    argv = ["setup"]
+    for box in boxes:
+        argv += ["--box", box]
+    assert rig.setup_calls() == [argv]
+
+
+def test_the_verb_makes_the_agents_box(rig: Rig) -> None:
+    rig.setup_mode("makes-boxes")
+    (rig.bin / "message.account").write_text(STRANGER)
+    result = rig.run("--agent", "alice")
+    assert result.exit_code == 0, result.output
+    assert (rig.home / ".mail/agents/alice/new").is_dir()
+
+
+# --- dry run: prints the file and the box; writes nothing -----------------------
+
+
+def test_a_dry_run_prints_the_agent_file_and_box_and_writes_nothing(rig: Rig) -> None:
+    rig.box(STRANGER)
+    result = rig.run("--dry-run")
+    assert result.exit_code == 0, result.output
+    path = rig.home / ".session/agents/claude.md"
+    assert f"Would write {path}:\n{CLAUDE_AGENT_FILE}" in result.output
+    assert "Would ask `message setup` for the agent's box 'claude' (--box claude)." in (
+        result.output
+    )
+    assert not (rig.home / ".session").exists()
+    assert result.output.strip().splitlines()[-1] == SENTENCE.format("claude")
+
+
+def test_a_dry_run_over_an_existing_file_says_so(rig: Rig) -> None:
+    mine = rig.home / ".session/agents/claude.md"
+    mine.parent.mkdir(parents=True)
+    mine.write_text("Mine.\n")
+    rig.box(STRANGER)
+    result = rig.run("--dry-run")
+    assert result.exit_code == 0
+    assert "Would write" not in result.output.replace(f"Would write {rig.target}", "")
+    assert "already in" in result.output
+    assert mine.read_text() == "Mine.\n"
+
+
+def test_a_stranded_run_writes_no_agent(rig: Rig) -> None:
+    old = rig.home / setup_mod.LEGACY_OPERATOR_FILE.removeprefix("~/")
+    old.parent.mkdir(parents=True)
+    old.write_text("{}")
+    rig.box(STRANGER)
+    result = rig.run()
+    assert result.exit_code == 1
+    assert not (rig.home / ".session").exists()
+    assert "start Claude with" not in result.output
+
+
+# --- verify through the reader: `session start --list-agents` -------------------
+
+
+def test_an_agents_reader_that_does_not_answer_is_written_not_verified(rig: Rig) -> None:
+    (rig.bin / "session.agents").write_text("absent")
+    rig.box(STRANGER)
+    result = rig.run()
+    assert result.exit_code == 0, result.output
+    assert rig.agent().is_file()
+    assert "Written; not verified: `session start --list-agents` did not answer." in (
+        result.output
+    )
+
+
+def test_an_agents_reader_that_does_not_list_the_agent_is_loud(rig: Rig) -> None:
+    (rig.bin / "session.agents").write_text("empty")
+    rig.box(STRANGER)
+    result = rig.run()
+    assert result.exit_code == 1
+    assert "WARNING: `session start --list-agents` does not list 'claude'" in result.output
+
+
+# --- the printed launch step ------------------------------------------------------
+
+
+def test_the_launch_step_is_the_shared_sentence_last(rig: Rig) -> None:
+    rig.box(STRANGER)
+    result = rig.run()
+    assert result.exit_code == 0
+    assert result.output.strip().splitlines()[-1] == (
+        "To hear Delta messages, start Claude with: session start claude"
+    )
+    assert setup_mod.launch_sentence("x") == SENTENCE.format("x")
+
+
+def test_the_launch_step_prints_when_the_operator_refuses(rig: Rig) -> None:
+    """The operator and the agent are separate halves: an operator refusal
+    (no box for the account) does not hide the launch step."""
+    result = rig.run()
+    assert result.exit_code == 1
+    assert rig.agent().is_file()
+    assert result.output.strip().splitlines()[-1] == SENTENCE.format("claude")
+
+
+# --- --agent shape: a usage error, nothing run, nothing written -----------------
+
+
+@pytest.mark.parametrize(
+    "name", ["", ".", "..", ".hidden", "a/b", "a\\b", "a@b", "-x", "a b", "tab\there"]
+)
+def test_an_agent_name_of_the_wrong_shape_is_a_usage_error(rig: Rig, name: str) -> None:
+    rig.box(STRANGER)
+    result = rig.run("--agent", name)
+    assert result.exit_code == 2, result.output
+    assert "Traceback" not in result.output
+    assert "is not an agent name" in result.output
+    assert rig.calls() == []  # mail never ran
+    assert not (rig.home / ".session").exists()
+    assert_nothing_written(rig)
+
+
+def test_help_names_the_agent_flag_and_its_default() -> None:
+    result = CliRunner().invoke(main, ["setup", "--help"])
+    assert result.exit_code == 0
+    assert "--agent NAME" in result.output
+    assert "[default: claude]" in result.output
+    assert "session start NAME" in result.output
+
+
+# --- R3 for the agent file: no name of ours in it, with its control --------------
+
+
+def test_the_agent_file_holds_no_name_of_ours(rig: Rig) -> None:
+    rows = _scanlist.rows()
+    rig.box(STRANGER)
+    assert rig.run().exit_code == 0
+    path = rig.agent()
+    text = path.read_text()
+    found = _scanlist.hits(text, rows)
+    assert found == [], f"the agent file holds a word of row(s) {found}"
+    missed = []
+    for name, word in _scanlist.controls(rows):
+        planted = f"{text}{word}\n"
+        if name not in _scanlist.hits(planted, rows):
+            missed.append(name)
+    assert missed == [], f"the scan missed a word planted from row(s) {missed}"

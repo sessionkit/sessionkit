@@ -3,7 +3,7 @@
 What Session Kit itself configures: which files, which environment
 variables, and where each one lives. The kit configures very little of its
 own. Each family package configures itself, and its own configuration page
-says how: the README maps them ([the family's pages][family]).
+says how ([the family's pages][family]).
 
 - **The operator:** one file, written once by `sessionkit setup`:
   `~/.sessionkit/tools/settings/session.d/10-operator.json`
@@ -65,8 +65,8 @@ package, not files you edit:
 - `.claude-plugin/marketplace.json`: a marketplace that lists the kit's
   plugin and the five.
 
-The kit's own plugin does not load yet. Until it does, install the five
-family plugins from your clones ([the README][readme-clones]).
+`claude plugin install sessionkit@sessionkit` installs the kit's plugin
+and the five ([the README's Installation][readme-install]).
 
 ## Working on the kit
 
@@ -83,6 +83,18 @@ command line.
 | `SESSIONKIT_SCAN` | `make scan` | The path of the release scan tool. Unset, `make scan` uses `release-scan` from your PATH. |
 | `AGENTS_CHECK_HOSTS` | `scripts/check_agents_archive.py` | Host names to list as private, spaced or comma-separated. Adds to `--host`. |
 
+## The family's pages
+
+Each family package's configuration page says which files, which
+environment variables, and where each one lives:
+
+- [sessionmail's docs/configuration.md][cfg-mail]: mail between agents.
+- [sessiontools's docs/configuration.md][cfg-tools]: the `session` command
+  and its sounds.
+- [sessionphone's docs/configuration.md][cfg-phone]: the phone line.
+- [sessionview's docs/configuration.md][cfg-view]: the tmux sidebar.
+- [sessionvoice's docs/configuration.md][cfg-voice]: the ears and the mouth.
+
 ## Settings
 
 The family keeps most of its settings in JSON files that stack in layers:
@@ -95,5 +107,10 @@ specific layer wins.
 
 [settings]: settings.md
 [kit-keys]: settings.md#the-kits-own-keys
-[family]: ../README.md#configuration
-[readme-clones]: ../README.md#install-the-plugins-from-your-clones
+[family]: #the-familys-pages
+[readme-install]: ../README.md#installation
+[cfg-mail]: https://github.com/sessionkit/sessionmail/blob/HEAD/docs/configuration.md
+[cfg-tools]: https://github.com/sessionkit/sessiontools/blob/HEAD/docs/configuration.md
+[cfg-phone]: https://github.com/sessionkit/sessionphone/blob/HEAD/docs/configuration.md
+[cfg-view]: https://github.com/sessionkit/sessionview/blob/HEAD/docs/configuration.md
+[cfg-voice]: https://github.com/sessionkit/sessionvoice/blob/HEAD/docs/configuration.md

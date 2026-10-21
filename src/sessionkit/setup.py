@@ -1,4 +1,6 @@
-"""`sessionkit setup`: make this host's mail ready, then write the operator.
+"""`sessionkit setup`: make this host's mail ready, write the operator, then
+define the assistant (`run_agent`: the file `session start NAME` resolves, and
+the box it hears, so a seat started that way hears mail to NAME).
 
 Mail first. sessionmail's mail setup verb (argv in `MAIL_SETUP_ARGV`) makes
 the mail root and the first boxes, the operator's box among them, and the
@@ -129,6 +131,21 @@ def check_mailbox_shape(name: str) -> str:
             f"{name!r} is not a mail box name: one plain name, "
             "no '/', no '@', no spaces"
         )
+    return name
+
+
+def check_agent_shape(name: str) -> str:
+    """NAME names the agent's mail box, so it is a mail box name. It names
+    its file too (`<agents folder>/NAME.md`), so it may not start with `.`:
+    `session start --list-agents` hides a dot-file, and a picker never offers it."""
+    try:
+        check_mailbox_shape(name)
+    except ShapeError:
+        raise ShapeError(
+            f"{name!r} is not an agent name: one plain name, no '/', no '@', no spaces"
+        ) from None
+    if name.startswith("."):
+        raise ShapeError(f"{name!r} is not an agent name: it may not start with '.'")
     return name
 
 
@@ -303,8 +320,14 @@ def drop_in_text(block: Mapping[str, str]) -> str:
 def write_exclusive(target: Path, text: str) -> str | None:
     """Create TARGET holding TEXT, only if it does not exist. None on
     success, else why not. Never a partial target and never a stray
-    `*.json`: the temp's name ends in `.tmp-<pid>`, and it is removed."""
-    target.parent.mkdir(parents=True, exist_ok=True)
+    `*.json`: the temp's name ends in `.tmp-<pid>`, and it is removed. A
+    folder that cannot be made (a file in the way, no permission) is a
+    reason too, never a traceback: the caller's other halves have run, and
+    their lines must still print."""
+    try:
+        target.parent.mkdir(parents=True, exist_ok=True)
+    except OSError as e:
+        return f"could not make {target.parent} ({e.strerror or e.__class__.__name__})"
     temp = target.with_name(f".{target.name}.tmp-{os.getpid()}")
     try:
         # A temp by this pid's name is a dead run's leftover (no live process
@@ -344,17 +367,22 @@ MAIL_LEFT = 4
 MAIL_DOC = 'INSTALL.md, "Mail between agents"'
 
 
-def mail_setup_boxes(mailbox: str | None, address: str | None) -> tuple[str, ...]:
+def mail_setup_boxes(
+    mailbox: str | None, address: str | None, agent: str | None
+) -> tuple[str, ...]:
     """The boxes the installer asks the verb for, as `--box NAME` each.
 
-    Exactly one, and only when the user asked for one: `--mailbox NAME`
-    passes NAME, so a named box on a fresh install is made before the
-    operator check looks for it. Otherwise none: the verb's own floor (the
-    operator's box, `operator.mailbox`, else the installing account's name)
-    is all that is made. A seat's own box is made by its pager, never here.
+    `--mailbox NAME` passes NAME, so a named box on a fresh install is made
+    before the operator check looks for it. Then the agent's box (`--agent`,
+    default `claude`): a seat started with `session start NAME` hears the
+    box NAME, so the box must exist for mail to it to land. The verb's own
+    floor (the operator's box, `operator.mailbox`, else the installing
+    account's name) is made besides. A session's own box is made by its
+    pager, never here. The verb is idempotent: a box that exists stays.
     """
     del address  # an address needs no box
-    return (mailbox,) if mailbox is not None else ()
+    boxes = [name for name in (mailbox, agent) if name is not None]
+    return tuple(dict.fromkeys(boxes))
 
 
 def mail_setup_argv(boxes: Sequence[str], dry_run: bool) -> list[str]:
@@ -371,15 +399,18 @@ def _verb() -> str:
     return " ".join(MAIL_SETUP_ARGV)
 
 
-def _no_verb(why: str) -> Outcome:
-    """This sessionmail cannot run the verb: print the exact step instead."""
+def _no_verb(why: str, boxes: Sequence[str] = ()) -> Outcome:
+    """This sessionmail cannot run the verb: print the exact step instead,
+    with the `--box NAME` setup would have passed (the agent's among them),
+    so running it later makes the same boxes a run of the verb would."""
+    step = " ".join(mail_setup_argv(boxes, dry_run=False))
     return Outcome(
         EXIT_STEPS_LEFT,
         [
             f"Mail not set up: {why}.",
             (
                 f"A newer sessionmail has it. Until you have that, set mail up by "
-                f"hand ({MAIL_DOC}); once you do, run: {_verb()}"
+                f"hand ({MAIL_DOC}); once you do, run: {step}"
             ),
         ],
     )
@@ -410,14 +441,15 @@ def run_mail_setup(
     """
     program = MAIL_SETUP_ARGV[0]
     if _find(program, environ) is None:
-        return _no_verb(f"`{program}` is not on the PATH")
+        return _no_verb(f"`{program}` is not on the PATH", boxes)
     probe = _run([*MAIL_SETUP_ARGV, "--help"], environ)
     if probe is None:
-        return _no_verb(f"`{_verb()} --help` did not answer")
+        return _no_verb(f"`{_verb()} --help` did not answer", boxes)
     if probe.returncode != 0:
         return _no_verb(
             f"this sessionmail has no `{_verb()}` "
-            f"(`{_verb()} --help` exited {probe.returncode})"
+            f"(`{_verb()} --help` exited {probe.returncode})",
+            boxes,
         )
 
     argv = mail_setup_argv(boxes, dry_run)
@@ -461,6 +493,147 @@ def run_mail_setup(
             f"{why[0].upper()}{why[1:]}. Fix what it names, then run sessionkit setup again."
         ],
     )
+
+
+# --- the agent: the file `session start NAME` resolves -------------------------
+
+# The assistant setup defines when no `--agent` is given.
+DEFAULT_AGENT = "claude"
+
+# Where `session start NAME` looks for agents: sessiontools'
+# `start/agents.py:agents_root`, the same rule, mirrored here so the kit does
+# not import sessiontools' internals. `$AGENTS_DIR`, else
+# `~/.session/agent/config` if that is a directory, else `~/.session/agents`.
+# tests/test_setup.py holds this rule to the installed sessiontools'.
+AGENTS_DIR_ENV = "AGENTS_DIR"
+SESSION_HOME = ".session"
+AGENT_CONFIG_DIR = ("agent", "config")
+AGENTS_DIR_NAME = "agents"
+
+# The reader: every agent `session start` would accept, one name a line.
+LIST_AGENTS_ARGV: tuple[str, ...] = ("session", "start", "--list-agents")
+
+# The one launch step, in sessionphone's final words: the same line its Delta
+# bot prints. Spelled once: change it here only.
+LAUNCH_SENTENCE = "To hear Delta messages, start Claude with: session start {agent}"
+
+# The agent file. No `start:` keys: the seat is NOT keyed. No front matter at
+# all: Claude Code (2.1.304, measured) names an agent by its file, so `name:`
+# and `description:` are not needed. For any NAME but `claude` this text is
+# the agent's prompt; for `claude`, Claude Code's own built-in agent of that
+# name answers, and the file only has to exist for `session start` to find it.
+AGENT_TEXT = """\
+You are {agent}, a Claude Code assistant.
+
+Written by `sessionkit setup`. `session start {agent}` starts Claude as
+{agent}, so the session hears mail to the box {agent}. Edit this file as you
+like: setup never writes over it.
+"""
+
+
+def agents_root(home: Path, environ: Mapping[str, str]) -> Path:
+    """The agents folder `session start` reads, by sessiontools' rule."""
+    named = environ.get(AGENTS_DIR_ENV)
+    if named:
+        return Path(os.path.expanduser(named))
+    config = home / SESSION_HOME / Path(*AGENT_CONFIG_DIR)
+    if config.is_dir():
+        return config
+    return home / SESSION_HOME / AGENTS_DIR_NAME
+
+
+def agent_file(home: Path, environ: Mapping[str, str], agent: str) -> Path:
+    """The file setup writes for AGENT: the flat layout, `<root>/NAME.md`."""
+    return agents_root(home, environ) / f"{agent}.md"
+
+
+def agent_text(agent: str) -> str:
+    return AGENT_TEXT.format(agent=agent)
+
+
+def launch_sentence(agent: str) -> str:
+    return LAUNCH_SENTENCE.format(agent=agent)
+
+
+def read_listed_agents(environ: Mapping[str, str]) -> list[str] | None:
+    """`session start --list-agents`, one name a line, or None when it does
+    not answer (absent, non-zero, a timeout): "not verified", never "absent"."""
+    done = _run(LIST_AGENTS_ARGV, environ)
+    if done is None or done.returncode != 0:
+        return None
+    return [line.strip() for line in done.stdout.splitlines() if line.strip()]
+
+
+def run_agent(
+    *,
+    agent: str,
+    dry_run: bool = False,
+    home: Path | None = None,
+    environ: Mapping[str, str] | None = None,
+) -> Outcome:
+    """Write AGENT's file where `session start` looks, once; then verify.
+
+    Never clobbers: either layout `session start` reads (`<root>/NAME/NAME.md`,
+    which wins, or `<root>/NAME.md`) already there means write nothing. A
+    folder `<root>/NAME/` without its NAME.md, or a flat path that is not a
+    file, is refused: `session start` could not start NAME from it, and
+    writing beside it would not change that. AGENT is already shape-checked.
+    """
+    environ = os.environ if environ is None else environ
+    home = Path.home() if home is None else home
+    root = agents_root(home, environ)
+    folder = root / agent
+    flat = agent_file(home, environ, agent)
+    if folder.is_dir():
+        inside = folder / f"{agent}.md"
+        if inside.is_file():
+            return Outcome(
+                EXIT_OK, [f"Agent {agent!r} is already in {inside}; left as it is."]
+            )
+        return Outcome(
+            EXIT_REFUSED,
+            [
+                (
+                    f"No agent file written: {folder} exists without {agent}.md "
+                    f"in it, so session start cannot start {agent!r}."
+                ),
+                f"Put {agent}.md in that folder, or remove it, then run sessionkit setup again.",
+            ],
+        )
+    if flat.is_file():
+        return Outcome(
+            EXIT_OK, [f"Agent {agent!r} is already in {flat}; left as it is."]
+        )
+    if os.path.lexists(flat):
+        return Outcome(
+            EXIT_REFUSED,
+            [
+                f"No agent file written: {flat} exists and is not a file session start can read.",
+                "Remove it, then run sessionkit setup again.",
+            ],
+        )
+    text = agent_text(agent)
+    if dry_run:
+        return Outcome(EXIT_OK, [f"Would write {flat}:", text.rstrip("\n")])
+
+    failed = write_exclusive(flat, text)
+    if failed is not None:
+        return Outcome(EXIT_REFUSED, [f"No agent file written: {failed}."])
+    lines = [f"Wrote {flat}: the agent {agent!r}, not keyed."]
+
+    listed = read_listed_agents(environ)
+    verb = " ".join(LIST_AGENTS_ARGV)
+    if listed is None:
+        lines.append(f"Written; not verified: `{verb}` did not answer.")
+        return Outcome(EXIT_OK, lines)
+    if agent not in listed:
+        lines.append(
+            f"WARNING: `{verb}` does not list {agent!r}: the `session` on your "
+            "PATH looks in another agents folder ($AGENTS_DIR, or another sessiontools)."
+        )
+        return Outcome(EXIT_REFUSED, lines)
+    lines.append(f"{verb}: lists {agent!r}.")
+    return Outcome(EXIT_OK, lines)
 
 
 # --- the run ------------------------------------------------------------------
@@ -513,21 +686,23 @@ def run_setup(
     *,
     mailbox: str | None = None,
     address: str | None = None,
+    agent: str = DEFAULT_AGENT,
     dry_run: bool = False,
     home: Path | None = None,
     environ: Mapping[str, str] | None = None,
 ) -> Outcome:
-    """The stranded check, then mail, then the operator; both halves print.
+    """The stranded check, then mail, the operator and the agent; all print.
 
     An operator file stranded at the 0.1.0 place, with none at the new one,
     stops the whole run before mail: nothing is made or written, one line.
     The verb would otherwise make the operator's box from settings that
-    cannot see that file. Past it, both halves always run. Mail goes first
+    cannot see that file. Past it, all three always run. Mail goes first
     because the operator is written only for a box that exists, and the
-    mail setup verb is what makes the operator's box. The exit is the worse
-    of the two: 1 if either refused or failed, else 4 if mail left steps
-    for you, else 0. MAILBOX / ADDRESS are already shape-checked by the
-    caller.
+    mail setup verb is what makes the operator's box and the agent's. The
+    exit is the worst of the three: 1 if any refused or failed, else 4 if
+    mail left steps for you, else 0. With the agent defined, the run ends on
+    the one launch step (LAUNCH_SENTENCE). MAILBOX / ADDRESS / AGENT are
+    already shape-checked by the caller.
     """
     environ = os.environ if environ is None else environ
     resolved = Path.home() if home is None else home
@@ -538,18 +713,29 @@ def run_setup(
     # sessionmail's default carrier, and postfix is the user's opt-in.
     # `--write-maps` is never passed: writing postfix maps is opt-in too.
     mail = run_mail_setup(
-        boxes=mail_setup_boxes(mailbox, address), dry_run=dry_run, environ=environ
+        boxes=mail_setup_boxes(mailbox, address, agent),
+        dry_run=dry_run,
+        environ=environ,
     )
     operator = run_operator(
         mailbox=mailbox, address=address, dry_run=dry_run, home=home, environ=environ
     )
-    if EXIT_REFUSED in (mail.code, operator.code):
+    defined = run_agent(agent=agent, dry_run=dry_run, home=resolved, environ=environ)
+    codes = (mail.code, operator.code, defined.code)
+    if EXIT_REFUSED in codes:
         code = EXIT_REFUSED
-    elif EXIT_STEPS_LEFT in (mail.code, operator.code):
+    elif EXIT_STEPS_LEFT in codes:
         code = EXIT_STEPS_LEFT
     else:
         code = EXIT_OK
-    return Outcome(code, mail.lines + operator.lines)
+    lines = mail.lines + operator.lines + defined.lines
+    if dry_run:
+        lines.append(
+            f"Would ask `{_verb()}` for the agent's box {agent!r} (--box {agent})."
+        )
+    if defined.code == EXIT_OK:
+        lines.append(launch_sentence(agent))
+    return Outcome(code, lines)
 
 
 def run_operator(

@@ -6,12 +6,11 @@ password, answer a prompt, sign in, or edit a file. The measurements come from a
 rehearsal of this install, most of them on a fresh macOS 27 virtual machine.
 
 What works today: the commands (mail, sessions, pager, memory, phone, ears,
-mouth), the plugins, and the mouth (it falls back to macOS `say`). What does not
-yet: hearing needs a speech server, which sessionvoice 0.2.0 installs for you
-and 0.1.0 does not (section 5); agent-to-agent mail needs postfix on 0.1.0, and
-from sessionmail 0.2.0, not yet released, goes by its experimental file drop with no
-mail server (section 5);
-the one-command kit plugin does not load (section 7).
+mouth), the plugins, and the mouth (it falls back to macOS `say`). What is still
+limited: hearing needs a speech server, which sessionvoice's `ears services install`
+installs for you (section 5); agent-to-agent mail goes by sessionmail's experimental
+file drop, its default carrier, on this Mac only (section 5); phone calls are
+installed, not yet walked (section 6).
 
 ## 1. Prerequisites (HUMAN)
 
@@ -34,7 +33,7 @@ the one-command kit plugin does not load (section 7).
 - Claude Code: `curl -fsSL https://claude.ai/install.sh | bash` (about 13 seconds), then
   start `claude` and **HUMAN: sign in** with `/login`.
 - At least 2.1 GB free disk, plus room for a speech-to-text server (section 5).
-  **MEASURED** (on the same VM): the Command Line Tools took 1.3 GB, the kit 277 MB, Claude
+  **MEASURED** (on the same VM): the Command Line Tools took 1.3 GB, the kit about 280 MB, Claude
   Code 230 MB, Homebrew 204 MB and uv's Python 74 MB. A fresh VM started with 9.7 GB
   free and ended with 8.7 GB.
 - Python 3.11 or later (uv fetches one if you have none).
@@ -50,15 +49,35 @@ sessionkit setup
 
 **MEASURED** (2030-06-09, a fresh macOS 27 VM): without `--python 3.14`, uv
 downloads Python 3.15, two voice libraries have no 3.15 build, and uv silently
-installs the 0.0.1 placeholder instead (one `hello` verb).
+installs the 0.0.1 placeholder instead (one `hello` verb). On a Mac that already has
+the Command Line Tools, uv picks an older Python instead (3.11 on that VM), which the
+family is not tested on. Either way, keep `--python 3.14`.
 
-**MEASURED** (2030-06-09, read-only against PyPI): 0.1.0 is on PyPI for all six
-packages, and this line resolves all six at 0.1.0. On Python 3.15 it still picks the
-0.0.1 placeholder, so keep `--python 3.14`. The install itself was **MEASURED** on
-2030-06-07, against the same 0.1.0 files before they reached PyPI: all six at 0.1.0, and
-9 commands on your PATH:
-`sessionkit message pager memory session sessionphone ears ears-serve mouth`. Every
-`--help` answers.
+**MEASURED** (2030-06-09, read-only against PyPI): the five packages this release
+needs are on PyPI: sessionmail, sessionphone and sessionvoice 0.2.1, sessiontools and
+sessionview 0.2.0. This line installs the kit and its five packages, 61 packages in all, and
+14 commands on your PATH:
+`sessionkit message pager memory session sessionphone sessionview sessionview-config
+sessionview-messages sessionview-session ears ears-serve mouth talk`. **MEASURED**
+(2030-06-09, the kit built from this release's source with those five packages
+from PyPI, Python 3.14, an empty tool folder and an empty uv cache): 61 packages, the
+14 commands, and every `--help` answers.
+
+**The install size.** **MEASURED** (the same install, on Apple silicon): uv downloaded
+about 93 MB, and the kit's tool folder is about 280 MB on disk. uv's own Python is not in
+that folder; section 1 counts it.
+
+**Phone calls are installed, not yet walked.** The kit installs sessionphone with its
+calls packages (its `media` extra: aiortc, av and 8 more). They download with
+everything else, during `uv tool install`, with no separate step: 10 of the 61
+packages, about 21 MB of the download and about 52 MB of the 280 MB. **MEASURED** (the same
+install, the files those 10 packages install). Setting them up is
+section 6, and no fresh Mac has walked it yet.
+
+**On Linux** (untested), the voice package needs the system PortAudio library
+(Debian and Ubuntu: `libportaudio2`). sessionvoice 0.2.1 depends on `sounddevice`,
+whose Linux wheel brings no PortAudio; its macOS and Windows wheels do (read on
+PyPI, 2030-06-09).
 
 Open a new terminal (or run `uv tool update-shell`) so they are on your PATH.
 
@@ -71,34 +90,40 @@ there.
 folder and your box and says what is left for you
 ([Mail between agents](#mail-between-agents), section 5, step 4). On a fresh install
 your box is named for your account; with `--mailbox NAME` it makes that box too, and
-no other. The sessionmail 0.1.0 this kit installs today has no mail setup: then `sessionkit setup` says so, names the
-step to run once you have it, and goes on to the operator. Mail setup ships from
-sessionmail 0.2.0, which is not released yet. **MEASURED** (2030-06-09, sessionmail's
-unreleased code, a temporary home directory): `sessionkit setup --mailbox <box>` ran
-the real mail setup, then wrote the operator.
+your assistant's box (below), and no other. Then it writes the operator: your box, or
+the address you gave with `--address`, and reads it back through `session operator`.
 
-**On a fresh install it refuses, and that is expected.** It writes a mail box name only
-when sessionmail has a box by that name (by default, your account name), and a fresh
-install on sessionmail 0.1.0 has none. So it writes nothing, exits 1, and tells you
-what to run:
+**On a fresh Mac it exits 4, and that is expected.** Mail setup makes your box and
+its notmuch profile, and leaves its notmuch step `BLOCKED` until you install notmuch
+(section 5, step 4). The operator is written all the same. The last lines read like
+this:
 
 ```text
-Mail not set up: this sessionmail has no `message setup` (`message setup --help` exited 2).
-A newer sessionmail has it. Until you have that, set mail up by hand (INSTALL.md, "Mail between agents"); once you do, run: message setup
-No operator written: sessionmail has no box named '<your account name>'.
-Name yourself: sessionkit setup --address YOUR-ADDRESS, or sessionkit setup --mailbox NAME (a box `message box path NAME` finds).
+message setup: done what it can; 1 step(s) left for you: notmuch-hook (BLOCKED)
+Mail setup left steps for you (above); re-run sessionkit setup after.
+Wrote /Users/<you>/.sessionkit/tools/settings/session.d/10-operator.json: the operator is address '<you>@<your-mac>'.
+session operator: {"operator": "<you>@<your-mac>", "mailbox": null, "privileged": ["<you>@<your-mac>"]}
+Wrote /Users/<you>/.session/agents/claude.md: the agent 'claude', not keyed.
+session start --list-agents: lists 'claude'.
+To hear Delta messages, start Claude with: session start claude
 ```
 
-**MEASURED** (2030-06-09, sessionmail 0.1.0 from PyPI, a temporary home directory):
-those four lines, exit 1, nothing written. From sessionmail 0.2.0, mail setup makes
-your account's box first, so the box is there when the operator is written. **NOT YET** (read in sessionmail's unreleased code). With
-`--mailbox NAME`, `sessionkit setup` asks mail setup for that box as well
-(`message setup --box NAME`), so a named box on a fresh install is made before the
-operator is written, and it does not refuse.
+**MEASURED** (2030-06-09, a fresh macOS 27 VM, sessionkit 0.2.0 and sessionmail 0.2.0
+from PyPI, run with `--address`): the first four lines, exit 4. The last three are
+this release's assistant step (below), which sessionkit 0.2.0 does not have. **MEASURED**
+(2030-06-09, this release's sessionkit with the five 0.2.0 packages from PyPI, a
+temporary home directory, run with `--address`): the last three lines, exit 4, and
+`session start --list-agents` lists `claude`. **NOT YET** run on a fresh Mac. Without `--address` it writes your box, the one
+named for your account, as the operator (read in its source). **NOT YET** on a fresh
+Mac without `--address`.
 
-**Its exit:** 0 all done; 1 the operator was refused or a mail step failed or was
-refused (it says which, and the other half still ran); 2 a flag it does not take; 4 the
-operator is set and mail steps are left for you, named in its output.
+**Then your assistant:** it writes `~/.session/agents/claude.md`, the agent
+`session start claude` starts (section 4), and asks mail setup for its box, `claude`.
+
+**Its exit:** 0 all done; 1 the operator or the agent file was refused, or a mail step
+failed or was refused (it says which, and the rest still ran); 2 a flag it does not take; 4 the
+operator is set and mail steps are left for you, named in its output. Run it again
+once you have done them: it leaves the operator it wrote alone.
 
 **A dry run writes nothing, so its exit says what a real run would meet.** Mail
 setup's dry run exits 4 while any of its steps is still to do, and 0 only once every
@@ -107,20 +132,19 @@ check did not refuse (your box is there, or you gave `--address`, or an operator
 already set): nothing is set yet, and the real run does what it can and names the
 rest. On a fresh install mail setup has not made your box, so the operator check after
 it refuses too: `sessionkit setup --dry-run` exits 1 there, and the real run is what
-makes the box. **MEASURED** (2030-06-09, sessionmail's unreleased code, temporary home
-directories): mail setup's dry run exited 4 on a fresh home and 0 once every step was
-done; `sessionkit setup --dry-run` exited 1 on a fresh home, 4 on a home that had the
-box, and 4 on a fresh home with `--address`, and made nothing each time.
+makes the box. **MEASURED** (2030-06-09, sessionkit setup and sessionmail 0.2.0):
+`sessionkit setup --dry-run` exited 4 on a fresh macOS 27 VM with `--address`, and 1
+on a fresh temporary home directory without it, and made nothing either time.
 
-Run it again with `--address` followed by your own email address, or with `--mailbox`
-followed by a box name that `message box path` finds. Add `--dry-run` to see the file it
-would write, and write nothing. Until the family's operator reader ships, it ends with
-"Written; not verified: `session operator` needs a newer sessiontools." The file is
-written; nothing has read it back yet.
+If it refuses, run it again with `--address` followed by your own email address, or
+with `--mailbox` followed by a box name that `message box path` finds. Add `--dry-run`
+to see the file it would write, and write nothing. A sessionmail older than the kit
+asks for, with no mail setup, gets the step printed instead: it says it has no
+`message setup` and names the step, and the operator half still runs.
 
-**MEASURED** (2030-06-09, by the test suite, and on a temporary home directory against a
-pre-release `session operator`, never a real one): the refusal, `--address`, `--mailbox`,
-a re-run that writes nothing, and the read-back. **NOT YET** on a fresh Mac.
+**MEASURED** (2030-06-09, by the test suite, and on temporary home directories): the
+refusal, `--address`, `--mailbox`, a re-run that writes nothing, and the read-back.
+On a fresh Mac, only the run with `--address` above.
 
 ### Operator and administrators
 
@@ -150,7 +174,7 @@ a re-run that writes nothing, and the read-back. **NOT YET** on a fresh Mac.
   **The list replaces.** When two files set `privileged`, the later file's list wins
   whole, so keep every administrator in ONE list. You need not list yourself: the
   operator is always privileged. Check it with `session operator`. **MEASURED**
-  (2030-06-09, temporary home, pre-release `session operator`): a `20-` file's list was
+  (2030-06-09, temporary home, `session operator` from sessiontools 0.2.0): a `20-` file's list was
   added beside the operator, and a `30-` file's list replaced the `20-` file's.
 - **An environment variable never grants privilege.** `AGENT_OPERATOR_ADDR` can change
   where an agent sends a question, nothing more. `setup` ignores it, and `$USER` and
@@ -169,22 +193,49 @@ a re-run that writes nothing, and the read-back. **NOT YET** on a fresh Mac.
   `sessionkit setup` again.
 
 Older notes say that `uv tool install sessionmail` or `uv tool install sessiontools`, on
-its own, installs an empty placeholder. Since the release each installs its real 0.1.0 package
-(read on PyPI, 2030-06-09), and `sessionkit` brings both anyway.
+its own, installs an empty placeholder. Each installs its real package now, 0.2.0 on
+PyPI (read on PyPI, 2030-06-09), and `sessionkit` brings both anyway.
 
 ## 3. Install the plugins
 
-**MEASURED** (in the release rehearsal, when the loop below also installed a sixth,
-optional plugin): every plugin installed from its own clone's local marketplace, 6 of 6
-enabled. The kit's own plugin does not load yet (section 7), so you install the five
-plugins one at a time, each from its own clone.
+Run these after the Command Line Tools are in (section 1): the marketplace line clones
+over git.
+
+```bash
+claude plugin marketplace add sessionkit/sessionkit
+claude plugin install sessionkit@sessionkit
+claude plugin list
+```
+
+They install the kit's plugin and the five family plugins it depends on. Start Claude
+Code (or restart it) to load them. `claude plugin list` should show six plugins, each
+`✔ enabled`, scope user: `sessionkit`, `sessionmail`, `sessionphone`, `sessiontools`,
+`sessionview` and `sessionvoice`, each `@sessionkit`.
+
+**MEASURED** (0.2.0, Claude Code 2.1.304, an empty Claude Code config, not signed in):
+both lines exited 0, and the list showed all six at 0.2.0, enabled.
+
+**The plugins run from a copy.** The install copies each plugin to
+`~/.claude/plugins/cache/sessionkit/<name>/<version>/`, and that copy is what runs. Its
+`bin/` and `skills/` are the paths section 5 needs. **MEASURED**
+(`~/.claude/plugins/installed_plugins.json` gives each plugin's `installPath` there).
+
+**Installed the five from clones before?** Remove those first, or the same plugin loads
+twice: `claude plugin marketplace remove <r>` for each of the five. **MEASURED** (0.2.0):
+with `sessionmail@sessionmail` from a clone and `sessionmail@sessionkit` both installed,
+`claude plugin list` showed both `✔ enabled`.
+
+### From your own clones, to work on the plugins (optional)
+
+Only if you are changing a family plugin. Use this INSTEAD of the lines above, not
+beside them: one plugin from two places loads twice, and removing the kit's copy leaves
+the kit's plugin with `Dependency "sessionmail@sessionkit" is not installed` (**MEASURED**,
+0.2.0).
 
 Keep the clones in ONE directory you will not move (moving one breaks its plugin; see
 the end of this section). The block below calls it `$SRC`. Clone each of the five into
-it with `git clone https://github.com/sessionkit/<name> "$SRC/<name>"`, where
-`<name>` is each name the loop lists. **NOT YET MEASURED:** nobody has yet
-cloned from these URLs on a clean Mac and walked the rest of this guide; the measured
-runs in this section used clones that were already on the machine.
+it with `git clone -b master https://github.com/sessionkit/<name> "$SRC/<name>"`, where
+`<name>` is each name the loop lists.
 
 ```bash
 SRC=~/.local/share/sessionkit/src   # clone the repos here; do NOT move them afterwards
@@ -194,34 +245,27 @@ done
 claude plugin list
 ```
 
-**The block exits 0 even when nothing installed, so read `claude plugin list`.** You
-should see five plugins, each `✔ enabled`, scope user. Do **not** install
-`sessionkit@sessionkit`: it does not load yet (section 7).
+You should see five plugins, each `✔ enabled`, scope user, each `Read from: <SRC>/<r>`.
+**MEASURED** (0.2.0, Claude Code 2.1.304, an empty Claude Code config, clones of the
+public repositories made with `-b master`): five of five, all 0.2.0. Each runs from its
+copy in `~/.claude/plugins/cache/<r>/<r>/<version>/`, not from the clone.
 
-**MEASURED** (2030-06-09, a fresh macOS 27 VM, when the loop also installed a sixth,
-optional plugin): with no clones in `$SRC`, the loop printed one line for each name,
-like `✘ Path does not exist: <SRC>/sessionmail`, then `claude plugin list` printed
-`No plugins installed.`, and the block still exited 0. With every clone present, the
-same block gave 6 of 6 `✔ enabled` in 9 seconds, without signing in to Claude Code.
+**The block exits 0 even when nothing installed, so read `claude plugin list`.**
+**MEASURED** (in the release rehearsal): with no clones in `$SRC`, the loop printed
+`✘ Path does not exist: <SRC>/sessionmail` and the like for each name, the list printed
+`No plugins installed.`, and the block still exited 0.
 
 **Fewer than five?** Read the line the loop printed for each missing one:
 
 - `Path does not exist: <SRC>/<r>`: there is no clone there. Clone it to `$SRC/<r>`.
 - `Marketplace file not found at <SRC>/<r>/.claude-plugin/marketplace.json`: the clone
   is there, but nothing is checked out. Delete that clone and clone it again with
-  `-b master`, the branch the public repositories are on. **MEASURED** (on the same VM,
-  with clones it already had: a clone with nothing checked out gave this; cloned again
-  with its branch named, `main` then, it installed). **NOT YET MEASURED** with
-  `-b master`, from the public URLs or from those clones.
+  `-b master`, the branch the public repositories are on. **MEASURED** (in the release
+  rehearsal: a clone with nothing checked out gave this; cloned again with its branch
+  named, it installed).
 
 Then run the loop's line for that one, with `r` set to its name (`r=sessionmail`, for
 example): `claude plugin marketplace add "$SRC/$r" && claude plugin install "$r@$r"`.
-
-**`Read from` names the clone, but the plugin runs from a copy.** `claude plugin list`
-says `Read from: <SRC>/<r>`. The install copies each plugin to
-`~/.claude/plugins/cache/<r>/<r>/<version>/`, and that copy is what runs. Its `bin/` and
-`skills/` are the paths section 5 needs. **MEASURED** (on the same VM:
-`~/.claude/plugins/installed_plugins.json` gives each plugin's `installPath` there).
 
 **If a clone moves, its plugin breaks silently** (`claude plugin list` still exits 0;
 **MEASURED**). Repair, also measured: `claude plugin marketplace remove <r>`, then
@@ -232,9 +276,27 @@ drops that plugin's saved options.
 
 - `ears install`: fetches the voice-activity model to `~/.cache/ears/silero_vad.onnx`
   (network, no sudo). **MEASURED** (in the release rehearsal).
-- Start `claude` in the directory you will work from. The sessionmail plugin's hooks run
-  clean, and your mailbox under `~/.mail/agents/` is created the first time the pager
-  listens. **MEASURED** in part (in the release rehearsal). The hooks stay off until you set
+- Start Claude with `session start claude` in the directory you will work from. It is the
+  one launch step `sessionkit setup` ends with (section 2):
+
+  ```text
+  To hear Delta messages, start Claude with: session start claude
+  ```
+
+  It starts Claude as the agent `claude`, so the session hears mail to the box `claude`,
+  the box your phone's Delta messages are addressed to; a bare `claude` hears only its
+  own session's box. The cost: **two windows started as `claude` share one box**, so mail
+  to it pages both and both may answer. For a second assistant, pick another name:
+  `sessionkit setup --agent NAME`, then `session start NAME`. `claude` is Claude Code's
+  own built-in agent, so the file setup wrote only lets `session start` find it, and its
+  text does nothing; under any other name the file's text is your assistant's prompt.
+  **MEASURED** (2030-06-09, sessiontools 0.1.0, a temporary home directory): before
+  `sessionkit setup`, `session start --dry-run claude` stopped with
+  `agent 'claude' not found`, exit 2; after it, the command was
+  `claude --session-id <a new id> ... --agent claude`, exit 0. **NOT YET:** no Delta
+  message has yet been walked to a session started this way. The sessionmail plugin's
+  hooks run clean, and your mailbox under `~/.mail/agents/` is created the first time the
+  pager listens. **MEASURED** in part (in the release rehearsal). The hooks stay off until you set
   `"hooks": true` in `~/.sessionkit/mail/settings/mail.json`; the first run tells you so.
 - **`pager status` and `message send` work only inside a `claude` session.** They find
   out who is asking from the session's environment, and a plain terminal has none. There
@@ -253,17 +315,21 @@ drops that plugin's saved options.
 - The sessionmail plugin's monitor arms the pager for the whole session, and it is on by
   default. Section 3 installs it: the plugin's `monitors/monitors.json` runs
   `pager listen --monitor` with the `pager` on your PATH, so you do not turn anything on.
-  Your sessionmail clone must have that `monitors/monitors.json`; an older clone has
-  none, and so no monitor. This comes from sessionmail's source: the plugin on its
-  master, and the `--monitor` flag in the 0.1.0 `pager` the kit installs. **NOT YET**
-  run on a fresh Mac. Claude Code runs a plugin's monitor only in an interactive session
+  The sessionmail plugin section 3 installs, 0.2.0, has that `monitors/monitors.json`
+  (read in its public repository, 2030-06-09); its 0.1.0 plugin had none. **MEASURED** (2030-06-09, a fresh macOS 27 VM, sessionkit
+  0.2.0 and sessionmail 0.2.0 from PyPI, the plugins installed in one step, an
+  interactive `claude`): Claude Code showed `1 monitor`, and `pager status` said
+  `monitor: armed (pid <n>); switch: on (the default: no switch is set)`. Claude Code runs a plugin's monitor only in an interactive session
   (never `claude -p`), with the folder trusted, and only while its own monitor gate is
   on. When it does not run it, nothing in Claude Code says so (sessionmail's
   `docs/pager-monitor.md`; the trust condition is from the README of its retired
   `plugins/pager-monitor`). sessionmail's off switch (`"monitor": false` in
   `~/.sessionkit/mail/settings/mail.json`, or `SESSIONMAIL_MONITOR=off` at launch) and
-  `pager mute` / `pager unmute` are **NOT YET** for a kit install. The 0.1.0 `pager`
-  from PyPI has none of them, and they wait on the next sessionmail release. With no
+  `pager mute` / `pager unmute` ship in sessionmail 0.2.0, the release the kit installs;
+  the 0.1.0 `pager`, before the kit floored it at 0.2.0, had none of them. **MEASURED**
+  (2030-06-09, sessionmail 0.2.0 from PyPI, a temporary home directory): `pager --help`
+  lists `mute` and `unmute`, and each answers its `--help`; the off switch is read in its
+  source. With no
   monitor running, the agent arms the pager itself, as a background tool call, when the
   pager's hook says it is not listening (hooks on). Your agent's letter to itself never
   arms or stops the pager from a wake item; `pager status` is the only check
@@ -291,50 +357,60 @@ what was measured.
    part (2030-06-09, tmux 3.8, on a tmux server of its own):
    `tmux new-session -d -s agents` made the session, and `tmux ls` listed
    `agents: 1 windows`.
-3. **Start your first agent** inside it: `session start`. When you name no agent, it
-   starts a plain `claude` session in this window, under a new session id.
-   `session start --dry-run` prints the command and starts nothing. Running `claude`
-   yourself works too (as in the checks above). From outside tmux,
-   `session start --tmux-target agents` puts the agent in a new window named
-   `claude`. **MEASURED** only as `--dry-run` (2030-06-09, 0.1.0, on a temporary home
-   directory): the command was `claude --session-id <a new id>`, exit 0. With
-   `--tmux-target agents`, it gave `tmux window 'claude' in session 'agents'`. From
-   outside tmux with no target, `session start --in-tmux` stopped with
-   `nowhere to place the window`, exit 2.
+3. **Start your first agent** inside it: `session start claude`. It starts Claude in
+   this window as the agent `claude`, the one `sessionkit setup` wrote (section 2),
+   under a new session id. To hear Delta messages, start Claude with: session start
+   claude. Two windows started as `claude` share one box (the checks above); a second
+   assistant gets its own name with `sessionkit setup --agent NAME`.
+   `session start --dry-run` before the name (`session start --dry-run claude`) prints
+   the command and starts nothing. Launcher flags go before the name: everything after
+   it is handed to `claude` itself, so `session start claude --dry-run` refuses, names
+   the right order and exits 2. With no name, `session start` starts a plain `claude`
+   session, and running `claude` yourself works too, but neither hears mail to the box
+   `claude`. From outside tmux, `session start --tmux-target agents claude` puts the
+   agent in a new window named `claude`. **MEASURED** only as `--dry-run` and refusals
+   (2030-06-09, 0.1.0, on a temporary home directory): with no name the command was
+   `claude --session-id <a new id>`, and with `claude` it ended `--agent claude`, exit
+   0 each. With `--tmux-target agents claude`, it gave
+   `tmux window 'claude' in session 'agents'`. `session start claude --dry-run`
+   refused, exit 2, and launched nothing. From outside tmux with no target,
+   `session start --in-tmux` stopped with `nowhere to place the window`, exit 2.
 4. **Have it listen.** Turn the mail hooks on first (`"hooks": true`, in the checks
    above). After that, the pager's hook tells your agent when it is not listening, and
    the agent starts `pager listen` itself, as a background tool call. You can also ask
    it to. The banner says whether mail reaches the agent's box. `pager status`, run by
    the agent, reads that box. **NOT YET.**
-5. **Mail it: NOT YET.** On the sessionmail 0.1.0 this kit installs, sending needs
-   postfix on this Mac. With none,
-   `message send` refuses (**MEASURED** in the release rehearsal), and your agent
-   listens but no mail can reach it. From sessionmail 0.2.0, not yet released, it goes
-   by the experimental file drop with nothing to set: see
-   [Mail between agents](#mail-between-agents) in section 5. The voice path in section
-   5 does not need mail.
+5. **Mail it.** From sessionmail 0.2.0, the release the kit installs, `message send`
+   goes by the experimental file drop with nothing to set, on this Mac only: see
+   [Mail between agents](#mail-between-agents) in section 5. **MEASURED** (2030-06-09,
+   a fresh macOS 27 VM, sessionkit 0.2.0 and sessionmail 0.2.0 from PyPI, inside a
+   `claude` session, no postfix): `message send admin` printed
+   `sent via mail drop (no MTA)`, exit 0, and `message list admin` showed it. Send from
+   your agent: in a plain terminal it refuses (the checks above). **NOT YET** as mail from
+   one agent to another on a fresh Mac. The voice path in section 5 does not need mail.
 
 ## 5. Hearing and speaking ("it hears me and speaks")
 
 None of these ran end to end in the rehearsal. Each is **NOT YET** unless a line says
 otherwise.
 
-Steps 1 and 2 are sessionvoice **0.2.0**, which is not on PyPI yet: PyPI has
-0.1.0 (2030-06-09), and that is what section 2 installs today. They were read in
-sessionvoice's source, and dry-run from a 0.2.0 wheel built from its master. On
-0.1.0 you bring your own speech server, and the kit's `ears` cannot run
-`ears services install` (section 7). Each step says what to do on 0.1.0.
+Steps 1 and 2 are sessionvoice **0.2.1**, the release section 2 installs. They were
+read in sessionvoice's source, and dry-run on sessionvoice 0.2.1 from PyPI.
 
 **The job labels.** Every launchd job in the session family is labelled
 `dev.sessionkit.<package>.<job>`. The voice's are `dev.sessionkit.voice.mlx-audio`
 for the speech server and `dev.sessionkit.voice.ears-<name>` for the rest. Two
 older forms are history: `com.sessionvoice.*`, which earlier copies of this guide
-named, and `com.voicemode.ears-*`, which 0.1.0 loads. 0.2.0's
+named, and `com.voicemode.ears-*`, which 0.1.0 loads. 0.2.1's
 `ears services install` recognises a job under either old form and retires the old
-form: it moves the job off before it loads the new label. The dry runs in steps 1
-and 2 were made on a build from before the rename, which wrote the same jobs under
-`com.sessionvoice.*`. **NOT YET** read in a sessionvoice build that carries the new
-labels.
+form: it moves the job off before it loads the new label. **MEASURED** (2030-06-09,
+sessionvoice 0.2.1 from PyPI, `ears services install --dry-run`, a temporary home
+directory, nothing on 8890, `uv` on the PATH): the four plists it would write are
+`dev.sessionkit.voice.mlx-audio`, `dev.sessionkit.voice.ears-mouth`,
+`dev.sessionkit.voice.ears-keeper` and `dev.sessionkit.voice.ears-mail`, and it wrote
+nothing. It exited 2, `silero MISSING`, because `ears install` had not fetched the
+voice-activity model (step 2). The old forms are in the package only as the forms it retires (read in its
+source).
 
 1. **The speech server.** You do not bring one: step 2's `ears services install`
    finds it or installs it. It is mlx-audio's server on 127.0.0.1:8890, which
@@ -354,10 +430,6 @@ labels.
    8890, nothing hears you (**MEASURED** in the release rehearsal). **MEASURED** only as `--dry-run`
    (2030-06-09, 0.2.0, a temporary home directory, nothing on 8890): it would
    build that venv and load `dev.sessionkit.voice.mlx-audio`.
-
-   **On sessionvoice 0.1.0**, install loads no speech server, so you bring one:
-   any OpenAI-compatible STT on port 8890 (Parakeet, the default) or 2022
-   (whisper), for example from VoiceMode.
 2. **The voice services. HUMAN (launchd, the microphone permission prompt).** Two
    commands, in this order:
    - `ears install` **first**, even if you ran it in section 4. It fetches the
@@ -378,29 +450,6 @@ labels.
      only as `--dry-run` (2030-06-09, 0.2.0, a temporary home directory): those
      four plists, with the keeper's and ears-mail's scripts in the installed
      package. **NOT YET** as a real install.
-   - **On sessionvoice 0.1.0** (what section 2 installs from PyPI today), the
-     kit's own `ears services install` cannot find the keeper. Run it
-     through the sessionvoice **plugin's** `bin/ears` instead (**MEASURED** in
-     the release rehearsal). The plugin's copy is in the cache (section 3), under its
-     version:
-
-     ```bash
-     ~/.claude/plugins/cache/sessionvoice/sessionvoice/0.1.0/bin/ears services install
-     ```
-
-     If your version is not 0.1.0, find it with
-     `find ~/.claude/plugins/cache -path '*/bin/ears' -type f`. **MEASURED**
-     (2030-06-09, a fresh macOS 27 VM, with clones made outside this guide's
-     steps): that path, then two LaunchAgents loaded under 0.1.0's old labels
-     (`com.voicemode.ears-mouth`, `com.voicemode.ears-keeper`), both still
-     running 45 seconds later. 0.2.0's install retires the old form (the job
-     labels, above). A 0.1.0 install loads the mouth and the keeper only, not
-     ears-mail.
-     **MEASURED** (2030-06-09, `ears services install --dry-run` on 0.1.0: two
-     plists, the mouth's and the keeper's; `--only` takes `stt`, `mouth`,
-     `keeper`). The plugin's `bin/ears` runs the plugin's own sessionvoice, so
-     a plugin of another version does what that version does (read in its
-     `bin/ears`).
 
    On 0.2.0, a bare `ears services install`
    loads `speech`, `mouth`, `keeper` and `mail`. `--only` takes
@@ -408,8 +457,7 @@ labels.
    speech, section 6) loads only with `--apple` or `--only stt`, and `speakers`
    only with `--only speakers` (below). ears-mail is the job that
    turns a heard turn into mail that pages your agent. On 0.2.0 it hands its mail to
-   `message send` (the ears-mail of 0.1.0 handed it to `/usr/sbin/sendmail` and needed
-   postfix), so with sessionmail 0.2.0 it rides the file drop in
+   `message send` (read in its source), so with sessionmail 0.2.0 it rides the file drop in
    [Mail between agents](#mail-between-agents). With no postfix, install warns that
    `message send` needs `SESSIONMAIL_SENDMAIL=drop` and that launchd jobs do not see it,
    and loads it anyway. From sessionmail 0.2.0 neither holds: the drop is the default,
@@ -462,19 +510,12 @@ labels.
    sessionvoice's own, from its README. **NOT YET** on a fresh Mac: the fresh VM could
    not sign in, so no session ran it.
 4. **Wake on your voice.** Your agent runs `ears-arm <seat> room` in the
-   background, where `<seat>` is the name you call your agent by. How it
-   reaches `ears-arm` depends on the sessionvoice plugin's version:
-   - **From sessionvoice 0.2.0** (not in 0.1.0): `ears-arm` is on the Bash
-     tool's PATH by its bare name while the plugin is enabled, through the
-     plugin's `bin/ears-arm`. That shim runs
-     `skills/ears/scripts/ears-arm`, and the full path still works.
-     **NOT YET** on PATH (read in sessionvoice's source). **MEASURED** only
-     as `--help` (2030-06-09, 0.2.0, a copy of its master): the shim runs
-     the script.
-   - **On 0.1.0** it is not on your PATH: run it by its full
-     path,
-     `~/.claude/plugins/cache/sessionvoice/sessionvoice/0.1.0/skills/ears/scripts/ears-arm`
-     (**MEASURED**, 2030-06-09, a fresh macOS 27 VM).
+   background, where `<seat>` is the name you call your agent by. `ears-arm` is
+   on the Bash tool's PATH by its bare name while the sessionvoice plugin is
+   enabled, through the plugin's `bin/ears-arm`. That shim runs
+   `skills/ears/scripts/ears-arm`, and the full path still works. **NOT YET**
+   on PATH (read in sessionvoice's source). **MEASURED** only as `--help`
+   (2030-06-09, 0.2.0, a copy of its master): the shim runs the script.
 
    It runs the `heard-first` waiter. In room mode it wakes your agent when you say "hey"
    and its name (or "hey everyone"), when you answer the last thing your agent said, or
@@ -485,8 +526,7 @@ labels.
    **NOT YET** as a live wake.
 5. **Test the mouth. HUMAN (speakers).** `mouth say --device default "ears are up"`.
    Without a server on 8890 it speaks with macOS `say` (**MEASURED** in the release
-   rehearsal). From
-   sessionvoice 0.2.0 (not in 0.1.0), the mouth can speak through a hosted
+   rehearsal). The mouth can also speak through a hosted
    speech endpoint instead: put its URL and model in
    `~/.sessionkit/voice/settings/mouth.json`, and its key in `~/.sessionkit/voice/settings/tts.key`
    (mode 600) or `MOUTH_TTS_KEY`: see
@@ -507,20 +547,19 @@ and answered you. **NOT YET** (advice: step 6 has not passed on any measured Mac
 From sessionmail 0.2.0, `message send` hands each message to sessionmail's file drop
 by default. The drop writes the message straight into the recipient's box on this Mac,
 with no mail server and no setting. Postfix is opt-in: it is how mail reaches other
-Macs. The sessionmail 0.1.0 this kit installs today has no drop. It hands every message
-to postfix, and with none it refuses with "Install postfix, or name the MTA in
-`$SESSIONMAIL_SENDMAIL`" (**MEASURED** in the release rehearsal).
+Macs. The kit installs sessionmail 0.2.0 or later, so it has the drop.
 
 **The file drop. EXPERIMENTAL.** sessionmail's own acceptance test of the drop on a bare
 Mac has not run yet. Mail carried by the drop stays on this Mac. Each step below says
-what was measured. The walk ran on sessionmail's unreleased code (2030-06-09), with a
-temporary home directory, no postfix on the PATH, no tailscale and no mail setting.
+what was measured. The walk ran on sessionmail's code before its 0.2.0 release
+(2030-06-09), with a temporary home directory, no postfix on the PATH, no tailscale and
+no mail setting. Step 1 is the released 0.2.0, on a fresh Mac.
 
-1. **Get sessionmail 0.2.0. NOT YET.** The drop and mail setup (step 4) ship from
-   sessionmail 0.2.0, and that version is a prediction: it is not released yet. The
-   0.1.0 this kit installs today has neither, so until 0.2.0 is out these steps do not
-   work. **MEASURED** (2030-06-09, read-only): sessionmail 0.1.0 has no drop, and its
-   `message setup` answers "No such command", exit 2; its unreleased code has both.
+1. **Get sessionmail 0.2.0.** Section 2 installs it: the drop and mail setup (step 4)
+   ship from sessionmail 0.2.0, and the kit asks for 0.2.0 or later. **MEASURED**
+   (2030-06-09, a fresh macOS 27 VM, sessionkit 0.2.0 and sessionmail 0.2.0 from PyPI,
+   inside a `claude` session, no postfix): `message send admin` printed
+   `sent via mail drop (no MTA)`, exit 0, and `message list admin` showed it.
 2. **Nothing to set.** The drop is the default: the `sendmail` setting is `"drop"`
    unless you name another in `~/.sessionkit/mail/settings/mail.json`. A fresh install
    has no such file and needs none: the default ships with sessionmail. A Mac that
@@ -542,12 +581,12 @@ temporary home directory, no postfix on the PATH, no tailscale and no mail setti
    - **sessionvoice's mouth notices**, sent by the mouth.
    - **ears-mail's heard turns**, the mail that pages your agent when you speak.
 
-   In the next releases of sessionvoice and sessionphone, all three hand their mail to
-   `message send`, so they ride the drop, and from sessionmail 0.2.0 a heard turn sent
-   by the drop reads as your voice (read in their source). **NOT YET:** none of these
-   releases is out, and in the sessionvoice and sessionphone 0.1.0 the kit installs,
-   all three hand their mail to `/usr/sbin/sendmail` themselves, so on a Mac with no
-   postfix they deliver nothing.
+   From sessionvoice 0.2.1 and sessionphone 0.2.1, the releases the kit installs, all
+   three hand their mail to `message send`, so they ride the drop, and from sessionmail
+   0.2.0 a heard turn sent by the drop reads as your voice (read in their 0.2.1 source).
+   Their 0.1.0 releases, before the kit floored them at 0.2.0, handed it to
+   `/usr/sbin/sendmail` themselves. **NOT YET** walked: no launchd job has yet sent by
+   the drop on a fresh Mac.
 3. **Install notmuch. HUMAN (Homebrew).** `message mark` and `memory` read mail through
    notmuch. Run `brew install notmuch` before step 4. Mail setup writes sessionmail's
    own notmuch profile, `~/.config/notmuch/sessionkit/config` (under
@@ -580,23 +619,27 @@ temporary home directory, no postfix on the PATH, no tailscale and no mail setti
    profile and links its hooks (step 3), and prints every step with its state (`DONE`,
    `TODO`, `BLOCKED` or `MANUAL`), then what is left for you. It is safe to run again: a
    second run reports each step `DONE` and changes nothing. It writes no mail setting.
-   It makes these boxes and no others: a box named for your account, and the box you
-   name with `sessionkit setup --mailbox NAME`, if you give one.
-   The drop never makes a box. Mail to a box that does not exist is refused and
-   nothing is delivered, to that box or any other (exit 3). Your agent's own box is
-   made when its pager first listens (section 4). Make every other box that mail goes
-   to with mail setup, for example:
+   It makes these boxes and no others: a box named for your account, the box you
+   name with `sessionkit setup --mailbox NAME`, if you give one, and your assistant's
+   box, `claude` (or the name you gave `--agent`). That last box is the one a session
+   started with `session start claude` hears, and your Delta messages are addressed
+   to it. The drop never makes a box. Mail to a box that does not exist is refused
+   and nothing is delivered, to that box or any other (exit 3). A plain `claude`
+   session's own box is made when its pager first listens (section 4). Make every
+   other box that mail goes to with mail setup, for example:
 
    ```bash
    message setup --box <box>
    ```
 
-   The sender needs no box of its own. **MEASURED** (2030-06-09, sessionmail's
-   unreleased code, a temporary home directory): `sessionkit setup --mailbox <box>`
-   ran the real `message setup`, which made the mail folder, the operator's box and
-   that box and wrote the notmuch profile, and then wrote the operator, exit 4 (the
-   notmuch step left); `message setup --box <box>` made one more box; a re-run reported
-   each `DONE`, exit 0; mail to a box it had not made was refused, exit 3; and
+   The sender needs no box of its own. **MEASURED** (2030-06-09, this release's
+   sessionkit with sessionmail 0.2.0 from PyPI, a temporary home directory):
+   `sessionkit setup --mailbox <box>` ran the real `message setup`, which made the
+   mail folder, the operator's box, that box and `claude`, and wrote the notmuch
+   profile; setup then wrote the operator, exit 4 (the notmuch step left);
+   `message setup --box <box>` made one more box; a re-run reported each `DONE`,
+   exit 0; a plain `sessionkit setup` passed `--box claude`,
+   and the real `message setup` made the box `claude` beside the account's; mail to a box it had not made was refused, exit 3; and
    `pager listen` made its session's box.
 5. **Check for `jq`.** `command -v jq` should print a path. macOS 27 ships
    `/usr/bin/jq`; if it prints nothing, run `brew install jq`. Without `jq`, mail still
@@ -640,24 +683,36 @@ temporary home directory cannot point it at postfix).
 ## 6. Optional
 
 - **Your phone. HUMAN (an account on a public relay, the Delta Chat app, launchd,
-  Homebrew).** `sessionphone setup --name <your name>`, then scan the invite with Delta
-  Chat on your phone, then `sessionphone bot install`. Calls also need `ffmpeg` from
-  Homebrew and the speech server on 8890. **NOT YET** end to end.
+  Homebrew).** Phone calls are installed, not yet walked. Section 2's install already
+  includes sessionphone and its calls packages, so there is nothing more to install
+  from PyPI. Setting it up is sessionphone's: follow
+  [its own docs](https://github.com/sessionkit/sessionphone). A call also needs
+  `ffmpeg` from Homebrew and the speech server on 8890 (section 5).
+  - **Signing follows the carrier.** From sessionphone 0.2.1, the bot's mail to your
+    Claude is signed when the carrier sessionmail resolves for it is a mail server (an
+    MTA), where it must be, or when you gave the bot a key. Under the drop,
+    sessionmail's default, it goes straight into your own mailbox, as you, with no key
+    to make. The carrier is the `sendmail` setting (section 5, step 2), not whether
+    postfix is installed. The whole rule is sessionphone's:
+    [bot mail signing](https://github.com/sessionkit/sessionphone/blob/HEAD/docs/bot-mail-signing.md).
+  - **Two things decide whether its mail reaches your Claude.** The agent's box must
+    exist, because the drop never makes one: `sessionkit setup` makes `claude`
+    (section 5, step 4). And Claude must be started as that agent, with
+    `session start claude` (section 4), never a bare `claude`, which hears only its
+    own session's box.
+  - **NOT YET** end to end on a fresh Mac. On a fresh macOS 27 VM, sessionphone
+    0.2.0's bot would not start, because it signed its mail and a fresh install had
+    no way to make it a signing identity (2030-06-09). sessionphone 0.2.1 sends
+    unsigned under the drop (read in its source and docs); no fresh Mac has walked it
+    yet.
 - **Apple speech. HUMAN (Xcode, macOS 27).** `ears install --apple`. **NOT YET**.
 
 ## 7. Known gaps you will hit
 
-- **No speech server on sessionvoice 0.1.0.** None ships with the kit; you bring one.
-  0.2.0's `ears services install` finds one or installs its own (section 5 step 1).
-- **The kit plugin does not load.** Install the five plugins instead (section 3).
+- **One plugin from two places loads twice.** Installed the five from clones before?
+  Remove their marketplaces before the kit's plugin lines (section 3).
 - **The mouth's default "heard" box** names the authors' own mailbox; set
   `VOICEMODE_MOUTH_HEARD_BOX` to yours.
-- **On sessionvoice 0.1.0, the kit's `ears services install` cannot find the
-  keeper.** Run it through the sessionvoice plugin's `bin/ears` (section 5 step 2).
-  0.2.0 ships the keeper in its package, so the kit's own `ears` runs it.
-- **Mail setup needs sessionmail 0.2.0, not released yet.** On 0.1.0, `sessionkit setup`
-  says it has no `message setup` and goes on to the operator. Set mail up by hand: see
-  [Mail between agents](#mail-between-agents) in section 5.
 - **Moving a clone breaks its plugin** without a word (section 3 says how to repair it).
 
 ## 8. Uninstall
@@ -665,9 +720,8 @@ temporary home directory cannot point it at postfix).
 **NOT YET** as a whole: no rehearsal has run an uninstall end to end. Each step
 says what was measured. Part A removes the program and keeps everything you
 made. Part B deletes your data, and only if you choose it. Keep to this order.
-It is the install in reverse: the voice jobs run from the kit's files (on 0.1.0,
-the plugin's) and the phone bot from the plugins', so both go before the plugins
-and the kit do.
+It is the install in reverse: the voice jobs run from the kit's files and the phone
+bot from the plugins', so both go before the plugins and the kit do.
 
 ### A. Remove the program
 
@@ -684,11 +738,11 @@ plain terminal. **NOT YET.**
 
 **3. The phone (section 6), if you set it up.** `sessionphone bot uninstall` stops the
 bot and removes its launchd job. The account stays: it is your data (part B).
-**NOT YET** as a run. Its `--help` says this (2030-06-09, 0.1.0).
+**NOT YET** as a run. Its `--help` says this (2030-06-09, sessionphone 0.2.1).
 
 **4. The voice (section 5).** Do this before step 5. The voice jobs run from the
-kit's own sessionvoice package (section 2), or on 0.1.0 from the sessionvoice
-plugin's files, and launchd keeps them loaded after those files are gone.
+kit's own sessionvoice package (section 2), and launchd keeps them loaded after its
+files are gone.
 
 - **The ride-along hook. HUMAN (hand edit).** In your launch directory's
   `.claude/settings.local.json`, remove the two `ears heard hook || exit 1` entries and
@@ -696,31 +750,18 @@ plugin's files, and launchd keeps them loaded after those files are gone.
   nothing since, delete the file. **NOT YET.**
 - **The voice jobs.** Run `ears services uninstall`, the kit's own `ears` that
   installed them (section 5 step 2). With no `--only` it removes every job it
-  knows. 0.2.0 knows its own labels, `dev.sessionkit.voice.*`, and both old
+  knows. 0.2.1 knows its own labels, `dev.sessionkit.voice.*`, and both old
   forms it retires: `com.sessionvoice.*`, and the older `com.voicemode.ears-*`
-  that 0.1.0 used; that includes `--only speakers`, if you added it. 0.1.0
-  knows the older set only, which is all it installed. The
+  that 0.1.0 used; that includes `--only speakers`, if you added it. The
   speech server's venv and the speakers' home, `~/.local/share/ears/speakers`,
-  stay until part B. **NOT YET** as a run: read in sessionvoice 0.2.0's source
-  (2030-06-09), from before the rename (the job labels, section 5).
-- **On sessionvoice 0.1.0**, if you installed through the plugin's `bin/ears`
-  (section 5 step 2), uninstall through that same one. Find it with
-  `find ~/.claude/plugins/cache -path '*/sessionvoice/*/bin/ears' -type f`, then
-  run `<that path> services uninstall`; `<that path> services status` only
-  reads. Do not use the kit's 0.1.0 `ears` for this: it knows only 0.1.0's old
-  form, `com.voicemode.ears-*`, which newer installs retire, so it misses the
-  jobs a newer plugin installed.
-  **NOT YET** as a run: read in sessionvoice's source, 0.1.0 and 0.2.0
-  (2030-06-09).
-- ⚠️ **On 0.1.0, `ears services uninstall` has no dry run.** It accepts
-  `--dry-run` and ignores it: it boots the jobs out and deletes their plists. A
-  temporary `HOME` does not make it safe either, because `launchctl` acts on
-  your own user's jobs whatever `HOME` says. **MEASURED** (2030-06-09, the kit's
-  0.1.0 `ears` on a temporary home directory, with no jobs installed):
-  `--dry-run` printed `removed` for each job, and the source ignores the flag.
-  0.2.0 honours it: it names each job it would boot out and each plist it would
-  delete, and changes nothing (read in sessionvoice 0.2.0's source, not run). To
-  look first on either version, run `ears services status`, which only reads.
+  stay until part B. **NOT YET** as a run.
+- **Look first with `--dry-run`.** `ears services uninstall --dry-run` names each
+  job it would boot out and each plist it would delete, and changes nothing.
+  **MEASURED** (2030-06-09, sessionvoice 0.2.1 with this release's kit, a temporary
+  home directory, no jobs installed): it named the jobs under all three forms,
+  `speakers` included, printed `dry run: nothing booted out, nothing deleted`, and
+  exited 0. A temporary `HOME` does not make a real run safe: `launchctl` acts on
+  your own user's jobs whatever `HOME` says. `ears services status` only reads too.
 - **Check:** `launchctl list | grep -E 'dev\.sessionkit\.voice\.|sessionvoice|voicemode\.ears'`
   prints nothing.
   Wait a few seconds before you run it. A job that is still exiting stays in the
@@ -730,7 +771,7 @@ plugin's files, and launchd keeps them loaded after those files are gone.
   path) has a label of its own. Run `launchctl bootout gui/$(id -u)/<its label>`, then
   delete its plist from `~/Library/LaunchAgents/`. **NOT YET.**
 - **What you brought yourself.** The kit did not install a speech server you
-  brought yourself (VoiceMode's, or any on 0.1.0; section 5 step 1), or any
+  brought yourself (VoiceMode's, for example; section 5 step 1), or any
   postfix setup you made for agent mail
   ([Mail between agents](#mail-between-agents), section 5). Remove them the way
   you installed them; undoing postfix needs sudo. The file drop needs no undoing: it
@@ -743,8 +784,7 @@ plugin's files, and launchd keeps them loaded after those files are gone.
 
 **Did you go off the install path?** If you ran one of these, undo it now, with its own
 verb. Step 5 removes the `session` command these verbs need, and the pane-state job
-runs that command, so launchd would keep it loaded on a missing file. **NOT YET**, and
-each is newer than 0.1.0:
+runs that command, so launchd would keep it loaded on a missing file. **NOT YET**:
 
 - `session pane-state agent on`: run `session pane-state agent off`.
 - `session sound engine on`: run `session sound engine off --purge`. Without
@@ -786,9 +826,9 @@ claude plugin list
 ```
 
 If `claude plugin list` still shows one of the five, `claude plugin uninstall <r>@<r>`
-removes it by name. **MEASURED** (2030-06-09, uv 0.13.0, the kit from PyPI, on
-temporary uv tool directories): `uv tool uninstall sessionkit` printed
-`Uninstalled 9 executables` and removed the kit's tool environment.
+removes it by name. **MEASURED** (2030-06-09, uv 0.13.0, this release's kit with the
+five 0.2.0 packages from PyPI, on temporary uv tool directories): `uv tool uninstall
+sessionkit` printed `Uninstalled 14 executables` and removed the kit's tool environment.
 
 **6. What the programs left (PROGRAM: none of it is your data).** No verb removes these
 yet, so they are hand `rm` lines. **NOT YET.** In order, they delete the voice model and

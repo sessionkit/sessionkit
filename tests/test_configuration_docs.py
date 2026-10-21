@@ -1,9 +1,10 @@
 """The configuration docs, pinned to the README template and to the code.
 
 docs/configuration.md is what the kit itself configures; docs/settings.md is
-the family's settings guide and the kit's own keys. The README's
-Configuration section maps the family, and its Logs section ends on the
-Health line. A link into another family repository is absolute, on HEAD (its
+the family's settings guide and the kit's own keys. The README is short: its
+Configuration and Logs sections are one line and a link each. The family's
+map is in docs/configuration.md, and the Logs section, ending on the Health
+line, is in docs/components.md. A link into another family repository is absolute, on HEAD (its
 default branch, so it names no branch), and its text names the package and
 the file; a link into this repository is relative, so the docs read in a
 checkout or an editor without a browser, and its file and #anchor resolve.
@@ -22,7 +23,8 @@ ROOT = Path(__file__).resolve().parent.parent
 README = (ROOT / "README.md").read_text(encoding="utf-8")
 CONFIG_DOC = "docs/configuration.md"
 SETTINGS_DOC = "docs/settings.md"
-NEW_DOCS = (CONFIG_DOC, SETTINGS_DOC)
+COMPONENTS_DOC = "docs/components.md"
+NEW_DOCS = (CONFIG_DOC, SETTINGS_DOC, COMPONENTS_DOC)
 KIT = "https://github.com/sessionkit/sessionkit"
 SELF_URL = re.compile(r"https?://github\.com/sessionkit/sessionkit(?:/|#|$)")
 
@@ -39,6 +41,23 @@ def _section(text: str, title: str) -> str:
     match = re.search(rf"^## {re.escape(title)}\n(.*?)(?=^## |\Z)", text, re.MULTILINE | re.DOTALL)
     assert match, f"no '## {title}' section"
     return match.group(1)
+
+
+def _refs(text: str) -> dict[str, str]:
+    """Each reference label, folded to lower case, and its target."""
+    return {m.group(1).lower(): m.group(2)
+            for m in re.finditer(r"^\[([^\]]+)\]:\s*(\S+)", text, re.MULTILINE)}
+
+
+def _section_targets(text: str, title: str) -> list[str]:
+    """The targets the links in one section point at: inline ones, and each
+    `[text][label]` resolved through the document's own `[label]:` lines."""
+    section = _section(text, title)
+    refs = _refs(text)
+    labels = [(label or ref).lower()
+              for ref, label in re.findall(r"\[([^\[\]]+)\]\[([^\[\]]*)\]", section)]
+    assert all(label in refs for label in labels), labels
+    return _targets(section) + [refs[label] for label in labels]
 
 
 def _h2s(text: str) -> list[str]:
@@ -89,21 +108,25 @@ def test_readme_sections_follow_the_template_order():
 
 
 @pytest.mark.parametrize("repo", cli.FAMILY)
-def test_readme_configuration_links_each_family_page_absolutely(repo):
-    section = _section(README, "Configuration")
+def test_configuration_doc_links_each_family_page_absolutely(repo):
+    doc = _read(CONFIG_DOC)
+    section = _section(doc, "The family's pages")
     url = f"https://github.com/sessionkit/{repo}/blob/HEAD/docs/configuration.md"
-    assert f"[{repo}'s docs/configuration.md]({url})" in section
+    assert f"{repo}'s docs/configuration.md" in section
+    assert url in _section_targets(doc, "The family's pages")
 
 
 def test_readme_configuration_links_the_kits_page_and_the_guide():
-    section = _section(README, "Configuration")
-    assert "(docs/configuration.md)" in section
-    assert "(docs/settings.md)" in section
+    targets = _section_targets(README, "Configuration")
+    assert "docs/configuration.md" in targets
+    assert "docs/settings.md" in targets
 
 
 @pytest.mark.parametrize("title", ["Configuration", "Logs"])
 def test_readme_new_sections_link_other_repos_absolutely_and_this_one_relatively(title):
-    for target in _targets(_section(README, title)):
+    targets = _section_targets(README, title)
+    assert targets, f"README's {title} links nothing: the check would pass on nothing"
+    for target in targets:
         if _is_relative(target):
             assert _unresolved("README.md", target) is None, target
         else:
@@ -111,20 +134,25 @@ def test_readme_new_sections_link_other_repos_absolutely_and_this_one_relatively
             assert not SELF_URL.match(target), target
 
 
-def test_readme_logs_names_each_family_package():
-    section = _section(README, "Logs")
+def test_readme_logs_points_at_the_components_logs():
+    assert "docs/components.md#logs" in _section_targets(README, "Logs")
+
+
+def test_components_logs_names_each_family_package():
+    section = _section(_read(COMPONENTS_DOC), "Logs")
     for repo in cli.FAMILY:
         assert f"**{repo}**" in section or f"**{repo}:**" in section, repo
 
 
-def test_readme_logs_ends_on_the_health_line():
-    section = _section(README, "Logs").rstrip()
-    last = section.splitlines()[-3:]
+def test_components_logs_ends_on_the_health_line():
+    section = _section(_read(COMPONENTS_DOC), "Logs").rstrip()
+    body = section.split("\n\n[", 1)[0].rstrip()
+    last = body.splitlines()[-3:]
     assert last[0].startswith("- **Health:** `sessionkit --version`"), last
 
 
 def test_the_health_line_quotes_what_version_prints_for_a_missing_package():
-    section = _section(README, "Logs")
+    section = _section(_read(COMPONENTS_DOC), "Logs")
     assert f"`{cli.NOT_INSTALLED}`" in section
 
 

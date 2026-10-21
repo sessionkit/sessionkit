@@ -528,35 +528,45 @@ def test_the_plugin_cache_loop_names_the_five_children():
     assert sorted(loops[0].split()) == sorted(cli.FAMILY)
 
 
-def test_the_voice_uninstall_warns_it_has_no_dry_run():
+# SK-88 (0.2.1): the kit floors sessionvoice at 0.2.0, whose uninstall honours
+# --dry-run (measured on a temporary home), so 0.1.0's no-dry-run warning goes.
+def test_the_voice_uninstall_offers_its_dry_run_first():
     section = _section_8()
-    assert "**On 0.1.0, `ears services uninstall` has no dry run.**" in section
-    assert "0.2.0 honours it" in section
-    assert "services status`, which only reads" in section
+    flat = " ".join(section.split())
+    assert "has no dry run" not in section
+    assert "**Look first with `--dry-run`.** `ears services uninstall --dry-run` names each" in flat
+    assert "printed `dry run: nothing booted out, nothing deleted`, and exited 0" in flat
+    assert "`launchctl` acts on your own user's jobs whatever `HOME` says" in flat
+    assert "`ears services status` only reads too" in flat
 
 
 # SK-74: the kit's own `ears` uninstalls the voice jobs; no plugin bin/ears detour.
+# SK-88 (0.2.1): sessionvoice is floored at 0.2.0, so 0.1.0's plugin bin/ears
+# bullet goes: the kit's own `ears` (0.2.1) knows every label form.
 def test_the_voice_uninstall_uses_the_kits_own_ears():
     section = _section_8()
     assert "Run `ears services uninstall`, the kit's own `ears`" in section
-    # SK-74: on 0.1.0 the plugin's bin/ears that installed the jobs
-    # uninstalls them; every plugin bin/ears in section 8 is in that 0.1.0 bullet.
-    zero_one = section[section.index("- **On sessionvoice 0.1.0**, if you installed") :]
-    zero_one = zero_one[: zero_one.index("\n- ")]
-    assert "`<that path> services uninstall`" in zero_one
-    assert "`find ~/.claude/plugins/cache -path '*/sessionvoice/*/bin/ears' -type f`" in zero_one
-    for m in re.finditer(r"bin/ears(?![-\w])", section):
-        assert m.start() >= section.index(zero_one) and m.end() <= section.index(zero_one) + len(
-            zero_one
-        ), "every plugin bin/ears in section 8 sits in the 0.1.0 bullet"
-    # SK-74: 0.2.0 knows every label set; 0.1.0 knows the older set only.
+    assert "**On sessionvoice 0.1.0**" not in section
+    assert not re.search(r"bin/ears(?![-\w])", section)
+    assert "on 0.1.0, the plugin's" not in section
     # SK-137: 0.2.0's own are dev.sessionkit.voice.*; it retires both old forms.
     flat = " ".join(section.split())
     assert (
-        "0.2.0 knows its own labels, `dev.sessionkit.voice.*`, and both old forms it retires: "
+        "0.2.1 knows its own labels, `dev.sessionkit.voice.*`, and both old forms it retires: "
         "`com.sessionvoice.*`, and the older `com.voicemode.ears-*`"
     ) in flat
-    assert "0.1.0 knows the older set only" in flat
+    assert "0.1.0 knows the older set only" not in flat
+
+
+# SK-88 (0.2.1): section 8's other 0.1.0 branches are flipped, each re-measured
+# on the 0.2.1 wheel with its five children (14 commands, not 0.1.0's 9).
+def test_section_8_has_no_0_1_0_branches_left():
+    flat = " ".join(_section_8().split())
+    assert "printed `Uninstalled 14 executables`" in flat
+    assert "Uninstalled 9 executables" not in flat
+    assert "(2030-06-09, sessionphone 0.2.1)" in flat
+    assert "any on 0.1.0" not in flat
+    assert "newer than 0.1.0" not in flat
 
 
 def test_the_kept_marketplace_line_is_still_the_plugin_step():
@@ -817,8 +827,10 @@ def test_the_changelog_keeps_the_shared_voicemode_files_apart_from_the_variables
     # The bullet's "only if you do not use VoiceMode" sentence names the
     # folder it means, and sits before the sentence about the variables, so
     # it cannot be read as the folder a variable names.
-    unreleased = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8").split("\n## [", 2)[1]
-    [bullet] = [b for b in unreleased.split("\n- ") if "deletes the transcript of what the ears heard" in b]
+    # The bullet landed in 0.2.0: read that release's section by its heading.
+    text = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+    release = text.split("\n## [0.2.0]", 1)[1].split("\n## [", 1)[0]
+    [bullet] = [b for b in release.split("\n- ") if "deletes the transcript of what the ears heard" in b]
     flat = " ".join(bullet.split())
     shared = flat.index("The transcript in `~/.voicemode`, its lock, and the two folders VoiceMode shares")
     variables = flat.index("`SESSIONVOICE_HOME`, `VOICEMODE_BASE_DIR` or `EARS_HOME` names another folder")

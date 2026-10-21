@@ -8,7 +8,8 @@ Instructions for a coding agent working on this repo. Humans start at
 Session Kit is the meta package of the session family. It installs the five
 family packages as one, and ships a small `sessionkit` command of its own.
 
-- `pyproject.toml` lists the five as dependencies, floored at 0.1.0.
+- `pyproject.toml` lists the five as dependencies, floored at 0.2.0
+  (sessionmail, sessionphone and sessionvoice at 0.2.1).
 - `[project.scripts]` re-declares every child command, because `uv tool
   install` links only the commands of the package it is asked for.
 - The package is also a Claude Code plugin: `.claude-plugin/` holds its
@@ -52,6 +53,11 @@ run them.
 - **Re-declared commands follow the children.** When a family package adds,
   renames or drops a command, update `[project.scripts]` and
   `CHILD_SCRIPTS` in `tests/test_family.py` together.
+- **The dependency list is ruled.** The five family packages, their floors
+  and their extras are written down once, in `tests/_ruled_deps.py`, and
+  `tests/test_dependency_gate.py` fails when pyproject.toml, the built wheel
+  or uv.lock drift from it. Change the ruled list there first, then
+  pyproject.toml, then re-lock.
 - **Versions are read, never written down.** `sessionkit --version` reads
   installed metadata. Do not put a version string in the source.
 - **One version, in `pyproject.toml`.** `make release` mirrors it into the

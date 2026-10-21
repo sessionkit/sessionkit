@@ -8,11 +8,11 @@ sessionmail's: see its `memory` skill,
 This page does not repeat that shape. It gives the words about the pager that
 every letter should carry.
 
-**Wake items and the trust registry.** From the next sessionmail release (not
-yet released), `memory run` is off until you opt in with
+**Wake items and the trust registry.** From sessionmail 0.2.0, the release the
+kit installs, `memory run` is off until you opt in with
 `SESSIONMAIL_MEMORY_RUN=1`. Without that it runs nothing, says so, and points
-at `memory run PATH --list` (**MEASURED** 2030-06-09, sessionmail's unreleased
-code, a temporary home directory: exit 4). An item runs only if its signer
+at `memory run PATH --list` (**MEASURED** 2030-06-09, sessionmail 0.2.0 from
+PyPI, a temporary home directory: exit 4). An item runs only if its signer
 passes the trust check, which reads a registry: `$SESSION_REGISTRY`, else
 `"registry"` in `~/.sessionkit/mail/settings/mail.json`. With neither, every item is
 refused (read in its `--help`). That key names the registry's folder, which
@@ -22,9 +22,11 @@ sessionmail's or this kit's, so a fresh install has none. The registry and the
 seat keys in it are described in
 [sessionmail's docs/message-seat.md](https://github.com/sessionkit/sessionmail/blob/HEAD/docs/message-seat.md).
 A stranger meets the registry only by following the off-state hint into
-`--list`. A sessionmail change, not yet released, makes that refusal say what
-the key names, say that sessionmail cannot create a registry today, and point
-at that doc. The `memory` in sessionmail 0.1.0, which the kit installs today,
+`--list`. In sessionmail 0.2.0 that refusal says what the key names, says
+that sessionmail does not create a registry today, and points at that doc
+(read in its source, sessionmail 0.2.0 from PyPI, 2030-06-09: an item has to
+be signed to reach the registry check, and a fresh install has no key to
+sign one). The `memory` in sessionmail 0.1.0, which earlier kits installed,
 has no opt-in: `memory run /BOOT/WAKE` ran an item with none set
 (**MEASURED** 2030-06-09, a temporary home directory).
 
@@ -65,7 +67,7 @@ What that means:
   the background or otherwise.
 - **A wake item never stops the pager.** It does not run `pager off` or
   `pager stop`. What they do depends on the `pager` you have:
-  - **The kit's `pager` today, sessionmail 0.1.0 from PyPI:** either one
+  - **On sessionmail 0.1.0, before the kit floored it at 0.2.0:** either one
     ends the monitor for good. Claude Code does not restart a monitor whose
     command has exited, so the monitor stays down until Claude Code
     restarts. A stop is also taken as on purpose, so the hooks go quiet:
@@ -73,7 +75,7 @@ What that means:
     *pager is off - stopped on purpose*, with no re-arm line. Until Claude
     Code restarts, the agent's own turn runs the bare `pager listen` in the
     background without waiting for a hook to ask.
-  - **NOT YET for a kit install, the next sessionmail release:**
+  - **The kit's `pager`, sessionmail 0.2.0 and later:**
     on the monitor, both REFUSE. They exit 4, write nothing, stop nothing,
     and name `pager mute` (it silences the monitor, which keeps running)
     and `pager stop --kill`. `--kill` is the only way to end the monitor.
@@ -81,6 +83,10 @@ What that means:
     say *this session's pager monitor was ended*, not *stopped on
     purpose*. On a hand `pager listen`, `pager off` and `pager stop` still
     stop it, as before.
+    **MEASURED** (2030-06-09, sessionmail 0.2.0 from PyPI, a temporary home
+    directory): `pager mute`, `pager unmute` and `pager stop --kill` are there and
+    run; with no monitor running each says so and exits 3. The refusal on a
+    running monitor is read in their `--help`, not run.
 - **`pager status` is the only check.** A wake item that wants to know about
   mail runs `pager status`. It never blocks, and it changes nothing. If the
   answer looks wrong, the wake item reports it, and you or your human fix it
@@ -121,9 +127,11 @@ sessionmail's old separate plugin,
 `plugins/pager-monitor`, is retired: it arms nothing now, and you
 do not need it.
 
-**NOT YET** for a kit install: sessionmail's off switch (`"monitor": false`
-in `~/.sessionkit/mail/settings/mail.json` for the host, or `SESSIONMAIL_MONITOR=off`
+sessionmail's off switch (`"monitor": false` in
+`~/.sessionkit/mail/settings/mail.json` for the host, or `SESSIONMAIL_MONITOR=off`
 at launch for one session), `pager mute` / `pager unmute`, and
-`pager stop --kill`. The `pager` the kit installs is sessionmail 0.1.0
-from PyPI. It has the `--monitor` flag the plugin runs, but none of
-these; they wait on the next sessionmail release.
+`pager stop --kill` ship in sessionmail 0.2.0, the release the kit installs.
+**MEASURED** (2030-06-09, sessionmail 0.2.0 from PyPI, a temporary home
+directory): the three verbs answer and run. The off switch is read in its
+settings schema and its source, not run. The 0.1.0 `pager` had the `--monitor` flag the plugin runs, but none
+of these.

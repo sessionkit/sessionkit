@@ -1,7 +1,8 @@
 [project]
 name = "sessionkit"
-version = "0.2.0"
+version = "0.2.1"
 description = "Session Kit gives your Claude Code sessions voice, mail, a phone line and a tmux sidebar, in one install."
+readme = "README.md"
 license = "AGPL-3.0-or-later"
 license-files = ["LICENSE"]
 classifiers = ["Development Status :: 3 - Alpha"]
@@ -9,16 +10,24 @@ authors = [
     { name = "Mike Bailey", email = "mike@sessionkit.ai" }
 ]
 requires-python = ">=3.11,<3.15"
-# The family, one install. Floored at 0.1.0: every family package is alpha at 0.1.0.
-# PyPI's 0.0.1 name placeholders must never satisfy these.
+# The family, one install. Floored at 0.2.0: the kit needs every family
+# package at 0.2.0 or later, and PyPI's 0.0.1 name placeholders and the
+# 0.1.0 alphas must never satisfy these. sessionmail, sessionphone and
+# sessionvoice are floored at 0.2.1: mail's 0.2.1 judges the doorbell by the
+# drop, phone's 0.2.1 sends unsigned under the drop carrier, and voice's 0.2.1
+# installer sets the drop carrier.
+# sessionphone with its media extra: the bot, calls and `sessionphone web` need it.
 # sessionvoice with its capture extra, so the ears can hear the room.
+# This is the RULED list, kept in tests/_ruled_deps.py with the ruling;
+# tests/test_dependency_gate.py fails when these lines, the built wheel or
+# uv.lock drift from it.
 dependencies = [
     "click>=8.1",
-    "sessionmail>=0.1.0",
-    "sessiontools>=0.1.0",
-    "sessionphone>=0.1.0",
-    "sessionview>=0.1.0",
-    "sessionvoice[capture]>=0.1.0",
+    "sessionmail>=0.2.1",
+    "sessiontools>=0.2.0",
+    "sessionphone[media]>=0.2.1",
+    "sessionview>=0.2.0",
+    "sessionvoice[capture]>=0.2.1",
 ]
 
 [project.urls]

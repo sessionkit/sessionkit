@@ -6,7 +6,7 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'">
   <meta name="robots" content="noindex">
   <title>Session Kit (draft)</title>
-  <meta name="description" content="Session Kit lets your Claude Code sessions hear you, answer aloud, pick up when you ring from your phone, and mail each other.">
+  <meta name="description" content="Session Kit lets your Claude Code sessions hear you, answer aloud and mail each other, and it installs a phone line to them over Delta Chat.">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -14,7 +14,7 @@
 
   <header class="hero">
     <h1>Session Kit</h1>
-    <p class="lede">Session Kit lets your Claude Code sessions hear you, answer aloud, pick up when you ring from your phone, and mail each other.</p>
+    <p class="lede">Session Kit lets your Claude Code sessions hear you, answer aloud and mail each other, and it installs a phone line to them over Delta Chat.</p>
     <p>Voice when your hands are busy, a phone line when you are away, and mail so one agent can hand work to another. One install brings the whole family.</p>
   </header>
 
@@ -35,7 +35,7 @@
         <li><strong>sessionmail</strong>: mail for coding agents. <code>message</code>, <code>pager</code> and <code>memory</code> over one maildir.</li>
         <li><strong>sessiontools</strong>: the harness layer. <code>session list</code> shows every live Claude Code session and how full its context window is.</li>
         <li><strong>sessionvoice</strong>: ambient voice. <code>ears</code> turns a microphone into turns; <code>mouth</code> speaks.</li>
-        <li><strong>sessionphone</strong>: ring your Claude Code session from your phone over Delta Chat.</li>
+        <li><strong>sessionphone</strong>: a phone line to your Claude Code session over Delta Chat. <code>sessionphone setup</code> begins its setup; its messages reach a session started with <code>session start claude</code>, never a bare <code>claude</code>.</li>
         <li><strong>sessionview</strong>: a tmux sidebar of your projects and your agents.</li>
       </ul>
       <p class="source">Source: <a href="../README.md">the README</a></p>
@@ -45,18 +45,19 @@
       <h2 id="install-title">Install</h2>
       <p>You need macOS, Claude Code and uv.</p>
       <pre class="install"><code id="install-line">uv tool install --python 3.14 sessionkit</code></pre>
-      <p>Keep <code>--python 3.14</code>: on Python 3.15 the install falls back to an empty 0.0.1 release. It puts nine commands on your PATH.</p>
+      <p>Keep <code>--python 3.14</code>: on Python 3.15 the install fails, because a voice library it needs has no 3.15 build yet. It puts fourteen commands on your PATH.</p>
       <p>The plugins are a second step. The one-step plugin install is <em class="coming">coming</em>: the kit's own plugin does not load yet, so each plugin installs from its own clone.</p>
       <p class="source">Source: <a href="../README.md#installation">the README's Installation section</a></p>
     </section>
 
     <section id="status" aria-labelledby="status-title">
       <h2 id="status-title">Status</h2>
-      <p><strong>Alpha, 0.1.0.</strong> Tested on macOS 27 on Apple silicon.</p>
+      <p><strong>Alpha, 0.2.1.</strong> Tested on macOS 27 on Apple silicon.</p>
       <p>Not yet:</p>
       <ul>
-        <li>Hearing needs a speech-to-text server that you bring.</li>
-        <li>Mail between agents needs a local postfix, and no setup script ships yet.</li>
+        <li>Hearing: <code>ears services install</code> finds a speech server on this Mac or installs one, but no fresh Mac has yet run it for real.</li>
+        <li>Mail between agents stays on this Mac: from sessionmail 0.2.0 it goes by its file drop, the default carrier, and <code>sessionkit setup</code> runs its mail setup. Mail to other Macs needs a postfix you set up and name in sessionmail's <code>sendmail</code> setting.</li>
+        <li>The phone line installs, but no Delta message or call has yet been walked to a session. From sessionphone 0.2.1 its bot needs no key on the drop; whether it signs follows the mail carrier (<a href="../README.md#installation">the README</a>).</li>
         <li>Linux and Windows are untested.</li>
       </ul>
       <p>Stuck? The troubleshooting hub has one line per symptom and a check you can paste.</p>

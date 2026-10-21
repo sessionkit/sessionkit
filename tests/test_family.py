@@ -1,8 +1,8 @@
 """The family install (SK-8 A1-A5): the kit's pyproject and plugin manifests.
 
 These pin the SHAPE of the kit, not the children's code: the five children
-are dependencies, floored at 0.1.0 by D2 (alpha as 0.1.0, all six) so PyPI's
-0.0.1 name placeholders never satisfy them; every child command is re-declared under
+are dependencies, held to the ruled list by tests/test_dependency_gate.py
+(the list itself is tests/_ruled_deps.py); every child command is re-declared under
 [project.scripts]; the plugin depends on the five; the marketplace lists the
 kit plus the five, and nothing else (no voicemode: D11 is unruled).
 """
@@ -13,8 +13,9 @@ import re
 import tomllib
 from pathlib import Path
 
+from _ruled_deps import FAMILY
+
 ROOT = Path(__file__).resolve().parent.parent
-FAMILY = ["sessionmail", "sessiontools", "sessionphone", "sessionview", "sessionvoice"]
 
 # Each child's [project.scripts], measured from its built wheel at
 # mail 471a6f7, tools ab62717, phone 02d8cf7, view 3fada19, voice eda3f94.
@@ -43,25 +44,19 @@ def _json(name: str) -> dict:
     return json.loads((ROOT / ".claude-plugin" / name).read_text())
 
 
-def _dep_name(spec: str) -> str:
-    return re.split(r"[<>=!~;\[ ]", spec, maxsplit=1)[0].strip().lower()
-
-
-def test_depends_on_the_five_floored_at_0_1_0() -> None:
-    deps = _pyproject()["project"]["dependencies"]
-    by_name = {_dep_name(d): d.strip() for d in deps}
-    for child in FAMILY:
-        assert child in by_name, f"{child} missing from dependencies"
-        # D2: every child floored at 0.1.0, so a 0.0.1 placeholder never satisfies it.
-        extra = "[capture]" if child == "sessionvoice" else ""
-        want = f"{child}{extra}>=0.1.0"
-        assert by_name[child] == want, f"{child}: {by_name[child]!r} != {want!r}"
-
-
 def test_floor_comment_sits_beside_the_dependencies() -> None:
     text = (ROOT / "pyproject.toml").read_text()
     block = text.split("dependencies = [", 1)[0].rsplit("requires-python", 1)[1]
-    assert "Floored at 0.1.0" in block
+    assert "Floored at 0.2.0" in block
+    assert "0.1.0 alphas" in block
+
+
+def test_pypi_page_carries_the_readme() -> None:
+    # SK-88: with no readme field the metadata has no long_description, so
+    # `twine check --strict` fails and the PyPI page is blank.
+    project = _pyproject()["project"]
+    assert project["readme"] == "README.md"
+    assert (ROOT / project["readme"]).is_file()
 
 
 def test_version_at_least_the_d2_alpha() -> None:
