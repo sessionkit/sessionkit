@@ -30,7 +30,9 @@ line names. A sound from `mouth play` plays on its own lane beside them
 ## How it works
 
 - **The queue** is a maildir: `~/.mail/agents/mouth` for the live mouth,
-  unless `$MOUTH_MAILBOX` names another. `new/` holds lines to
+  unless `$MOUTH_MAILBOX` names another. The box and its `tmp/`, `new/`
+  and `cur/` are 0700, like every agent box, and a box found with another
+  mode is set back to 0700 when the mouth next uses it. `new/` holds lines to
   speak. `cur/` holds the line playing and the lines done, each flagged S
   (spoken), T (not spoken) or P (passed). Mail to `mouth@<host>` lands in
   `new/` too, when the mail carrier delivers it there (postfix, or
@@ -99,13 +101,28 @@ line names. A sound from `mouth play` plays on its own lane beside them
   (`src/mouth/resolver.py`). With `--backend auto` on a Mac where Kokoro's
   server does not answer, it speaks with macOS `say` (`resolve()` in
   `src/mouth/backends.py`).
-- **The device** is an exact device name, `default`, `null` (plays
-  nothing), or `call:<N>` for a live Delta Chat call (bare `call`: the only
-  live call). `say` with no `--device` takes `$MOUTH_DEVICE`,
-  else `output` in the settings file (`mouth.json`). An `output` of
-  `default` is honoured as written. With none of the three, `say` refuses
-  the line and names all three fixes, with the settings file's path
-  (`settings_device()` in `src/mouth/__init__.py`, `src/mouth/output.py`).
+- **The device** is an exact device name, `default` (the system default
+  output), `null` (plays nothing), or `call:<N>` for a live Delta Chat call
+  (bare `call`: the only live call). Every line takes ONE order,
+  `say`, `play` and `again` and a mailed line alike
+  (`resolve_device()` in `src/mouth/__init__.py`):
+  1. the line's own ask: `--device`, or a mail's `X-Mouth-Device` (or its
+     `X-Mouth-Extra` `device`), or the call box the mail is To;
+  2. `$MOUTH_DEVICE`;
+  3. `output` in the settings file (`mouth.json`);
+  4. `default`, the system default output.
+
+  `null` at any rung is honoured and plays nothing. The line's
+  `device_from` names the rung (`flag`, `mail`, `call`, `env`, `settings`
+  or `default`) on its `saying` and `said` rows, so a line that played on
+  the system default because nothing was set says so. A `mouth say` line
+  whose caller named its device (`--device` or `$MOUTH_DEVICE`) is the
+  mail it always was, so its rows carry no `device_from`; `mouth say`
+  itself still prints the rung. A device that is
+  absent at play gets `said reason=device-absent` and never falls back to
+  another one. On a machine with no default output at all, a line that
+  reached the last rung gets the same, with the detail "no default output
+  device" (`src/mouth/output.py`).
 - **The record:** `saying` is written at the first audio frame and `said`
   at the end (`src/ears/heard.py`, `src/mouth/player.py`). A line that
   never plays gets a `said` alone. `said` says what played, and if the
@@ -170,7 +187,7 @@ line names. A sound from `mouth play` plays on its own lane beside them
   `--heard TEXT` and `--volume N` from the line's said row. It prints one
   JSON line: the replay's `utt`, `again_of`, `again_from` (`audio` or
   `text`) and `replaced`. Exit 0 means it is queued, 2 is a usage error (an
-  utt that is not a plain id, a bad volume, no device), and 3 means there is
+  utt that is not a plain id, a bad volume), and 3 means there is
   nothing to replay.
   - **The WAV is gone** (pruned, `MOUTH_KEEP_AUDIO=0`, or cut
     before its synthesis finished): the note's text is said again in the

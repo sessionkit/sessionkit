@@ -11,7 +11,10 @@ it works. Part of the [README's Components](../README.md#components).
   writes your assistant's agent file, `~/.session/agents/claude.md`, where
   `session start` finds it (`--agent NAME` names another), asks mail setup for
   that agent's box, and ends with the one launch step:
-  `To hear Delta messages, start Claude with: session start claude`. It never
+  `To hear Delta messages, start Claude with: session start claude`. Before
+  that step it asks `ears backends`, read only, and if the ears' model is
+  missing it says one line naming `ears install`. It never runs `ears install`,
+  and the line never changes its exit. It never
   overwrites an operator already set, or an agent file already there.
   `--dry-run` prints what it would write.
   Exit 0 all done, 1 refused or failed, 2 usage, 4 done what it could with

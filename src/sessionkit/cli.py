@@ -127,6 +127,10 @@ def setup(mailbox: str | None, address: str | None, agent: str, dry_run: bool) -
     layout, is left as it is. It ends with the one launch step:
     `session start NAME`.
 
+    Before that step it asks `ears backends`, read only. If the ears'
+    voice-activity model is missing, it says one line naming `ears install`.
+    It never runs `ears install`, and the line never changes the exit.
+
     Exit 0 all done, 1 refused or failed, 2 usage, 4 done what it could,
     mail steps left for you. See INSTALL.md, "Operator and administrators"
     and "Mail between agents".

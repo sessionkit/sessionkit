@@ -1,6 +1,8 @@
 """`sessionkit setup`: make this host's mail ready, write the operator, then
 define the assistant (`run_agent`: the file `session start NAME` resolves, and
-the box it hears, so a seat started that way hears mail to NAME).
+the box it hears, so a seat started that way hears mail to NAME). Last, it
+asks `ears backends` whether the ears' model is there, and says so when it is
+not (`ears_model_missing`): read only, never `ears install`, never the exit.
 
 Mail first. sessionmail's mail setup verb (argv in `MAIL_SETUP_ARGV`) makes
 the mail root and the first boxes, the operator's box among them, and the
@@ -636,6 +638,34 @@ def run_agent(
     return Outcome(EXIT_OK, lines)
 
 
+# --- the ears' model: read, never fetched -------------------------------------
+
+# sessionvoice's read-only probe. Its last line is `silero    ok: PATH` or
+# `silero    no model: ears install` (sessionvoice 0.2.1, `ears backends`).
+EARS_BACKENDS_ARGV = ("ears", "backends")
+# The probe answers in well under a second; a slow one is never waited on.
+EARS_PROBE_TIMEOUT = 5.0
+EARS_MODEL_LINE = (
+    "The ears have no voice-activity model, so they cannot hear you: "
+    "run `ears install` to fetch it."
+)
+
+
+def ears_model_missing(environ: Mapping[str, str]) -> bool:
+    """True only when `ears backends` answers, exit 0, with a `silero` line
+    saying `no model`. `ears` not on the PATH (no voice here), a timeout, a
+    failure or output we do not know all read as False: say nothing. Setup
+    never runs `ears install`; the user does."""
+    done = _run(EARS_BACKENDS_ARGV, environ, timeout=EARS_PROBE_TIMEOUT)
+    if done is None or done.returncode != 0:
+        return False
+    for line in (done.stdout or "").splitlines():
+        name, _, state = line.strip().partition(" ")
+        if name == "silero":
+            return state.strip().startswith("no model")
+    return False
+
+
 # --- the run ------------------------------------------------------------------
 
 
@@ -700,9 +730,11 @@ def run_setup(
     because the operator is written only for a box that exists, and the
     mail setup verb is what makes the operator's box and the agent's. The
     exit is the worst of the three: 1 if any refused or failed, else 4 if
-    mail left steps for you, else 0. With the agent defined, the run ends on
-    the one launch step (LAUNCH_SENTENCE). MAILBOX / ADDRESS / AGENT are
-    already shape-checked by the caller.
+    mail left steps for you, else 0. Then `ears backends` is asked, read
+    only: when the ears' model is missing, one line (EARS_MODEL_LINE) names
+    `ears install`; it never changes the exit. With the agent defined, the
+    run ends on the one launch step (LAUNCH_SENTENCE). MAILBOX / ADDRESS /
+    AGENT are already shape-checked by the caller.
     """
     environ = os.environ if environ is None else environ
     resolved = Path.home() if home is None else home
@@ -733,6 +765,9 @@ def run_setup(
         lines.append(
             f"Would ask `{_verb()}` for the agent's box {agent!r} (--box {agent})."
         )
+    # Read only, and never part of the exit: 4 means mail steps are left.
+    if ears_model_missing(environ):
+        lines.append(EARS_MODEL_LINE)
     if defined.code == EXIT_OK:
         lines.append(launch_sentence(agent))
     return Outcome(code, lines)

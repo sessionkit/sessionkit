@@ -20,7 +20,7 @@ Every command answers `--help`, and each verb's help is its reference.
 | [`pager`][cmd-pager] | Wake an idle agent when mail or an alert lands. | [sessionmail][pkg-mail] |
 | [`memory`][cmd-memory] | An agent's mailbox, read as a filesystem. | [sessionmail][pkg-mail] |
 | [`session`][cmd-session] | List live sessions, read their settings, start one. | [sessiontools][pkg-tools] |
-| [`sessionphone`][cmd-sessionphone] | Phone calls to a session over Delta Chat; installed, not yet walked. | [sessionphone][pkg-phone] |
+| [`sessionphone`][cmd-sessionphone] | Phone calls to a session over Delta Chat; installed, and walked on a fresh Mac for a session started with `session start <name>`. | [sessionphone][pkg-phone] |
 | [`sessionview`][cmd-sessionview] | A tmux sidebar of your projects and your agents. | [sessionview][pkg-view] |
 | [`ears`][cmd-ears] | Hear the room and write your turns to a log. | [sessionvoice][pkg-voice] |
 | [`ears-serve`][cmd-ears-serve] | A speech-to-text server over Apple's on-device speech. | [sessionvoice][pkg-voice] |
@@ -58,8 +58,10 @@ ears backends                     # which speech engines run on this Mac
 mouth devices                     # your output devices, as --device takes them
 ```
 
-Phone ([sessionphone][pkg-phone]): installed, not yet walked on a fresh
-Mac. `sessionphone --help` lists its verbs.
+Phone ([sessionphone][pkg-phone]): installed, and walked on a fresh Mac for a
+session started with `session start <name>`: a real call reached that session
+and was answered aloud. A plain `claude` session does not hear calls you make
+to it yet. `sessionphone --help` lists its verbs.
 
 The sidebar ([sessionview][pkg-view]) is its plugin: there is nothing to run
 first.

@@ -58,6 +58,7 @@ SHARED = (
     "${HOME:?}/.local/state/audio",
     "${HOME:?}/.claude",
     "${HOME:?}/.claude/plugins",
+    "${HOME:?}/.claude/plugins/cache",
     "${HOME:?}/.mail",
     "${HOME:?}/.session",
     "${HOME:?}/Library",
@@ -111,6 +112,8 @@ def test_reverse_order_service_verbs_then_plugins_then_data():
     bot = section.index("`sessionphone bot uninstall`")
     voice = section.index("services uninstall`")
     plugins = section.index("- `claude plugin marketplace remove <r>`")
+    kit_plugins = section.index("- `claude plugin marketplace remove sessionkit`")
+    assert voice < kit_plugins < section.index(PART_B)
     kit = section.index("- `uv tool uninstall sessionkit`")
     data = section.index(PART_B)
     assert bot < voice < min(plugins, kit) < data
@@ -455,8 +458,8 @@ def test_part_b_settings_block_run_in_a_temp_home_keeps_the_readers_files(tmp_pa
 ACCOUNT_FILES = (
     "tools/accounts/accounts.json", "tools/accounts/account-config.json",
     "tools/accounts/host-ledger.jsonl",
-    "tools/accounts/token-file-backups/20301001T000000Z.token",
-    "tools/accounts/keychain-backups/20301001T000000Z.json",
+    "tools/accounts/token-file-backups/20300609T000000Z.token",
+    "tools/accounts/keychain-backups/20300609T000000Z.json",
 )
 
 
@@ -575,6 +578,85 @@ def test_the_kept_marketplace_line_is_still_the_plugin_step():
     step_5 = _steps(_section_8().split(PART_B, 1)[0])[4]
     assert step_5.startswith("**5. The plugins and the kit command")
     assert "claude plugin marketplace remove <r>` for each of the five" in step_5
+
+
+# SK-169: a kit install (section 3's first lines) has ONE marketplace,
+# `sessionkit`, and caches all six copies under cache/sessionkit/; the clones
+# route has one marketplace and one cache folder per child. Step 5 gives each
+# route its own lines, so a kit-route reader no longer misses cache/sessionkit/.
+KIT_CACHE_BLOCK = 'rm -rf "${HOME:?}/.claude/plugins/cache/sessionkit"\nclaude plugin list\n'
+
+
+def test_step_5_removes_the_kits_marketplace_for_a_kit_install():
+    step_5 = _step(5)
+    flat = " ".join(step_5.split())
+    assert ("- `claude plugin marketplace remove sessionkit`, if you installed from the kit's "
+            "marketplace (section 3's first lines). This removes its six plugins too.") in flat
+    assert "Run the lines for your route, and both sets if you used both." in flat
+    # The clones route keeps its per-child marketplace remove.
+    assert "if you installed them from your own clones" in flat
+    assert "(#from-your-own-clones-to-work-on-the-plugins-optional)" in step_5
+    assert "### From your own clones, to work on the plugins (optional)\n" in INSTALL_DOC
+
+
+def test_step_5_deletes_the_kits_cache_folder_and_each_clones_own():
+    step_5 = _step(5)
+    blocks = _blocks(step_5)
+    assert blocks[0] == KIT_CACHE_BLOCK
+    assert blocks[1] == (
+        "for r in sessionmail sessiontools sessionphone sessionvoice sessionview; do\n"
+        'rm -rf "${HOME:?}/.claude/plugins/cache/${r:?}"\n'
+        "done\nclaude plugin list\n"
+    )
+    assert len(blocks) == 2
+    # Each block sits under the route it is for.
+    kit = step_5.index("From the kit's marketplace, all six copies are in one folder")
+    clones = step_5.index("From your own clones, each plugin's copy is in a folder of its own")
+    assert kit < step_5.index(KIT_CACHE_BLOCK.splitlines()[0]) < clones
+    # The folder named is the one section 3 says a kit install copies to.
+    assert "`~/.claude/plugins/cache/sessionkit/<name>/<version>/`" in INSTALL_DOC
+    assert "`~/.claude/plugins/cache/sessionkit/`:" in step_5
+
+
+def test_step_5_kit_cache_line_in_a_temp_home_removes_only_the_kits_copies(tmp_path):
+    names = ("sessionkit", *cli.FAMILY)
+    kit = tuple(f".claude/plugins/cache/sessionkit/{n}/0.2.1/{f}"
+                for n in names for f in (".orphaned_at", ".claude-plugin/plugin.json"))
+    theirs = (".claude/plugins/cache/other/other/1.0.0/plugin.json",
+              ".claude/plugins/cache/sessionmail/sessionmail/0.2.1/.orphaned_at",
+              ".claude/plugins/installed_plugins.json", ".claude/settings.json")
+    _seed(tmp_path, kit + theirs)
+    rm_lines = "".join(line + "\n" for line in KIT_CACHE_BLOCK.splitlines() if line.startswith("rm "))
+    done = _run(tmp_path, rm_lines)
+    assert done.returncode == 0 and done.stderr == "", done.stderr
+    assert _files(tmp_path) == set(theirs)
+    assert (tmp_path / ".claude/plugins/cache").is_dir()
+
+
+def test_step_5_clones_loop_in_a_temp_home_removes_only_the_five_copies(tmp_path):
+    five = tuple(f".claude/plugins/cache/{r}/{r}/0.2.1/.orphaned_at" for r in cli.FAMILY)
+    theirs = (".claude/plugins/cache/sessionkit/sessionkit/0.2.1/.orphaned_at",
+              ".claude/plugins/cache/other/other/1.0.0/plugin.json")
+    _seed(tmp_path, five + theirs)
+    loop = _blocks(_step(5))[1].replace("claude plugin list\n", "")
+    done = _run(tmp_path, loop)
+    assert done.returncode == 0 and done.stderr == "", done.stderr
+    assert _files(tmp_path) == set(theirs)
+
+
+def test_step_5_kit_route_is_measured_and_names_what_stayed():
+    flat = " ".join(_step(5).split())
+    assert ("**MEASURED** (2030-06-09, Claude Code 2.1.307, the kit's marketplace at 0.2.1, "
+            "on a temporary home directory and Claude Code config directory)") in flat
+    assert "printed `Also uninstalled 6 plugins from this marketplace`" in flat
+    assert "**The six copies stayed** in `~/.claude/plugins/cache/sessionkit/`" in flat
+    assert "marked `.orphaned_at`" in flat
+    assert "These two lines then ran: the `rm` exited 0" in flat
+    # The clones loop's own walk has not run, and still says so.
+    assert "**NOT YET**: the loop has not run." in flat
+    # Remove-by-name names each route's plugin id.
+    assert ("`<name>@sessionkit` from the kit's marketplace, with `sessionkit@sessionkit` "
+            "among them, and `<r>@<r>` from a clone") in flat
 
 
 # What a fresh install leaves, measured from the packages' source. Each test
@@ -697,12 +779,12 @@ def test_part_b_session_records_name_the_older_agents_folder_they_leave(tmp_path
 # What sessionvoice writes on a fresh install: everything under its own home,
 # ~/.sessionvoice, then ~/.ears, the speakers' home and the service logs.
 VOICE_FRESH = (
-    ".sessionvoice/logs/conversations/heard_2030-01-01.jsonl",
+    ".sessionvoice/logs/conversations/heard_2030-06-09.jsonl",
     ".sessionvoice/logs/conversations/heard.lock",
-    ".sessionvoice/logs/conversations/speakers_2030-01-01.jsonl",
+    ".sessionvoice/logs/conversations/speakers_2030-06-09.jsonl",
     ".sessionvoice/state/heard-cursor/sid", ".sessionvoice/state/heard-cursor/sid.lock",
     ".sessionvoice/state/missed-reply/clip.wav",
-    ".sessionvoice/audio/2030-01-01/120000-000-1.wav",
+    ".sessionvoice/audio/2030-06-09/120000-000-1.wav",
     ".sessionvoice/mouth/playing.json", ".sessionvoice/mouth/done/x",
     ".sessionvoice/mouth/audio/line.wav",
     ".sessionvoice/talk/token",
@@ -713,23 +795,23 @@ VOICE_FRESH = (
 # The files only sessionvoice writes, where an older sessionvoice kept them,
 # in ~/.voicemode.
 VOICE_LEGACY = (
-    ".voicemode/logs/conversations/speakers_2030-01-01.jsonl",
+    ".voicemode/logs/conversations/speakers_2030-06-09.jsonl",
     ".voicemode/talk/token",
     ".voicemode/state/missed-reply/clip.wav",
-    ".voicemode/audio/2030-01-01/120000-000-1.wav",
+    ".voicemode/audio/2030-06-09/120000-000-1.wav",
 )
 # What VoiceMode writes too (its own heard log, the log's lock, its cursors
 # and its mouth): deleted only on the reader's word.
 VOICE_SHARED = (
-    ".voicemode/logs/conversations/heard_2030-01-01.jsonl",
+    ".voicemode/logs/conversations/heard_2030-06-09.jsonl",
     ".voicemode/logs/conversations/heard.lock",
     ".voicemode/mouth/playing.json", ".voicemode/state/heard-cursor/sid",
 )
 # VoiceMode's own files, and Claude Code's: never touched.
 VOICEMODE_OWN = (
     ".voicemode/voicemode.env", ".voicemode/voices/a.pt", ".voicemode/services/whisper/x",
-    ".voicemode/logs/conversations/exchanges_2030-01-01.jsonl",
-    ".voicemode/audio/2030/01/20300101_120000_tts.wav", ".voicemode/audio/flat.wav",
+    ".voicemode/logs/conversations/exchanges_2030-06-09.jsonl",
+    ".voicemode/audio/2030/06/20300609_120000_tts.wav", ".voicemode/audio/flat.wav",
     ".claude/heard.state.not-ours", ".local/state/claude/lock",
 )
 
@@ -856,7 +938,7 @@ def test_part_b_accounts_names_the_folder_from_before_the_move_and_warns(tmp_pat
     [block] = _blocks(item)
     kept = (".config/notmuch/sessionkit/config", ".config/other/x")
     _seed(tmp_path, (".config/sessiontools/accounts.json",
-                     ".config/sessiontools/token-file-backups/20301001T000000Z.token") + kept)
+                     ".config/sessiontools/token-file-backups/20300609T000000Z.token") + kept)
     done = _run(tmp_path, block)
     assert done.stderr == "", done.stderr
     assert _files(tmp_path) == set(kept)
@@ -954,11 +1036,11 @@ def test_part_b_mail_in_a_temp_home_keeps_the_mouths_box_until_the_reader_choose
 # VoiceMode". The task's full proof also seeds a host whose sessionvoice home
 # is ~/.voicemode; this pins its result.
 E2E_KIT = (
-    ".sessionvoice/logs/conversations/heard_2030-01-02.jsonl",
+    ".sessionvoice/logs/conversations/heard_2030-12-08.jsonl",
     ".sessionvoice/logs/conversations/heard.lock",
-    ".sessionvoice/logs/conversations/speakers_2030-01-02.jsonl",
+    ".sessionvoice/logs/conversations/speakers_2030-12-08.jsonl",
     ".sessionvoice/state/heard-cursor/sid-1", ".sessionvoice/state/missed-reply/clip.wav",
-    ".sessionvoice/audio/2030-01-02/101010-123-1.wav",
+    ".sessionvoice/audio/2030-12-08/101010-123-1.wav",
     ".sessionvoice/mouth/playing.json", ".sessionvoice/mouth/audio/line.wav",
     ".sessionvoice/talk/token", ".ears/heard.state",
     ".sessionkit/voice/settings/ears.json", ".sessionkit/voice/settings/stt.key",
@@ -988,15 +1070,15 @@ E2E_KIT = (
 # Used by VoiceMode too: kept while the reader keeps VoiceMode.
 E2E_SHARED = (
     ".mail/agents/mouth/new/to-speak", ".mail/agents/mouth/cur/spoken:2,S",
-    ".voicemode/logs/conversations/heard_2030-01-01.jsonl",
+    ".voicemode/logs/conversations/heard_2030-06-09.jsonl",
     ".voicemode/logs/conversations/heard.lock",
     ".voicemode/state/heard-cursor/vm-1", ".voicemode/mouth/playing.json",
 )
 # Never the kit's, in either mode.
 E2E_THEIRS = (
     ".voicemode/voicemode.env", ".voicemode/voices/v.json",
-    ".voicemode/logs/conversations/exchanges_2030-01-02.jsonl",
-    ".voicemode/audio/2030/01/x.wav",
+    ".voicemode/logs/conversations/exchanges_2030-12-08.jsonl",
+    ".voicemode/audio/2030/12/x.wav",
     ".notmuch-config", ".config/notmuch/default/config", ".config/other/x",
     ".sessionkit/tools/settings/claude-code.json", ".sessionkit/agents/someone/letter.md",
     ".cache/huggingface/hub/model", ".local/state/claude/lock", ".local/state/x/y",

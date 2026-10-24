@@ -9,8 +9,9 @@ What works today: the commands (mail, sessions, pager, memory, phone, ears,
 mouth), the plugins, and the mouth (it falls back to macOS `say`). What is still
 limited: hearing needs a speech server, which sessionvoice's `ears services install`
 installs for you (section 5); agent-to-agent mail goes by sessionmail's experimental
-file drop, its default carrier, on this Mac only (section 5); phone calls are
-installed, not yet walked (section 6).
+file drop, its default carrier, on this Mac only (section 5). Phone calls are
+installed, and walked on a fresh Mac for a session started with `session start <name>`
+(section 6). A plain `claude` session does not hear calls you make to it yet.
 
 ## 1. Prerequisites (HUMAN)
 
@@ -24,18 +25,27 @@ installed, not yet walked (section 6).
 
   **HUMAN: your password** at sudo. It installs the Command Line Tools itself. Then run
   the three lines it prints under "Next steps", as printed (two `echo ... >> ~/.zprofile`
-  and one `eval ...`), so `brew` is on your PATH. **MEASURED** (2030-06-09, a
-  fresh macOS 27 VM): 220 seconds with the Command Line Tools, and a new terminal had
-  `brew` and `git`.
+  and one `eval ...`), so `brew` is on your PATH. **MEASURED** (2030-06-09, two
+  fresh macOS 27 VMs): 87 to 220 seconds with the Command Line Tools, and a new
+  terminal had `brew` and `git`.
 - uv: `curl -LsSf https://astral.sh/uv/install.sh | sh` (about 1 second). Then open a
   new terminal, or run `source ~/.local/bin/env`: until you do, `uv` is not on your PATH
   (`command not found: uv`, exit 127).
 - Claude Code: `curl -fsSL https://claude.ai/install.sh | bash` (about 13 seconds), then
   start `claude` and **HUMAN: sign in** with `/login`.
-- At least 2.1 GB free disk, plus room for a speech-to-text server (section 5).
-  **MEASURED** (on the same VM): the Command Line Tools took 1.3 GB, the kit about 280 MB, Claude
+- At least 2.1 GB free disk, plus about 3.9 GB for the speech-to-text server
+  (section 5): its venv, 1.2 GB, and its models, 2.7 GB.
+  **MEASURED** (on the VM where Homebrew took 220 seconds): the Command Line Tools took 1.3 GB, the kit about 280 MB, Claude
   Code 230 MB, Homebrew 204 MB and uv's Python 74 MB. A fresh VM started with 9.7 GB
   free and ended with 8.7 GB.
+
+  **The first call is silent for about a minute.** The server fetches its models into
+  the Hugging Face cache on its first request, not at install. Until they are in, your
+  agent neither hears nor speaks through it: on a phone call, nothing is heard for
+  about a minute. **MEASURED** (2030-06-09, a fresh macOS 27 VM, the first phone call
+  after `ears services install`): the venv 1.2 GB and the models 2.7 GB. The first
+  spoken line took 65.1 seconds and the first heard speech 60.2 seconds; after that,
+  a median of 0.4 seconds to speak a line and 0.3 seconds to hear a stretch of speech.
 - Python 3.11 or later (uv fetches one if you have none).
 - A network connection: the install is online-only. It fetches from PyPI, uv
   downloads its Python, and `ears install` downloads the voice-activity model.
@@ -47,11 +57,36 @@ uv tool install --python 3.14 sessionkit
 sessionkit setup
 ```
 
-**MEASURED** (2030-06-09, a fresh macOS 27 VM): without `--python 3.14`, uv
-downloads Python 3.15, two voice libraries have no 3.15 build, and uv silently
-installs the 0.0.1 placeholder instead (one `hello` verb). On a Mac that already has
-the Command Line Tools, uv picks an older Python instead (3.11 on that VM), which the
-family is not tested on. Either way, keep `--python 3.14`.
+**Keep `--python 3.14`.** Without it, uv fetches Python 3.15, where the kit cannot
+install: a voice library it needs (onnxruntime) has no 3.15 build yet. uv refuses,
+exit 1, with `your requirements are unsatisfiable`, and installs nothing. **MEASURED**
+(2030-06-09, uv 0.13.4 with empty uv folders and only uv's own Python, as on a fresh
+Mac): `uv tool install sessionkit` fetched CPython 3.15.0, then refused, exit 1, and no
+tool was installed. On a Mac that already has the Command Line Tools, uv may pick their
+older Python instead, which the family is not tested on (3.11 on a fresh macOS 27 VM,
+2030-06-09). Either way, keep `--python 3.14`.
+
+**To upgrade or reinstall, keep the pin.** These two lines are safe on their own:
+
+```bash
+uv tool upgrade sessionkit
+uv tool install --python 3.14 --reinstall sessionkit
+```
+
+`uv tool upgrade` keeps the Python the install chose. A reinstall without
+`--python 3.14` drops the pin from uv's record of the tool, and
+`uv tool install --force sessionkit` builds the kit again on the Python uv finds.
+**MEASURED** (uv 0.13.4, sessionkit 0.2.1 from PyPI, in an empty tool folder with an empty
+uv cache, each line run on a fresh `--python 3.14` install, read in the tool's
+`pyvenv.cfg` and `uv-receipt.toml`):
+- `uv tool upgrade sessionkit`, with or without `--reinstall`, and `uv tool upgrade --all`
+  stayed on 3.14 with the pin kept.
+- `uv tool install --python 3.14 --reinstall sessionkit` stayed on 3.14 with the pin kept.
+- `uv tool install --reinstall sessionkit` stayed on 3.14 but dropped the pin.
+- `uv tool install --force sessionkit` rebuilt the kit on 3.13 where that was uv's first
+  Python. Where Homebrew's 3.15 was first, it refused (no 3.15 build of a voice library),
+  exit 1, and left the 3.14 install as it was.
+- `uv tool upgrade` has no `--refresh` on uv 0.13.4: it refuses that flag, exit 2.
 
 **MEASURED** (2030-06-09, read-only against PyPI): the five packages this release
 needs are on PyPI: sessionmail, sessionphone and sessionvoice 0.2.1, sessiontools and
@@ -67,12 +102,14 @@ from PyPI, Python 3.14, an empty tool folder and an empty uv cache): 61 packages
 about 93 MB, and the kit's tool folder is about 280 MB on disk. uv's own Python is not in
 that folder; section 1 counts it.
 
-**Phone calls are installed, not yet walked.** The kit installs sessionphone with its
-calls packages (its `media` extra: aiortc, av and 8 more). They download with
-everything else, during `uv tool install`, with no separate step: 10 of the 61
-packages, about 21 MB of the download and about 52 MB of the 280 MB. **MEASURED** (the same
-install, the files those 10 packages install). Setting them up is
-section 6, and no fresh Mac has walked it yet.
+**Phone calls are installed, and walked for a session started with
+`session start <name>`.** A plain `claude` session does not hear calls you make to it
+yet. The kit installs sessionphone with its calls packages (its `media` extra: aiortc,
+av and 8 more). They download with everything else, during `uv tool install`, with no
+separate step: 10 of the 61 packages, about 21 MB of the download and about 52 MB of
+the 280 MB. **MEASURED** (the same install, the files those 10 packages install).
+Setting them up is section 6, which a fresh Mac has walked for a session started with
+`session start <name>`.
 
 **On Linux** (untested), the voice package needs the system PortAudio library
 (Debian and Ubuntu: `libportaudio2`). sessionvoice 0.2.1 depends on `sounddevice`,
@@ -119,6 +156,15 @@ Mac without `--address`.
 
 **Then your assistant:** it writes `~/.session/agents/claude.md`, the agent
 `session start claude` starts (section 4), and asks mail setup for its box, `claude`.
+
+**Then it checks the ears' model, and only reads.** It asks `ears backends` whether the
+ears' voice-activity model is there. If it is not, which is so on a fresh Mac until
+`ears install` (section 4), it prints one line just before the launch step:
+``The ears have no voice-activity model, so they cannot hear you: run `ears install` to fetch it.``
+It never runs `ears install` itself, and the line never changes its exit. With no `ears`
+on the PATH, or no answer from it within 5 seconds, it says nothing about the model.
+**MEASURED** by the test suite only, against a stand-in for `ears backends` that prints
+what sessionvoice 0.2.1's does.
 
 **Its exit:** 0 all done; 1 the operator or the agent file was refused, or a mail step
 failed or was refused (it says which, and the rest still ran); 2 a flag it does not take; 4 the
@@ -207,13 +253,20 @@ claude plugin install sessionkit@sessionkit
 claude plugin list
 ```
 
-They install the kit's plugin and the five family plugins it depends on. Start Claude
-Code (or restart it) to load them. `claude plugin list` should show six plugins, each
-`✔ enabled`, scope user: `sessionkit`, `sessionmail`, `sessionphone`, `sessiontools`,
+They install the kit's plugin and the five family plugins it depends on.
+`claude plugin list` should show six plugins, each `✔ enabled`, scope user: `sessionkit`, `sessionmail`, `sessionphone`, `sessiontools`,
 `sessionview` and `sessionvoice`, each `@sessionkit`.
 
 **MEASURED** (0.2.0, Claude Code 2.1.304, an empty Claude Code config, not signed in):
 both lines exited 0, and the list showed all six at 0.2.0, enabled.
+
+**Then quit Claude Code and start it again**, every window of it, before any step
+below. This holds for the clones route too. A plugin installed from the shell loads
+the next time Claude Code starts (or on `/reload-plugins` in a session already open,
+read in Claude Code's plugin docs). Until then, a session that was open has none of
+the plugins' commands on its PATH, such as `ears-arm` (section 5), and none of their
+hooks or their monitor (section 4). **NOT YET** walked as a step. On one install that
+went on in the session already open, a plugin's command was not found.
 
 **The plugins run from a copy.** The install copies each plugin to
 `~/.claude/plugins/cache/sessionkit/<name>/<version>/`, and that copy is what runs. Its
@@ -224,6 +277,32 @@ both lines exited 0, and the list showed all six at 0.2.0, enabled.
 twice: `claude plugin marketplace remove <r>` for each of the five. **MEASURED** (0.2.0):
 with `sessionmail@sessionmail` from a clone and `sessionmail@sessionkit` both installed,
 `claude plugin list` showed both `✔ enabled`.
+
+### A session started with `--setting-sources ""`
+
+That session reads no settings file, so none of the six load unless you name them. The
+supported way is `--settings <file>` with the six in its `enabledPlugins`:
+
+```json
+{"enabledPlugins": {"sessionkit@sessionkit": true, "sessionmail@sessionkit": true,
+  "sessionphone@sessionkit": true, "sessiontools@sessionkit": true,
+  "sessionview@sessionkit": true, "sessionvoice@sessionkit": true}}
+```
+
+- **Name all six.** The kit's plugin stays off unless the five it depends on are enabled
+  too, and the error says `Dependency "sessionmail@sessionkit" is not installed` even
+  when it is installed.
+- **A `--plugin-dir` holding a plugin of the same name replaces the installed one** for
+  that session, wholly. None of the installed copy's skills, commands or hooks load.
+  `--plugin-dir` at the install's cache copy does load a plugin, but from a path that
+  names its version.
+
+**MEASURED** (Claude Code 2.1.309), on other installed plugins: `enabledPlugins` in
+`--settings` loaded their skills, commands and hooks, and the hooks ran. With no
+`--settings`, nothing loaded. A same-name `--plugin-dir` replaced the installed plugin,
+and a plugin with an unlisted dependency stayed off. On the kit's own plugin,
+`enabledPlugins` reached it, and it then stopped at the dependency check. **NOT YET**
+walked with all six installed.
 
 ### From your own clones, to work on the plugins (optional)
 
@@ -293,8 +372,11 @@ drops that plugin's saved options.
   **MEASURED** (2030-06-09, sessiontools 0.1.0, a temporary home directory): before
   `sessionkit setup`, `session start --dry-run claude` stopped with
   `agent 'claude' not found`, exit 2; after it, the command was
-  `claude --session-id <a new id> ... --agent claude`, exit 0. **NOT YET:** no Delta
-  message has yet been walked to a session started this way. The sessionmail plugin's
+  `claude --session-id <a new id> ... --agent claude`, exit 0. **MEASURED**, walked and
+  passed (2030-06-09, a fresh macOS 27 VM, this release's kit with sessionmail,
+  sessionphone and sessionvoice 0.2.1): Delta messages and a phone call reached a
+  session started with `session start claude`. Each turn was mailed to the box
+  `claude` and woke the session, which answered aloud. The sessionmail plugin's
   hooks run clean, and your mailbox under `~/.mail/agents/` is created the first time the
   pager listens. **MEASURED** in part (in the release rehearsal). The hooks stay off until you set
   `"hooks": true` in `~/.sessionkit/mail/settings/mail.json`; the first run tells you so.
@@ -312,6 +394,39 @@ drops that plugin's saved options.
   27 VM, Claude Code not signed in: both lines, exit 2). Inside a session, `pager status`
   gets past this and asks for the mailbox instead, until the pager first listens
   (**MEASURED** on the authors' Mac, 2030-06-09, not the VM).
+- **Claude Code's auto mode can refuse your agent's `message send`.** From Claude Code
+  2.1.283, an interactive session starts in auto mode: a second model, the classifier,
+  reviews each command before it runs. Mail that asks another agent to act can be
+  refused with this line:
+
+  ```text
+  Permission for this action was denied by the Claude Code auto mode classifier. Reason: [Create Unsafe Agents].
+  ```
+
+  **MEASURED** (2030-06-09, a fresh macOS 27 VM: an agent's `message send` that asked a
+  second agent to act). There are two fixes. Both are read in Claude Code's documentation
+  on permission modes and permission rules, and neither has been walked:
+  - **Allow the command.** Add this permission rule to the `.claude/settings.local.json`
+    that section 5, step 3 edits (it says where that file is), beside any `hooks` there:
+
+    ```json
+    {"permissions": {"allow": ["Bash(message send *)"]}}
+    ```
+
+    In auto mode an allow rule is checked before the classifier, so a command that
+    matches it runs without the classifier's review. The rule covers `message send` as a
+    command of its own. If the command is joined to another one with `&&`, `;` or `|`,
+    the other part needs a rule too. To allow it in every directory, put the rule in
+    `~/.claude/settings.json` instead. The cost: your agent's mail then goes out with no
+    review.
+  - **Leave auto mode.** Press Shift+Tab. From auto mode, the first press switches to
+    Manual mode, which asks you before each command, and the status bar shows
+    `⏸ manual mode on`. Further presses cycle through accept edits, plan and auto. To
+    start every session in Manual mode, set `{"permissions": {"defaultMode": "default"}}`
+    in `~/.claude/settings.json`.
+
+  To let one refused command through, run `/permissions`, open the **Recently denied**
+  tab, and press `r` on the command.
 - The sessionmail plugin's monitor arms the pager for the whole session, and it is on by
   default. Section 3 installs it: the plugin's `monitors/monitors.json` runs
   `pager listen --monitor` with the `pager` on your PATH, so you do not turn anything on.
@@ -449,7 +564,37 @@ source).
      form: it moves each one off before it loads the new one. **MEASURED**
      only as `--dry-run` (2030-06-09, 0.2.0, a temporary home directory): those
      four plists, with the keeper's and ears-mail's scripts in the installed
-     package. **NOT YET** as a real install.
+     package. A real install ran on a fresh macOS 27 VM (2030-06-09, below), with
+     no microphone: **NOT YET** on real audio.
+
+     Give it `--agent` and your agent's name, `claude` unless you named another
+     with `sessionkit setup --agent`:
+
+     ```bash
+     ears services install --agent <name>
+     ```
+
+     Without `--agent`, nobody is woken when you speak. `--agent` makes that agent
+     the one your voice wakes (`ears wake add <name>`), and sends it the keeper's
+     notices. A bare install warns
+     `no --agent NAME: NOBODY will be woken when you speak` and installs anyway.
+     **MEASURED** (2030-06-09, a fresh macOS 27 VM, a real install): a bare install
+     printed that warning. **MEASURED** as `--dry-run` (2030-06-09, sessionvoice 0.2.1 from PyPI,
+     a temporary home directory): bare, the same warning; with `--agent claude`,
+     `would add claude` to the wake file, and the keeper's notices to `claude`.
+
+     Install ends with a `heard` line: an agent hears heard turns only once it
+     subscribes to `heard+<device>` (`heard+macbook` for the built-in mic). That is
+     the mail path, and this guide leaves it for later: your agent wakes on your
+     voice through steps 3 and 4. If you take the mail path, your agent's
+     `message subscription add heard+macbook` is refused, exit 2, with
+     `a seat's mail is that seat's to grant`, until your agent is an administrator.
+     To make it one, name it in an administrators file, as in
+     [Operator and administrators](#operator-and-administrators) (section 2), for
+     example `{"operator": {"privileged": ["claude"]}}`, then subscribe again.
+     **MEASURED** (2030-06-09, a fresh macOS 27 VM): the subscription was refused for
+     the agent `claude`, exit 2. With that file in place, it went through, and the next
+     heard turn reached the box `claude` and woke the session.
 
    On 0.2.0, a bare `ears services install`
    loads `speech`, `mouth`, `keeper` and `mail`. `--only` takes
@@ -490,10 +635,14 @@ source).
 
    **Lid shut:** the built-in mic is off in hardware; use Bluetooth buds or a USB mic.
    To check the lid, see [ears running, but deaf][lid].
-3. **The ride-along hook. HUMAN (hand edit).** In your launch directory's
-   `.claude/settings.local.json`, add `ears heard hook || exit 1` on PostToolUse and
-   PostToolBatch (**MEASURED** in the release rehearsal). It hands your agent what you said on its next
-   tool call. If the file does not exist, paste this as the whole file:
+3. **The ride-along hook. HUMAN (hand edit).** In `.claude/settings.local.json`, add
+   `ears heard hook || exit 1` on PostToolUse and PostToolBatch (**MEASURED** in the
+   release rehearsal). It hands your agent what you said on its next tool call. Where
+   the file is: if your launch directory is inside a git repository, Claude Code 2.1.211
+   and later reads it at the repository's root, `<repository root>/.claude/`. Otherwise,
+   or when that root is your home directory, it is in the launch directory itself,
+   `<launch directory>/.claude/` (read in Claude Code's settings docs). If the file
+   does not exist, paste this as the whole file:
 
    ```json
    {
@@ -683,9 +832,10 @@ temporary home directory cannot point it at postfix).
 ## 6. Optional
 
 - **Your phone. HUMAN (an account on a public relay, the Delta Chat app, launchd,
-  Homebrew).** Phone calls are installed, not yet walked. Section 2's install already
-  includes sessionphone and its calls packages, so there is nothing more to install
-  from PyPI. Setting it up is sessionphone's: follow
+  Homebrew).** Phone calls are installed, and walked on a fresh Mac for a session
+  started with `session start <name>`. A plain `claude` session does not hear calls
+  you make to it yet. Section 2's install already includes sessionphone and its calls
+  packages, so there is nothing more to install from PyPI. Setting it up is sessionphone's: follow
   [its own docs](https://github.com/sessionkit/sessionphone). A call also needs
   `ffmpeg` from Homebrew and the speech server on 8890 (section 5).
   - **Signing follows the carrier.** From sessionphone 0.2.1, the bot's mail to your
@@ -700,11 +850,18 @@ temporary home directory cannot point it at postfix).
     (section 5, step 4). And Claude must be started as that agent, with
     `session start claude` (section 4), never a bare `claude`, which hears only its
     own session's box.
-  - **NOT YET** end to end on a fresh Mac. On a fresh macOS 27 VM, sessionphone
-    0.2.0's bot would not start, because it signed its mail and a fresh install had
-    no way to make it a signing identity (2030-06-09). sessionphone 0.2.1 sends
-    unsigned under the drop (read in its source and docs); no fresh Mac has walked it
-    yet.
+  - **The first call is silent for about a minute** while the speech server fetches
+    its models (section 1).
+  - **MEASURED** end to end, walked and passed (2030-06-09, a fresh macOS 27 VM,
+    this release's kit with sessionphone 0.2.1, under the drop). `sessionphone bot
+    install` needed no key, no registry and no seat step. The bot's mail went unsigned
+    into the box `claude`, and a real call was answered aloud by a session started
+    with `session start claude`. One hint was typed during the walk: the agent was
+    reading an older copy of the phone guide, which asked for a signing key, and was
+    pointed to the signing line above. **NOT YET:** the ears on a real microphone
+    (section 5), and the uninstall (section 8). Before 0.2.1, on a fresh macOS 27 VM,
+    sessionphone 0.2.0's bot would not start, because it signed its mail and a fresh
+    install had no way to make it a signing identity (2030-06-09).
 - **Apple speech. HUMAN (Xcode, macOS 27).** `ears install --apple`. **NOT YET**.
 
 ## 7. Known gaps you will hit
@@ -714,6 +871,8 @@ temporary home directory cannot point it at postfix).
 - **The mouth's default "heard" box** names the authors' own mailbox; set
   `VOICEMODE_MOUTH_HEARD_BOX` to yours.
 - **Moving a clone breaks its plugin** without a word (section 3 says how to repair it).
+- **Claude Code's auto mode can refuse mail between agents** (`[Create Unsafe Agents]`).
+  Section 4 gives the permission rule, and how to leave auto mode.
 
 ## 8. Uninstall
 
@@ -744,8 +903,8 @@ bot and removes its launchd job. The account stays: it is your data (part B).
 kit's own sessionvoice package (section 2), and launchd keeps them loaded after its
 files are gone.
 
-- **The ride-along hook. HUMAN (hand edit).** In your launch directory's
-  `.claude/settings.local.json`, remove the two `ears heard hook || exit 1` entries and
+- **The ride-along hook. HUMAN (hand edit).** In the `.claude/settings.local.json`
+  that section 5, step 3 edited, remove the two `ears heard hook || exit 1` entries and
   leave any other hooks. If you pasted the whole file in section 5 and have added
   nothing since, delete the file. **NOT YET.**
 - **The voice jobs.** Run `ears services uninstall`, the kit's own `ears` that
@@ -804,19 +963,41 @@ runs that command, so launchd would keep it loaded on a missing file. **NOT YET*
   `find ~/.local/bin -type l -lname '*sessionview*'` lists the links to delete.
 
 **5. The plugins and the kit command (sections 3 and 2).** After step 4, with no
-`claude` session running, run both of these. Neither needs the other, so either order
-works:
+`claude` session running, remove the kit command and the plugins. Neither needs the
+other, so either order works. The plugins' lines depend on how section 3 installed
+them: from the kit's marketplace, or from your own clones. Run the lines for your
+route, and both sets if you used both.
 
 - `uv tool uninstall sessionkit`
+- `claude plugin marketplace remove sessionkit`, if you installed from the kit's
+  marketplace (section 3's first lines). This removes its six plugins too.
 - `claude plugin marketplace remove <r>` for each of the five (this removes the plugin
-  too)
+  too), if you installed them from your own clones (section 3's
+  [From your own clones](#from-your-own-clones-to-work-on-the-plugins-optional)).
 
-**MEASURED** (2030-06-09, Claude Code 2.1.301, one plugin, on a temporary home
-directory and Claude Code config directory): `claude plugin marketplace remove`
-uninstalled its plugin too (`Also uninstalled 1 plugin from this marketplace`), and
-`claude plugin list` then printed `No plugins installed.` **The plugin's cached copy
-stayed.** `~/.claude/plugins/cache/<r>/` was still there, marked `.orphaned_at`. This
-loop removes the five copies now. **NOT YET**: the loop has not run.
+**The plugins' copies stay.** Removing a marketplace does not delete the cached copies
+its plugins ran from (section 3, **The plugins run from a copy**). Delete them by hand.
+
+From the kit's marketplace, all six copies are in one folder,
+`~/.claude/plugins/cache/sessionkit/`:
+
+```bash
+rm -rf "${HOME:?}/.claude/plugins/cache/sessionkit"
+claude plugin list
+```
+
+**MEASURED** (2030-06-09, Claude Code 2.1.307, the kit's marketplace at 0.2.1, on a
+temporary home directory and Claude Code config directory): after section 3's two
+lines, `claude plugin marketplace remove sessionkit` exited 0, printed `Also
+uninstalled 6 plugins from this marketplace`, and removed the marketplace's own clone
+in `~/.claude/plugins/marketplaces/`. `claude plugin list` then printed `No plugins
+installed.` **The six copies stayed** in `~/.claude/plugins/cache/sessionkit/`, each
+`<name>/<version>/` folder marked `.orphaned_at`, 28 MB in all. These two lines then
+ran: the `rm` exited 0 and left `~/.claude/plugins/cache/` empty, and `claude plugin
+list` still printed `No plugins installed.`
+
+From your own clones, each plugin's copy is in a folder of its own,
+`~/.claude/plugins/cache/<r>/`:
 
 ```bash
 for r in sessionmail sessiontools sessionphone sessionvoice sessionview; do
@@ -825,9 +1006,18 @@ done
 claude plugin list
 ```
 
-If `claude plugin list` still shows one of the five, `claude plugin uninstall <r>@<r>`
-removes it by name. **MEASURED** (2030-06-09, uv 0.13.0, this release's kit with the
-five 0.2.0 packages from PyPI, on temporary uv tool directories): `uv tool uninstall
+**MEASURED** (2030-06-09, Claude Code 2.1.301, one plugin, on a temporary home
+directory and Claude Code config directory): `claude plugin marketplace remove`
+uninstalled its plugin too (`Also uninstalled 1 plugin from this marketplace`), and
+`claude plugin list` then printed `No plugins installed.` **The plugin's cached copy
+stayed.** `~/.claude/plugins/cache/<r>/` was still there, marked `.orphaned_at`. This
+loop removes the five copies now. **NOT YET**: the loop has not run.
+
+If `claude plugin list` still shows one of them, `claude plugin uninstall` removes it by
+the name the list shows: `<name>@sessionkit` from the kit's marketplace, with
+`sessionkit@sessionkit` among them, and `<r>@<r>` from a clone. **MEASURED**
+(2030-06-09, uv 0.13.0, this release's kit with the five 0.2.0 packages from PyPI, on
+temporary uv tool directories): `uv tool uninstall
 sessionkit` printed `Uninstalled 14 executables` and removed the kit's tool environment.
 
 **6. What the programs left (PROGRAM: none of it is your data).** No verb removes these
@@ -870,11 +1060,24 @@ folder only if the move never ran, or a sidebar started under the old name kept 
 not the kit's, and other tools may use them. So are Claude Code's own folders, such as
 `~/.claude` and `~/.local/state/claude`: leave them. Remove uv's Python with
 `uv python uninstall 3.14` only if nothing else needs it. Never delete `~/.local/bin`,
-`~/.cache`, `~/.sessionkit` or `~/.voicemode` whole: other tools keep files there. The
-speech models the voice's speech server fetched stay in the Hugging Face cache, which
-other tools share: `~/.cache/huggingface/hub`, unless you set `HF_HUB_CACHE` or
-`HF_HOME`. Never delete it whole.
-**NOT YET.**
+`~/.cache`, `~/.sessionkit` or `~/.voicemode` whole: other tools keep files there.
+
+**The speech models stay behind, about 2.7 GB.** The speech server fetched them on its
+first request (section 1) into the Hugging Face cache, which other tools share. The
+kit's server sets no cache variable, so they are in `~/.cache/huggingface/hub` (read in
+sessionvoice's docs/models.md). They are three folders there: the ears' Parakeet,
+`models--mlx-community--parakeet-tdt-0.6b-v3`; the mouth's Kokoro,
+`models--mlx-community--Kokoro-82M-bf16`; and Kokoro's voices, which come from a third
+repository, `models--prince-canuma--Kokoro-82M`. If no other tool uses them (VoiceMode's
+speech server can), remove just those three:
+
+```bash
+rm -rf "${HOME:?}/.cache/huggingface/hub/models--mlx-community--parakeet-tdt-0.6b-v3"
+rm -rf "${HOME:?}/.cache/huggingface/hub/models--mlx-community--Kokoro-82M-bf16"
+rm -rf "${HOME:?}/.cache/huggingface/hub/models--prince-canuma--Kokoro-82M"
+```
+
+Never delete the cache whole. **NOT YET.**
 
 ### B. Delete your data (USER DATA, opt-in)
 

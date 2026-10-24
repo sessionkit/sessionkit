@@ -275,8 +275,8 @@ def test_rule_sits_after_the_agents_md_item() -> None:
 @needs_conventions
 def test_rule_says_when_ruled_and_what_confirms_it() -> None:
     assert (
-        "Ruled 2030-06-09, building on the owner's "
-        "2030-06-07 AGENTS.md ruling; the owner's merge confirms it." in _rule()
+        "Ruled 2030-12-08, building on the owner's "
+        "2030-06-09 AGENTS.md ruling; the owner's merge confirms it." in _rule()
     )
 
 

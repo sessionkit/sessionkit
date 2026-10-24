@@ -16,8 +16,9 @@ Two kinds of test pin that:
   three CHANGELOG.md blobs (the merge base, ours, theirs) are vendored in
   ``tests/fixtures/changelog_union/``, because the branch side of the pair
   was rebased and is on no ref a clone fetches. Each fixture is the real
-  blob's bytes with only its dates made synthetic (SK-122: the release
-  heading and the born date move forward 209 whole weeks, into 2030). A test
+  blob's bytes with only its dates made synthetic (SK-122: the born date
+  reads 2030-06-09 and the release heading 2030-12-08, so the born date
+  still comes first). A test
   pins each fixture to its own blob id, so the replay runs on those bytes
   in any clone, shallow or fresh, and never skips. The attributes are set from outside: an empty
   ``attr.tree`` hides every in-tree ``.gitattributes``, and
@@ -76,17 +77,17 @@ PAIRS = {
         # 019dcb3: the merge base of the pair.
         "base": (
             "019dcb300aa8fb31eb557c57af3578479015992d",
-            "44d01a7d94e75f7521cdcebd8f2350e1d721a20f",
+            "65bb6de20e82708d035f9f2ac8912b42b01e73d9",
         ),
         # 4d3f965: master with SK-76 merged.
         "ours": (
             "4d3f9651c77d48dbc1a11d82db7c87f5906f02e3",
-            "115ab1edb3f4632e5d80148e48ce266449824f05",
+            "f09039993ab11e57a82d0732b6bc8841b8ee179a",
         ),
         # 78b915c: SK-89 before its rebase (it landed rebased, as 4d3973f).
         "theirs": (
             "78b915caac9c11f987e36b38aa2ccd3172c51e1c",
-            "8c96e3b0848bc3f01f9f2ed0407c70e9b2ea25c3",
+            "e5746d2fac295b99a8a9c0dd6af31d684c3d5129",
         ),
     },
 }

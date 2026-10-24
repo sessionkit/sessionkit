@@ -150,7 +150,8 @@ asks `session settings` for merged values.
 A reader given a tool SHALL find the tool's package through one map, kept
 by the tools package, and SHALL NOT guess the package from the tool's
 name. The map SHALL send `session`, `claude-code` and `sounds` to `tools`;
-`mail` to `mail`; `ears` and `mouth` to `voice`; and `view` to `view`.
+`mail` to `mail`; `ears` and `mouth` to `voice`; `view` to `view`; and
+`phone` to `phone`.
 
 #### Scenario: The mouth is in the voice package
 

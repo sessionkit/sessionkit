@@ -17,8 +17,8 @@ from _ruled_deps import FAMILY
 
 ROOT = Path(__file__).resolve().parent.parent
 
-# Each child's [project.scripts], measured from its built wheel at
-# mail 471a6f7, tools ab62717, phone 02d8cf7, view 3fada19, voice eda3f94.
+# Each child's [project.scripts], measured from its 0.3.0 wheel, by wheel sha256:
+# mail 8e4d9476, tools 8d089699, phone ac402a39, view 3942f119, voice ebc1b65c.
 CHILD_SCRIPTS = {
     "message": "sessionmail.message:cli",
     "pager": "sessionmail.pager:cli",
@@ -47,7 +47,7 @@ def _json(name: str) -> dict:
 def test_floor_comment_sits_beside_the_dependencies() -> None:
     text = (ROOT / "pyproject.toml").read_text()
     block = text.split("dependencies = [", 1)[0].rsplit("requires-python", 1)[1]
-    assert "Floored at 0.2.0" in block
+    assert "Floored at 0.3.0" in block
     assert "0.1.0 alphas" in block
 
 

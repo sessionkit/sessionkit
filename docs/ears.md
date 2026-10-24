@@ -204,6 +204,11 @@ Set up on a Mac:
     ears services install --agent NAME   # speech server, mouth, keeper and
                                          # mail agents; NAME becomes a wake seat
 
+With neither `--agent NAME` nor `--no-agent`, and no seat in the wake file,
+install refuses (exit 2, nothing written): the mail would wake nobody.
+`--no-agent` installs anyway, with that warning; a wake file that already
+names a seat is not refused.
+
 The speech server is the mlx-audio server on `127.0.0.1:8890`. Install
 uses one that is already running and says it is mlx-audio, and starts
 none; when there is none, it installs its own,

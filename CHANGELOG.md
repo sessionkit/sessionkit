@@ -9,6 +9,103 @@ stamps this file.
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-24
+
+### Added
+
+- `sessionkit setup` says when the ears cannot hear you yet. It asks
+  `ears backends`, read only, with a 5 second limit, and if the ears'
+  voice-activity model is missing it prints one line naming `ears install`,
+  just before the launch step. It never runs `ears install`, and the line
+  never changes its exit. With no `ears` on the PATH, or no answer, it says
+  nothing about the model.
+- INSTALL.md says how the plugins reach a session started with
+  `--setting-sources ""`: pass `--settings <file>` whose `enabledPlugins`
+  names all six, because the kit's plugin stays off without the five it
+  depends on. It also says that a `--plugin-dir` holding a plugin of the same
+  name replaces the installed one for that session.
+
+### Changed
+
+- The kit needs the family's 0.3.0: sessionmail, sessiontools,
+  sessionphone (with its media extra), sessionview and sessionvoice (with
+  its capture extra) are each floored at 0.3.0.
+- The README's Installation names what the install needs besides macOS and
+  Claude Code: Homebrew, or at least Apple's Command Line Tools
+  (`xcode-select --install`), because the plugin lines clone with their git
+  and the ears build a Swift helper with their `swiftc`. It also gives the
+  `ears install` step the plugin lines leave out: it fetches the ears'
+  voice-activity model, without which they cannot hear you and
+  `ears services install` refuses.
+- Phone calls are walked for a session started with `session start <name>`:
+  a fresh Mac took a real call, its bot's mail unsigned on the mail drop, and
+  Delta messages reached a session started with `session start claude`. A
+  plain `claude` session does not hear calls you make to it yet. The README
+  and INSTALL.md say so, and keep
+  the ears on a real microphone and the uninstall marked not walked.
+  INSTALL.md also counts the speech server's disk, its venv (1.2 GB) and
+  its models (2.7 GB, fetched on its first request), says the first call is
+  silent for about a minute while they download, gives
+  `ears services install --agent <name>` (without it nobody is woken when
+  you speak), and gives Homebrew's time as a range, 87 to 220 seconds.
+- INSTALL.md says that Claude Code's auto mode can refuse an agent's
+  `message send` to another agent (`[Create Unsafe Agents]`). It gives the
+  fix, a `Bash(message send *)` permission rule, and how to leave auto mode
+  (Shift+Tab). Section 5 says the mail path's
+  `message subscription add heard+<device>` is refused until your agent is
+  an administrator, names the administrators file that lets it through, and
+  leaves that path for later.
+- The README and INSTALL.md give a safe upgrade, `uv tool upgrade sessionkit`,
+  which keeps the Python the install chose, and a safe reinstall,
+  `uv tool install --python 3.14 --reinstall sessionkit`. Measured with uv
+  0.13.4: a reinstall without the pin drops it, and `--force` without it
+  builds the kit again on the Python uv finds. Restarting Claude Code after
+  the plugin lines is now a step of its own, before anything that runs a
+  plugin's command: a session that was already open does not have them.
+  INSTALL.md says where Claude Code reads `.claude/settings.local.json`
+  inside a git repository (its root), and that the speech server's models,
+  about 2.7 GB, stay in the Hugging Face cache after the uninstall, with the
+  lines that remove only those three folders. docs/components.md and the website say
+  phone calls are walked on a fresh Mac for a session started with
+  `session start <name>`.
+- INSTALL.md no longer says that an install without `--python 3.14` gets
+  the 0.0.1 placeholder: that placeholder is gone from PyPI. Measured with uv
+  0.13.4 and empty uv folders, the install fetches Python 3.15, then refuses,
+  exit 1, as unsatisfiable (a voice library has no 3.15 build), and installs
+  nothing. The `--python 3.14` advice stays.
+- The synthetic dates in the docs and tests fall on one of two days,
+  2030-06-09 and 2030-12-08. Where the text says one came before another,
+  the earlier one reads 2030-06-09 and the later one 2030-12-08, so the
+  order holds. Clock times are unchanged, and release headings keep their
+  real dates.
+- The README and the agent letter say how your agent talks with the kit: it
+  speaks with `mouth say` and listens with `ears-arm`, and uses VoiceMode's
+  `converse` only when you ask for converse by name. Both quote the rule from
+  sessionvoice's ears skill. The agent letter has a second block to copy into
+  your letter.
+- docs/session.md is sessiontools' page for `session` now, not a stub: each
+  verb, its form and one example. docs/ears.md and docs/mouth.md are
+  imported again from sessionvoice: `ears services install` refuses with no
+  `--agent NAME` or `--no-agent`, and the mouth's queue is 0700 and every
+  line picks its device in one order, ending at the system default output.
+- docs/session.md is imported again from sessiontools. Its two synthetic
+  dates now fall on the two days, 2030-06-09 and 2030-12-08, and
+  `session settings` lists `phone` among the tools it can pick.
+- The tree spec's package map names the `phone` tool, in the `phone`
+  package, as sessiontools' map does. Its host file is
+  `~/.sessionkit/phone/settings/phone.json`.
+
+### Fixed
+
+- INSTALL.md's uninstall gives the plugin lines for each install route. A
+  kit install removes the one `sessionkit` marketplace, then deletes
+  `~/.claude/plugins/cache/sessionkit`, where its six plugins' copies stay
+  after the remove. Before, it gave only the clones route's five
+  marketplaces and five cache folders, so a kit install's copies were left
+  behind. The README's Uninstall says the copies stay and points at it.
+
+## [0.2.1] - 2026-10-22
+
 ### Added
 
 - A dependency gate in the tests. The kit's ruled dependency list (the five

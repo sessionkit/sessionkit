@@ -113,6 +113,40 @@ def test_installation_says_why_the_pin_and_that_the_kit_is_tested_on_3_14():
     assert "The kit is tested on 3.14." in install
 
 
+def test_installation_names_homebrew_or_the_command_line_tools_first():
+    # A Mac with neither has no git for the plugin lines and no swiftc for the
+    # ears' Swift helper (sessionvoice's keeper builds keeper/input-watch.swift
+    # with swiftc). Both ship in the Command Line Tools, which Homebrew installs:
+    # Homebrew leads, the tools alone are the floor.
+    install = _section("Installation")
+    flat = " ".join(install.split())
+    requirement = flat[:flat.index("uv tool install")]
+    assert "[Homebrew][brew] or at least Apple's Command Line Tools" in requirement
+    assert requirement.index("Homebrew") < requirement.index("Command Line Tools")
+    assert "the plugin lines clone with git" in requirement
+    assert "the ears build a Swift helper with `swiftc`" in requirement
+    assert "`xcode-select --install`" in requirement
+    assert re.search(r"^\[brew\]: https://brew\.sh$", README, re.MULTILINE)
+    assert re.search(r"^\[prereqs\]: INSTALL\.md#1-prerequisites-human$", README, re.MULTILINE)
+    assert "## 1. Prerequisites (HUMAN)" in INSTALL_DOC
+
+
+def test_installation_gives_ears_install_after_the_plugin_lines():
+    # The three install lines leave the ears with no voice-activity model, and
+    # sessionvoice's `ears services install` refuses without it.
+    install = _section("Installation")
+    blocks = _bash_blocks(install)
+    assert blocks[1] == "ears install\n", blocks
+    flat = " ".join(install.split())
+    assert flat.index(PLUGIN_LINES[1]) < flat.index("ears install") < flat.index("mail hooks start off")
+    assert "`~/.cache/ears/silero_vad.onnx`" in flat
+    assert "the ears cannot hear you" in flat
+    assert "refuses with `silero MISSING`" in flat
+    # INSTALL agrees: section 4's first check is the same fetch, to the same file.
+    assert "`ears install`: fetches the voice-activity model to `~/.cache/ears/silero_vad.onnx`" in (
+        " ".join(_install_section(4).split()))
+
+
 def test_installation_warns_of_the_command_line_tools_dialog_before_git_is_needed():
     install = " ".join(_section("Installation").split())
     assert "**A dialog may ask to install the Command Line Tools.**" in install
@@ -139,8 +173,11 @@ PHONE_PARAGRAPH = (
 def test_installation_gives_the_calls_passage_as_one_line_and_a_link():
     install = _section("Installation")
     flat = " ".join(install.split())
-    bullet = ("- **Phone calls are installed, not yet walked.** Whether the phone bot signs its mail "
-              "to your Claude follows your mail carrier: [bot mail signing][phone-signing].")
+    bullet = ("- **Phone calls are installed, and walked for a session started with "
+              "`session start <name>`.** A fresh Mac took a real call and passed. A plain `claude` "
+              "session does not hear calls you make to it yet. "
+              "Whether the phone bot signs its mail to your Claude follows your mail carrier: "
+              "[bot mail signing][phone-signing].")
     assert bullet in flat
     # The 0.2.0 hand-install of the extra is gone: 0.2.1 floors sessionphone[media].
     assert "--with 'sessionphone[media]'" not in README
@@ -182,10 +219,15 @@ def test_no_doc_promises_that_calls_work(pattern):
         assert not re.search(pattern, " ".join(text.split()), re.IGNORECASE), (name, pattern)
 
 
-def test_every_calls_passage_says_installed_not_yet_walked():
+def test_every_calls_passage_says_installed_and_walked():
+    # A fresh Mac walked a real call, and it passed: no README line still
+    # says the calls are not walked.
     flat = " ".join(README.split())
-    assert flat.count("not yet walked") == 2, "the Installation line, The family"
-    assert "Installed, not yet walked." in " ".join(_section("The family").split())
+    assert "not yet walked" not in flat
+    assert flat.count("and walked") == 2, "the Installation line, The family"
+    assert ("Installed, and walked on a fresh Mac for a session started with `session start <name>`. "
+            "A plain `claude` session does not hear calls you make to it yet."
+            ) in " ".join(_section("The family").split())
     # One calls passage: Usage no longer repeats it, and the link is given once.
     assert "phone" not in _section("Usage").lower()
     assert flat.count("[phone-signing]") == 2, "one use, one definition"
@@ -203,7 +245,10 @@ def test_components_first_commands_do_not_show_the_call_setup():
     body = first.group(1)
     for verb in CALL_SETUP_VERBS:
         assert verb not in body, verb
-    assert "installed, not yet walked on a fresh Mac" in " ".join(body.split())
+    assert ("installed, and walked on a fresh Mac for a session started with `session start <name>`"
+            in " ".join(body.split()))
+    assert "A plain `claude` session does not hear calls you make to it yet." in " ".join(body.split())
+    assert "not yet walked" not in " ".join(components.split())
 
 
 FALSE_AT_0_2_0 = (
@@ -225,11 +270,11 @@ def test_the_readme_no_longer_says_the_plugin_install_fails(claim):
 def test_quick_start_shows_the_measured_version_lines():
     quick = _section("Quick start")
     [text] = re.findall(r"^```text\n(.*?)^```", quick, re.MULTILINE | re.DOTALL)
-    assert text.splitlines()[0] == "sessionkit, version 0.2.1"
-    # The kit's floors: sessionmail, sessionphone and sessionvoice at 0.2.1,
-    # the other two at 0.2.0 (tests/_ruled_deps.py), as a fresh install prints.
-    measured = {"sessionmail": "0.2.1", "sessiontools": "0.2.0", "sessionphone": "0.2.1",
-                "sessionview": "0.2.0", "sessionvoice": "0.2.1"}
+    assert text.splitlines()[0] == "sessionkit, version 0.3.0"
+    # The kit's floors: every family package at 0.3.0 (tests/_ruled_deps.py),
+    # as a fresh install prints.
+    measured = {"sessionmail": "0.3.0", "sessiontools": "0.3.0", "sessionphone": "0.3.0",
+                "sessionview": "0.3.0", "sessionvoice": "0.3.0"}
     assert [line.split() for line in text.splitlines()[1:]] == [
         [name, measured[name]] for name in cli.FAMILY]
 
@@ -254,6 +299,17 @@ def test_uninstall_removes_the_marketplace_then_the_commands():
     block = _bash_blocks(_section("Uninstall"))[0].splitlines()
     assert block == ["claude plugin marketplace remove sessionkit", "uv tool uninstall sessionkit"]
     assert "removes its six plugins too" in _section("Uninstall")
+
+
+def test_uninstall_says_the_plugin_copies_stay_and_points_at_section_8():
+    # SK-169: the marketplace remove leaves the cached copies (INSTALL.md
+    # section 8 step 5 measured them, marked .orphaned_at); the README says so
+    # and sends the reader to section 8 for them.
+    flat = " ".join(_section("Uninstall").split())
+    assert "removes its six plugins too, but not the copies they ran from." in flat
+    assert "Those copies, the services and your data have their own steps: [uninstall][uninstall]." in flat
+    assert "\n[uninstall]: INSTALL.md#8-uninstall\n" in README
+    assert 'rm -rf "${HOME:?}/.claude/plugins/cache/sessionkit"' in _install_section(8)
 
 
 def test_development_clones_the_public_url():
@@ -377,8 +433,8 @@ def test_install_sections_3_and_7_no_longer_say_the_kit_plugin_fails(claim):
 # SK-64: the install doc after the 0.1.0 release. 0.1.0 is on PyPI for all
 # six packages (measured read-only 2030-06-09), so the doc no longer tells
 # a reader to wait for it (G8) or to use a folder of wheels; it keeps the
-# --python 3.14 pin (on 3.15 the resolve still picks the 0.0.1
-# placeholder), says the install is online-only (G10), and the
+# --python 3.14 pin (on 3.15 the resolve is refused: onnxruntime has no
+# cp315 wheel), says the install is online-only (G10), and the
 # troubleshooting hub links the phone's own call checks (PHONE-114).
 TROUBLESHOOTING = (ROOT / "docs" / "troubleshooting.md").read_text(encoding="utf-8")
 
@@ -409,14 +465,20 @@ def test_install_doc_states_the_size_and_when_calls_download():
     assert "uv downloaded about 93 MB, and the kit's tool folder is about 280 MB on disk" in flat
     assert "about 52 MB of the 280 MB" in flat
     assert "61 packages" in flat and "14 commands" in flat
-    assert "**Phone calls are installed, not yet walked.**" in kit
+    assert ("**Phone calls are installed, and walked for a session started with "
+            "`session start <name>`.** A plain `claude` session does not hear calls you make to it "
+            "yet.") in flat
     assert "They download with everything else, during `uv tool install`, with no separate step" in flat
-    assert "Setting them up is section 6, and no fresh Mac has walked it yet." in flat
+    assert ("Setting them up is section 6, which a fresh Mac has walked for a session started "
+            "with `session start <name>`.") in flat
     # The Linux line: sessionvoice 0.2.1's base dependency sounddevice brings no
     # PortAudio on Linux.
     assert "`libportaudio2`" in kit
     optional = _install_section(6)
-    assert "Phone calls are installed, not yet walked." in " ".join(optional.split())
+    assert ("Phone calls are installed, and walked on a fresh Mac for a session started with "
+            "`session start <name>`. A plain `claude` session does not hear calls you make to it "
+            "yet.") in " ".join(optional.split())
+    assert "not yet walked" not in " ".join(INSTALL_DOC.split())
     assert "https://github.com/sessionkit/sessionphone" in optional
     assert "not yet available" not in INSTALL_DOC
 
@@ -439,9 +501,13 @@ def test_section_6_names_the_two_conditions_and_the_start_line():
     assert "**Two things decide whether its mail reaches your Claude.**" in phone
     assert "the drop never makes one: `sessionkit setup` makes `claude` (section 5, step 4)" in phone
     assert "`session start claude` (section 4), never a bare `claude`" in phone
-    # Not walked: the caveat stays until a fresh-Mac walk has a receipt.
-    assert "**NOT YET** end to end on a fresh Mac." in phone
-    assert "no fresh Mac has walked it yet" in phone
+    # Walked on a fresh Mac, and passed; what the walk did not cover stays NOT YET.
+    assert "**MEASURED** end to end, walked and passed (2030-06-09, a fresh macOS 27 VM," in phone
+    assert "**NOT YET** end to end on a fresh Mac." not in phone
+    assert "no fresh Mac has walked it yet" not in phone
+    assert ("**NOT YET:** the ears on a real microphone (section 5), and the uninstall "
+            "(section 8).") in phone
+    assert "One hint was typed during the walk" in phone
 
 
 def _calls_passages() -> dict[str, str]:
@@ -466,6 +532,73 @@ def test_install_doc_keeps_the_python_pin():
     kit = _install_section(2)
     assert "uv tool install --python 3.14 sessionkit\n" in kit
     assert "keep `--python 3.14`" in kit
+    flat = " ".join(kit.split())
+    # The 0.0.1 placeholder is gone from PyPI: on 3.15 the install is refused.
+    assert not re.search(r"(?<![\d.])0\.0\.1(?![\d.])", flat)
+    assert "installs the 0.0.1 placeholder" not in flat and "one `hello` verb" not in flat
+    assert "uv refuses, exit 1, with `your requirements are unsatisfiable`, and installs nothing." in flat
+    assert "fetched CPython 3.15.0, then refused, exit 1, and no tool was installed" in flat
+
+
+def test_no_shipped_doc_says_a_bare_install_gets_the_placeholder():
+    for name, doc in (("README.md", README), ("INSTALL.md", INSTALL_DOC), ("site/index.html", SITE)):
+        # A version 0.0.1, not the 0.0.1 inside 127.0.0.1.
+        assert not re.search(r"(?<![\d.])0\.0\.1(?![\d.])", doc), name
+
+
+# The phone call was walked only for a session started with `session start
+# <name>`; a plain `claude` session does not hear calls yet. So a passage
+# about calls that says "walked" must name that condition after it, in the
+# same paragraph, bullet or table row. "not yet walked" and its kin are not
+# claims.
+_CALLS_UNIT = re.compile(r"\n\s*\n|\n(?=[ \t]*(?:[-*|]|\d+\.)\s?)")
+_NOT_A_CLAIM = re.compile(r"(not yet|not|neither has been|has yet been|has not yet been)\s*$", re.IGNORECASE)
+_PLAIN_CLAUDE = "A plain `claude` session does not hear calls you make to it yet."
+
+
+def _bare_calls_walked_claims(text: str) -> list[str]:
+    bare = []
+    for unit in _CALLS_UNIT.split(text):
+        flat = " ".join(unit.replace("*", "").split())
+        if not re.search(r"\bcalls?\b|\bphone\b", flat, re.IGNORECASE):
+            continue
+        for walked in re.finditer(r"\bwalked\b", flat):
+            if _NOT_A_CLAIM.search(flat[: walked.start()]):
+                continue
+            if "`session start" not in flat[walked.end():]:
+                bare.append(flat[max(0, walked.start() - 60): walked.end() + 30])
+    return bare
+
+
+@pytest.mark.parametrize("bare", (
+    "- **Phone calls are installed, and walked.** A fresh Mac took a real call\n  and passed.\n",
+    "Phone calls are\ninstalled, and walked on a fresh Mac (section 6).\n",
+    "- [sessionphone][pkg-phone]: phone calls to a session over Delta Chat.\n  Installed, and walked on a fresh Mac.\n",
+    "The kit installs its calls packages. Setting them up is\nsection 6, which a fresh Mac has walked.\n",
+))
+def test_the_calls_walked_check_catches_a_bare_claim(bare):
+    assert _bare_calls_walked_claims(bare)
+
+
+@pytest.mark.parametrize("fine", (
+    "**Phone calls are installed, and walked for a session started with\n`session start <name>`.**\n",
+    "Phone calls are **NOT\nYET** walked.\n",
+    ("  - **MEASURED** end to end, walked and passed (a fresh VM). A real call was answered\n"
+     "    aloud by a session started with `session start claude`.\n"),
+    "The uninstall has not yet been walked.\n",
+))
+def test_the_calls_walked_check_passes_a_conditioned_or_negative_line(fine):
+    assert not _bare_calls_walked_claims(fine)
+
+
+def test_no_doc_says_calls_are_walked_without_the_session_start_condition():
+    components = (ROOT / "docs" / "components.md").read_text(encoding="utf-8")
+    for name, doc in (("README.md", README), ("INSTALL.md", INSTALL_DOC), ("docs/components.md", components)):
+        assert _bare_calls_walked_claims(doc) == [], name
+    # Each headline claim also says what a plain `claude` session does not do yet.
+    assert " ".join(README.split()).count(_PLAIN_CLAUDE) == 2, "the Installation line, The family"
+    assert " ".join(INSTALL_DOC.split()).count(_PLAIN_CLAUDE) == 3, "the status line, sections 2 and 6"
+    assert " ".join(components.split()).count(_PLAIN_CLAUDE) == 1, "First commands"
 
 
 def test_install_doc_says_it_is_online_only():
@@ -525,6 +658,98 @@ def test_install_doc_disk_line_agrees_with_the_install_size():
     assert "the kit about 280 MB" in prereqs
     assert "277 MB" not in prereqs
     assert "the kit's tool folder is about 280 MB on disk" in kit
+
+
+# A fresh-Mac walk measured the speech server: its venv and its models, which
+# arrive on its first request, and the silent first minute while they do.
+def test_install_doc_disk_line_counts_the_speech_server_and_its_first_minute():
+    prereqs = " ".join(_install_section(1).split())
+    assert "plus about 3.9 GB for the speech-to-text server (section 5): its venv, 1.2 GB, and its models, 2.7 GB" in prereqs
+    assert "plus room for a speech-to-text server" not in prereqs
+    assert "**The first call is silent for about a minute.**" in prereqs
+    assert "on its first request, not at install" in prereqs
+    assert "The first spoken line took 65.1 seconds and the first heard speech 60.2 seconds" in prereqs
+    # Section 6, where a caller meets the silence, points back to it.
+    phone = " ".join(_install_section(6).split())
+    assert "**The first call is silent for about a minute** while the speech server fetches its models (section 1)." in phone
+
+
+# Two walks timed Homebrew with the Command Line Tools: the doc gives the range.
+def test_install_doc_gives_homebrews_time_as_the_measured_range():
+    prereqs = " ".join(_install_section(1).split())
+    assert "87 to 220 seconds with the Command Line Tools" in prereqs
+    assert "): 220 seconds with" not in prereqs
+
+
+# A bare `ears services install` wakes nobody: section 5 step 2 gives the line
+# with --agent, the flag sessionvoice 0.2.1's `ears services install` takes,
+# and its warning word for word.
+def test_install_doc_gives_ears_services_install_with_agent_and_why():
+    hearing = _install_section(5)
+    flat = " ".join(hearing.split())
+    assert "```bash\n     ears services install --agent <name>\n     ```" in hearing
+    assert "Without `--agent`, nobody is woken when you speak." in flat
+    assert "`no --agent NAME: NOBODY will be woken when you speak`" in flat
+    assert "(`ears wake add <name>`)" in flat
+    # The walk had no microphone: the ears on real audio stay NOT YET.
+    assert "with no microphone: **NOT YET** on real audio." in flat
+    # The line sits in step 2, after the bare command is introduced.
+    assert hearing.index("**Then** `ears services install`") < hearing.index(
+        "ears services install --agent <name>") < hearing.index("**Optional: speaker names.")
+
+
+# The fresh-Mac walk: Claude Code's auto mode refused an agent's `message send`
+# that asked another agent to act. Section 4 quotes the refusal and gives the two
+# fixes Claude Code's own docs give: a narrow allow rule (checked before the
+# classifier, and not one of the broad rules auto mode drops), or leaving auto
+# mode with Shift+Tab. Section 7 points there.
+AUTO_MODE_REFUSAL = ("Permission for this action was denied by the Claude Code auto mode "
+                     "classifier. Reason: [Create Unsafe Agents].")
+
+
+def test_section_4_names_the_auto_mode_refusal_and_its_two_fixes():
+    checks = _install_section(4)
+    flat = " ".join(checks.split())
+    assert f"```text\n  {AUTO_MODE_REFUSAL}\n  ```" in checks
+    rule = '{"permissions": {"allow": ["Bash(message send *)"]}}'
+    assert f"```json\n    {rule}\n    ```" in checks
+    json.loads(rule)
+    assert "In auto mode an allow rule is checked before the classifier" in flat
+    assert "**Leave auto mode.** Press Shift+Tab." in flat
+    assert "`⏸ manual mode on`" in flat
+    assert '`{"permissions": {"defaultMode": "default"}}`' in flat
+    # Sourced, not walked: the doc must not claim the fix was measured.
+    assert "neither has been walked" in flat
+    # The refusal sits where mail first runs from the agent, before the tmux walk.
+    assert checks.index("`message send` work only inside a `claude` session") < checks.index(
+        AUTO_MODE_REFUSAL) < checks.index("### Your first agent, in tmux")
+    gaps = " ".join(_install_section(7).split())
+    assert "auto mode can refuse mail between agents" in gaps
+
+
+# The walk: the heard box's subscription was refused for the seat `claude` until
+# section 2's administrators file named it. Section 5 names that deferral where
+# install prints the subscribe line, and gives the file that unlocks it.
+def test_section_5_names_the_subscription_deferral_and_the_administrators_file():
+    hearing = _install_section(5)
+    flat = " ".join(hearing.split())
+    assert "this guide leaves it for later" in flat
+    assert "`message subscription add heard+macbook` is refused, exit 2" in flat
+    assert "`a seat's mail is that seat's to grant`" in flat
+    assert "[Operator and administrators](#operator-and-administrators)" in flat
+    assert '`{"operator": {"privileged": ["claude"]}}`' in flat
+    assert "### Operator and administrators" in _install_section(2)
+    assert hearing.index("ears services install --agent <name>") < hearing.index(
+        "this guide leaves it for later") < hearing.index("**Optional: speaker names.")
+
+
+# Section 4's Delta check is walked now; it says so, with its measurement.
+def test_section_4_says_delta_to_session_start_is_walked():
+    checks = " ".join(_install_section(4).split())
+    assert "no Delta message has yet been walked" not in checks
+    assert ("**MEASURED**, walked and passed (2030-06-09, a fresh macOS 27 VM, this release's kit "
+            "with sessionmail, sessionphone and sessionvoice 0.2.1): Delta messages and a phone call "
+            "reached a session started with `session start claude`.") in checks
 
 
 # SK-88 (0.2.1): the monitor paragraph speaks of section 3's plugin, not a clone.
@@ -1504,11 +1729,182 @@ def test_the_site_promises_no_call_it_has_not_walked():
     for promise in ("pick up when you ring", "ring your Claude Code session"):
         assert promise not in SITE, promise
     flat = _flat(SITE)
-    assert "The phone line installs, but no Delta message or call has yet been walked to a session." in flat
+    assert ("Walked on a fresh Mac: Delta messages and a real phone call reached a session started "
+            "with <code>session start claude</code>, and it answered aloud.") in flat
+    assert "has yet been walked to a session" not in flat
+    assert "The uninstall has not yet been walked." in flat
+    assert "but not yet with a real microphone" in flat
     # The site links nothing outside its folder and never names the install doc
     # (tests/test_site.py): it points to the README's Installation, whose calls
     # line links sessionphone's page.
     assert 'whether it signs follows the mail carrier (<a href="../README.md#installation">the README</a>)' in flat
     assert "never a bare <code>claude</code>" in flat
-    assert "no Delta message or call has yet been walked to a session" in SITE
     assert "<code>session start claude</code>" in SITE
+
+
+# A reinstall that left out `--python 3.14` broke an install. Measured with uv
+# 0.13.4 on scratch tool dirs: `uv tool upgrade` keeps the pinned Python; a
+# reinstall must give `--python 3.14` again. Every upgrade or reinstall line
+# the docs give carries what it needs.
+UPGRADE_LINE = "uv tool upgrade sessionkit"
+REINSTALL_LINE = "uv tool install --python 3.14 --reinstall sessionkit"
+
+
+def test_readme_gives_a_safe_upgrade_and_reinstall_and_why():
+    flat = " ".join(_section("Installation").split())
+    assert f"**Upgrade with `{UPGRADE_LINE}`.** It keeps the Python the install chose." in flat
+    assert f"`{REINSTALL_LINE}`" in flat
+    assert "Without it, uv drops the pin from its record" in flat
+
+
+def test_install_section_2_gives_the_measured_upgrade_lines():
+    kit = _install_section(2)
+    assert f"```bash\n{UPGRADE_LINE}\n{REINSTALL_LINE}\n```" in kit
+    flat = " ".join(kit.split())
+    assert "**MEASURED** (uv 0.13.4, sessionkit 0.2.1 from PyPI" in flat
+    assert "`uv tool install --reinstall sessionkit` stayed on 3.14 but dropped the pin." in flat
+    assert "`uv tool upgrade` has no `--refresh` on uv 0.13.4" in flat
+
+
+def test_every_uv_upgrade_or_reinstall_line_is_safe_on_its_own():
+    # Every line a doc gives to RUN (a bash block) that installs or reinstalls
+    # the kit pins 3.14; `uv tool upgrade` keeps the pin the install made. The
+    # unsafe forms appear only as measurements, in prose.
+    for name, doc in (("README.md", README), ("INSTALL.md", INSTALL_DOC)):
+        runs = [line.strip() for block in re.findall(r"```bash\n(.*?)```", doc, re.DOTALL)
+                for line in block.splitlines()]
+        kit = [line for line in runs if re.match(r"uv tool (install|upgrade)\b.*\bsessionkit$", line)]
+        assert kit, name
+        for line in kit:
+            assert line == UPGRADE_LINE or "--python 3.14" in line, (name, line)
+        assert not [line for line in runs if "--refresh" in line], name
+
+
+# The plugins' bin is on PATH only once Claude Code starts again, so the restart
+# is a step of its own, before anything that runs a plugin's command.
+RESTART = "**Then quit Claude Code and start it again**, every window of it"
+
+
+def test_readme_restart_is_its_own_step_before_ears_install():
+    install = _section("Installation")
+    flat = " ".join(install.split())
+    assert "(or restart it) to load them" not in flat
+    assert RESTART in flat
+    assert "a session that was already open has no plugin commands on its PATH" in flat
+    assert flat.index(PLUGIN_LINES[1]) < flat.index(RESTART) < flat.index("```bash ears install")
+
+
+def test_install_restart_is_its_own_step_before_section_4():
+    plugins = _install_section(3)
+    flat = " ".join(plugins.split())
+    assert "(or restart it) to load them" not in " ".join(INSTALL_DOC.split())
+    assert f"{RESTART}, before any step below." in flat
+    assert "or on `/reload-plugins` in a session already open" in flat
+    assert flat.index("claude plugin list") < flat.index(RESTART) < flat.index("**The plugins run from a copy.**")
+
+
+# Claude Code 2.1.211+ reads .claude/settings.local.json at the git repository's
+# root when the launch directory is inside one; section 5 step 3 says where, and
+# the other two passages point there.
+def test_settings_local_json_location_is_said_once_and_pointed_to():
+    flat = " ".join(INSTALL_DOC.split())
+    assert "In your launch directory's `.claude/settings.local.json`" not in flat
+    assert ("if your launch directory is inside a git repository, Claude Code 2.1.211 and later "
+            "reads it at the repository's root, `<repository root>/.claude/`.") in flat
+    # The settings docs keep the file in the launch directory when the repository's
+    # root is the home directory.
+    assert "Otherwise, or when that root is your home directory, it is in the launch directory itself" in flat
+    assert "that section 5, step 3 edits (it says where that file is)" in flat
+    assert "In the `.claude/settings.local.json` that section 5, step 3 edited, remove" in flat
+
+
+# The speech server's models stay in the shared Hugging Face cache; section 8
+# says so, where, and how to remove only the three folders the kit's server fetched:
+# sessionvoice's SPEECH_WEIGHTS names Parakeet, Kokoro, and Kokoro's voices, which
+# come from a third repository.
+def test_uninstall_says_the_speech_models_stay_and_where():
+    uninstall = _install_section(8)
+    flat = " ".join(uninstall.split())
+    assert "**The speech models stay behind, about 2.7 GB.**" in flat
+    assert "so they are in `~/.cache/huggingface/hub`" in flat
+    for repo in ("mlx-community--parakeet-tdt-0.6b-v3", "mlx-community--Kokoro-82M-bf16",
+                 "prince-canuma--Kokoro-82M"):
+        assert f'rm -rf "${{HOME:?}}/.cache/huggingface/hub/models--{repo}"' in uninstall
+    assert "remove just those three:" in flat
+    assert "Never delete the cache whole." in flat
+
+
+# The kit's voice path is mouth and ears. The README's Quick start and the
+# agent letter QUOTE sessionvoice's rule, word for word: the paragraph under
+# "Talking with the kit: mouth and ears by default" in sessionvoice's
+# skills/ears/SKILL.md at 4be6c60. The test cannot read sessionvoice's repo,
+# so the paragraph is kept here; if sessionvoice rewords it, this copy and both
+# docs move together.
+EARS_VOICE_RULE = """\
+**With the kit, an agent talks through the kit's own mouth and ears: it
+speaks with `mouth say` and listens by arming the ears with `ears-arm`. That
+is the default whenever the user asks it to talk, speak, listen or use voice,
+even on a host that also has VoiceMode's `converse` tool. It uses `converse`
+only when the user asks for converse by name.**
+"""
+
+
+def _bare_words(text: str) -> str:
+    """The quote's words with `>`, `**` and all whitespace stripped, for a byte compare."""
+    return re.sub(r"\s+", "", text.replace(">", "").replace("**", ""))
+
+
+def _letter_section(title: str) -> str:
+    match = re.search(rf"^## {re.escape(title)}\n(.*?)(?=^## |\Z)", AGENT_LETTER, re.MULTILINE | re.DOTALL)
+    assert match, f"docs/agent-letter.md has no '## {title}' section"
+    return match.group(1)
+
+
+def test_quick_start_quotes_the_ears_voice_rule_word_for_word():
+    quick = _section("Quick start")
+    lines = [line.strip() for line in quick.splitlines()]
+    quote = "\n".join(line for line in lines if line.startswith(">"))
+    assert quote, "Quick start has no blockquote"
+    assert _bare_words(quote) == _bare_words(EARS_VOICE_RULE)
+    assert "**Your agent talks with the kit's mouth and ears.**" in quick
+    assert "sessionvoice's ears skill sets the default" in " ".join(quick.split())
+
+
+def test_the_quick_start_voice_bullet_comes_after_the_pinned_two():
+    quick = _section("Quick start")
+    mail = quick.index("- **Mail works inside a session.**")
+    mouth = quick.index("- **The mouth needs a device.**")
+    voice = quick.index("- **Your agent talks with the kit's mouth and ears.**")
+    assert mail < mouth < voice
+
+
+def test_the_agent_letter_gives_the_ears_voice_rule_as_a_block_to_copy():
+    section = _letter_section("Voice: mouth and ears by default")
+    blocks = re.findall(r"^```text\n(.*?)^```", section, re.MULTILINE | re.DOTALL)
+    assert len(blocks) == 1, blocks
+    # A plain-text block, like the pager's: no bold markers, every word kept.
+    assert "**" not in blocks[0]
+    assert _bare_words(blocks[0]) == _bare_words(EARS_VOICE_RULE)
+    assert "Put this in your letter too, word for word." in section
+
+
+def test_the_agent_letter_names_voice_in_its_title_and_keeps_the_pager_first():
+    assert AGENT_LETTER.startswith("# The agent letter: what it says about the pager and voice\n")
+    flat = " ".join(AGENT_LETTER.split())
+    assert "It gives the words about the pager, and about voice, that every letter should carry." in flat
+    heads = re.findall(r"^## (.+)$", AGENT_LETTER, re.MULTILINE)
+    assert heads.index("Why") + 1 == heads.index("Voice: mouth and ears by default")
+    assert heads.index("Voice: mouth and ears by default") + 1 == heads.index("Restart prompts")
+
+
+def test_the_kit_skill_body_agrees_and_its_description_stays_on_the_kit():
+    text = (ROOT / "skills" / "sessionkit" / "SKILL.md").read_text(encoding="utf-8")
+    front, body = text.split("\n---\n", 1)
+    flat = " ".join(body.split())
+    assert ("To talk, speak with `mouth say` and listen with `ears-arm`; use VoiceMode's "
+            "`converse` only when the user asks for converse by name.") in flat
+    assert "sessionvoice's ears skill has the rule and how." in flat
+    # The description triggers on the kit, not on voice: voice words there
+    # would compete with the ears skill for the same asks.
+    for word in ("mouth", "ears", "converse", "VoiceMode", "speak", "listen"):
+        assert word not in front, word

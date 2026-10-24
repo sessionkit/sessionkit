@@ -203,22 +203,26 @@ def _replace(old: str, new: str | None) -> list[str]:
     ]
 
 
+# Each canary is built from the RULED string itself, never a copy of it, so a
+# floor bump in tests/_ruled_deps.py cannot leave a canary planting nothing.
+MAIL, TOOLS, PHONE, VIEW, VOICE = RULED
+
 CANARIES = {
     "media dropped": (
-        _replace("sessionphone[media]>=0.2.1", "sessionphone>=0.2.1"),
+        _replace(PHONE, PHONE.replace("[media]", "")),
         "sessionphone dropped the [media] extra",
     ),
     "capture dropped": (
-        _replace("sessionvoice[capture]>=0.2.1", "sessionvoice>=0.2.1"),
+        _replace(VOICE, VOICE.replace("[capture]", "")),
         "sessionvoice dropped the [capture] extra",
     ),
     "floor at 0.1.0": (
-        _replace("sessionmail>=0.2.1", "sessionmail>=0.1.0"),
+        _replace(MAIL, "sessionmail>=0.1.0"),
         "sessionmail is not floored as ruled: found '>=0.1.0'",
     ),
-    "child removed": (_replace("sessionview>=0.2.0", None), "sessionview is missing"),
+    "child removed": (_replace(VIEW, None), "sessionview is missing"),
     "no floor": (
-        _replace("sessiontools>=0.2.0", "sessiontools"),
+        _replace(TOOLS, "sessiontools"),
         "sessiontools is not floored as ruled: found 'no version bound'",
     ),
     "declared twice": (
@@ -226,7 +230,7 @@ CANARIES = {
         "sessionmail is declared 2 times",
     ),
     "made conditional": (
-        _replace("sessionview>=0.2.0", "sessionview>=0.2.0; sys_platform == 'darwin'"),
+        _replace(VIEW, f"{VIEW}; sys_platform == 'darwin'"),
         "sessionview carries a marker",
     ),
 }

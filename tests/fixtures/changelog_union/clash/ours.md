@@ -47,11 +47,11 @@ stamps this file.
   and in history, but `git archive` and the GitHub tarball leave it out, so
   `claude plugin validate --strict` passes on the shipped archive.
 
-## [0.1.0] - 2030-10-12
+## [0.1.0] - 2030-12-08
 
 ### Added
 
-- sessionkit, born 2030-10-08.
+- sessionkit, born 2030-06-09.
 - The family in one install (SK-8): the package depends on sessionmail,
   sessiontools, sessionphone, sessionview and sessionvoice (unpinned until
   D2) and re-declares every child command (`message`, `pager`, `memory`,

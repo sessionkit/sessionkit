@@ -7,17 +7,9 @@ in the repo restates the list: tests/test_family.py takes its FAMILY from here.
 
 The ruling: a kit install is the whole family, phone calls included.
 
-- Every family package is floored at 0.2.0. The kit needs each of them at
-  0.2.0 or later, and PyPI's 0.0.1 name placeholders and the 0.1.0 alphas must
-  never satisfy a kit install.
-- sessionmail is floored at 0.2.1. Under the drop carrier, mail's 0.2.0
-  pager banner says the doorbell is NOT COPIED even when the drop did copy
-  the seat's mail into the session box, so a stranger is told seat mail will
-  not arrive when it does. mail's 0.2.1 judges the doorbell by the drop.
-- sessionphone and sessionvoice are floored at 0.2.1. Phone's 0.2.1 sends
-  unsigned under the drop carrier, with no key and no seat step, and voice's
-  0.2.1 installer sets the drop carrier. A kit on their 0.2.0 would fail the
-  first call on a drop host.
+- Floored at 0.3.0: the kit is released and tested with the family's 0.3.0,
+  so it needs every family package at 0.3.0 or later, and PyPI's 0.0.1 name
+  placeholders and the 0.1.0 alphas must never satisfy these.
 - sessionphone comes WITH its media extra. Calls, the bot and
   `sessionphone web` need it, and the ruling is that calls come with the kit
   rather than as a second install.
@@ -34,11 +26,11 @@ from packaging.requirements import InvalidRequirement, Requirement
 from packaging.utils import canonicalize_name
 
 RULED = (
-    "sessionmail>=0.2.1",
-    "sessiontools>=0.2.0",
-    "sessionphone[media]>=0.2.1",
-    "sessionview>=0.2.0",
-    "sessionvoice[capture]>=0.2.1",
+    "sessionmail>=0.3.0",
+    "sessiontools>=0.3.0",
+    "sessionphone[media]>=0.3.0",
+    "sessionview>=0.3.0",
+    "sessionvoice[capture]>=0.3.0",
 )
 
 # The five family packages, in the ruled order (the plugin manifest's order).

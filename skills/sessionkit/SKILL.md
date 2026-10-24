@@ -9,6 +9,10 @@ description: >-
 
 Session Kit gives your Claude Code sessions voice, mail, a phone line and a tmux sidebar, in one install.
 
+To talk, speak with `mouth say` and listen with `ears-arm`; use VoiceMode's
+`converse` only when the user asks for converse by name. sessionvoice's ears
+skill has the rule and how.
+
 ## The verbs
 
 ```bash

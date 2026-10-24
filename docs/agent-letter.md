@@ -1,12 +1,12 @@
-# The agent letter: what it says about the pager
+# The agent letter: what it says about the pager and voice
 
 An agent's letter is the note it writes to itself and reads each time it
 wakes. A wake item is a step that runs at wake. Both live in the agent's
 mailbox, not in this repo. Their shape, the labels and how items run, is
 sessionmail's: see its `memory` skill,
 [sessionmail's skills/memory](https://github.com/sessionkit/sessionmail/tree/HEAD/skills/memory).
-This page does not repeat that shape. It gives the words about the pager that
-every letter should carry.
+This page does not repeat that shape. It gives the words about the pager, and
+about voice, that every letter should carry.
 
 **Wake items and the trust registry.** From sessionmail 0.2.0, the release the
 kit installs, `memory run` is off until you opt in with
@@ -103,6 +103,24 @@ until it was noticed.
 A wake runs at the one moment the monitor may not be up yet. Anything the
 wake does to the pager races it. So the wake looks, and leaves arming to the
 monitor, or, with no monitor, to the agent's own turn.
+
+## Voice: mouth and ears by default
+
+Put this in your letter too, word for word. It is the rule from sessionvoice's
+ears skill:
+
+```text
+With the kit, an agent talks through the kit's own mouth and ears: it
+speaks with `mouth say` and listens by arming the ears with `ears-arm`. That
+is the default whenever the user asks it to talk, speak, listen or use voice,
+even on a host that also has VoiceMode's `converse` tool. It uses `converse`
+only when the user asks for converse by name.
+```
+
+The letter is read at every wake, so the rule is in front of the agent before
+it picks a way to talk. A host with VoiceMode installed offers `converse` in
+every session; this line tells the agent which path is the kit's. How to arm
+the ears and speak on the user's device is in sessionvoice's ears skill.
 
 ## Restart prompts
 

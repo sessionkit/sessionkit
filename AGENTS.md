@@ -8,8 +8,7 @@ Instructions for a coding agent working on this repo. Humans start at
 Session Kit is the meta package of the session family. It installs the five
 family packages as one, and ships a small `sessionkit` command of its own.
 
-- `pyproject.toml` lists the five as dependencies, floored at 0.2.0
-  (sessionmail, sessionphone and sessionvoice at 0.2.1).
+- `pyproject.toml` lists the five as dependencies, floored at 0.3.0.
 - `[project.scripts]` re-declares every child command, because `uv tool
   install` links only the commands of the package it is asked for.
 - The package is also a Claude Code plugin: `.claude-plugin/` holds its

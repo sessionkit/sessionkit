@@ -1,6 +1,6 @@
 [project]
 name = "sessionkit"
-version = "0.2.1"
+version = "0.3.0"
 description = "Session Kit gives your Claude Code sessions voice, mail, a phone line and a tmux sidebar, in one install."
 readme = "README.md"
 license = "AGPL-3.0-or-later"
@@ -10,12 +10,10 @@ authors = [
     { name = "Mike Bailey", email = "mike@sessionkit.ai" }
 ]
 requires-python = ">=3.11,<3.15"
-# The family, one install. Floored at 0.2.0: the kit needs every family
-# package at 0.2.0 or later, and PyPI's 0.0.1 name placeholders and the
-# 0.1.0 alphas must never satisfy these. sessionmail, sessionphone and
-# sessionvoice are floored at 0.2.1: mail's 0.2.1 judges the doorbell by the
-# drop, phone's 0.2.1 sends unsigned under the drop carrier, and voice's 0.2.1
-# installer sets the drop carrier.
+# The family, one install. Floored at 0.3.0: the kit is released and tested
+# with the family's 0.3.0, so it needs every family package at 0.3.0 or
+# later, and PyPI's 0.0.1 name placeholders and the 0.1.0 alphas must never
+# satisfy these.
 # sessionphone with its media extra: the bot, calls and `sessionphone web` need it.
 # sessionvoice with its capture extra, so the ears can hear the room.
 # This is the RULED list, kept in tests/_ruled_deps.py with the ruling;
@@ -23,11 +21,11 @@ requires-python = ">=3.11,<3.15"
 # uv.lock drift from it.
 dependencies = [
     "click>=8.1",
-    "sessionmail>=0.2.1",
-    "sessiontools>=0.2.0",
-    "sessionphone[media]>=0.2.1",
-    "sessionview>=0.2.0",
-    "sessionvoice[capture]>=0.2.1",
+    "sessionmail>=0.3.0",
+    "sessiontools>=0.3.0",
+    "sessionphone[media]>=0.3.0",
+    "sessionview>=0.3.0",
+    "sessionvoice[capture]>=0.3.0",
 ]
 
 [project.urls]
@@ -40,8 +38,8 @@ Repository = "https://github.com/sessionkit/sessionkit"
 # `uv tool install sessionkit` would put `sessionkit` alone on the PATH.
 # Each entry point is the child's own target, copied verbatim; re-measure them
 # at each child's HEAD whenever a child adds, renames or drops a command.
-# Measured from each child's built wheel (entry_points.txt) at mail 471a6f7,
-# tools ab62717, phone 02d8cf7, view 3fada19, voice eda3f94.
+# Measured from each child's 0.3.0 wheel (entry_points.txt), by wheel sha256:
+# mail 8e4d9476, tools 8d089699, phone ac402a39, view 3942f119, voice ebc1b65c.
 # sessionview's four commands share one target: `sessionview:main` reads the
 # name it was run as and runs that command.
 # The kit itself still ships no `session` of its own: `session` below is

@@ -32,6 +32,7 @@ import os
 import re
 import stat
 import sys
+import time
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -1765,3 +1766,145 @@ def test_the_agent_file_holds_no_name_of_ours(rig: Rig) -> None:
         if name not in _scanlist.hits(planted, rows):
             missed.append(name)
     assert missed == [], f"the scan missed a word planted from row(s) {missed}"
+
+
+# --- the ears' model: setup reads `ears backends`, never fetches -----------------
+
+# A stand-in for sessionvoice 0.2.1's `ears backends` (its src/ears/cli.py):
+# one line a backend, then `silero    ok: PATH` or `silero    no model: ears
+# install`, exit 0. A `ears.mode` file switches it: `ok` (the default),
+# `missing`, `slow`, `error` (exit 1) or `garbage`. Every argv is logged, one
+# JSON list a line, to `ears.calls`, so a test can see `ears install` never ran.
+FAKE_EARS = r"""
+import json, sys, time
+from pathlib import Path
+here = Path(__file__)
+with here.with_name("ears.calls").open("a") as log:
+    log.write(json.dumps(sys.argv[1:]) + "\n")
+mode_file = here.with_name("ears.mode")
+mode = mode_file.read_text().strip() if mode_file.exists() else "ok"
+if sys.argv[1:] != ["backends"]:
+    sys.exit(2)
+if mode == "slow":
+    time.sleep(30)
+if mode == "error":
+    print("ears: something broke", file=sys.stderr)
+    sys.exit(1)
+if mode == "garbage":
+    print("nothing like a backend list")
+    sys.exit(0)
+print("apple     no: no apple-speech helper: `ears install --apple` builds it")
+print("whisper   no: nothing at http://127.0.0.1:2022/v1/audio/transcriptions (URLError)")
+if mode == "missing":
+    print("silero    no model: ears install")
+else:
+    print("silero    ok: /tmp/home/.cache/ears/silero_vad.onnx")
+sys.exit(0)
+"""
+
+
+def add_ears(rig: Rig, mode: str = "ok") -> None:
+    script = rig.bin / "ears"
+    script.write_text(f"#!{sys.executable}\n{FAKE_EARS}")
+    script.chmod(0o755)
+    (rig.bin / "ears.mode").write_text(mode)
+
+
+def ears_calls(rig: Rig) -> list[list[str]]:
+    log = rig.bin / "ears.calls"
+    if not log.exists():
+        return []
+    return [json.loads(line) for line in log.read_text().splitlines()]
+
+
+def test_a_present_model_adds_no_line(rig: Rig) -> None:
+    rig.box(STRANGER)
+    add_ears(rig, "ok")
+    result = rig.run()
+    assert result.exit_code == 0, result.output
+    assert setup_mod.EARS_MODEL_LINE not in result.output
+    assert "ears install" not in result.output
+    assert ears_calls(rig) == [["backends"]]
+
+
+@pytest.mark.parametrize("verb_mode, code", [(None, 0), ("left", 4)])
+def test_a_missing_model_says_one_line_and_keeps_the_exit(
+    rig: Rig, verb_mode: str | None, code: int
+) -> None:
+    rig.box(STRANGER)
+    if verb_mode:
+        rig.setup_mode(verb_mode)
+    add_ears(rig, "missing")
+    result = rig.run()
+    assert result.exit_code == code, result.output
+    lines = result.output.splitlines()
+    assert lines.count(setup_mod.EARS_MODEL_LINE) == 1
+    # Just before the launch step, which stays the run's last line.
+    assert lines[-1] == setup_mod.launch_sentence(setup_mod.DEFAULT_AGENT)
+    assert lines[-2] == setup_mod.EARS_MODEL_LINE
+    # Read only: setup asked, and never ran `ears install`.
+    assert ears_calls(rig) == [["backends"]]
+
+
+def test_the_model_line_names_ears_install_and_why() -> None:
+    line = setup_mod.EARS_MODEL_LINE
+    assert "`ears install`" in line
+    assert "cannot hear you" in line
+    assert "\n" not in line
+
+
+def test_a_missing_model_on_a_refused_run_keeps_exit_1(rig: Rig) -> None:
+    add_ears(rig, "missing")
+    result = rig.run("--mailbox", "nobody")
+    assert result.exit_code == 1
+    assert setup_mod.EARS_MODEL_LINE in result.output
+
+
+def test_a_dry_run_asks_too_and_writes_nothing(rig: Rig) -> None:
+    rig.box(STRANGER)
+    add_ears(rig, "missing")
+    result = rig.run("--dry-run")
+    assert setup_mod.EARS_MODEL_LINE in result.output
+    assert ears_calls(rig) == [["backends"]]
+    assert_nothing_written(rig)
+
+
+def test_no_ears_on_the_path_says_nothing_about_the_model(rig: Rig) -> None:
+    rig.box(STRANGER)
+    assert not (rig.bin / "ears").exists()
+    result = rig.run()
+    assert result.exit_code == 0, result.output
+    assert setup_mod.EARS_MODEL_LINE not in result.output
+    assert "ears install" not in result.output
+
+
+@pytest.mark.parametrize("mode", ["error", "garbage"])
+def test_a_failing_probe_says_nothing_and_keeps_the_exit(rig: Rig, mode: str) -> None:
+    rig.box(STRANGER)
+    add_ears(rig, mode)
+    result = rig.run()
+    assert result.exit_code == 0, result.output
+    assert setup_mod.EARS_MODEL_LINE not in result.output
+
+
+def test_a_slow_probe_is_not_waited_on(rig: Rig, monkeypatch: pytest.MonkeyPatch) -> None:
+    rig.box(STRANGER)
+    add_ears(rig, "slow")
+    monkeypatch.setattr(setup_mod, "EARS_PROBE_TIMEOUT", 0.5)
+    start = time.monotonic()
+    result = rig.run()
+    elapsed = time.monotonic() - start
+    assert result.exit_code == 0, result.output
+    assert setup_mod.EARS_MODEL_LINE not in result.output
+    assert elapsed < 10, f"setup waited {elapsed:.1f}s on a probe that sleeps 30s"
+
+
+def test_the_probe_timeout_is_short() -> None:
+    assert 0 < setup_mod.EARS_PROBE_TIMEOUT <= 5
+
+
+def test_the_install_doc_quotes_the_model_line() -> None:
+    install = (ROOT / "INSTALL.md").read_text(encoding="utf-8")
+    flat = " ".join(install.split())
+    assert f"``{setup_mod.EARS_MODEL_LINE}``" in flat
+    assert "It never runs `ears install` itself, and the line never changes its exit." in flat
