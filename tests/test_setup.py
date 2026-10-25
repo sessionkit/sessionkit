@@ -10,6 +10,10 @@ Every test runs in a temp HOME with a PATH holding only two fake programs:
   absent-verb (exit 2), garbage, "disagree" or slow. It also answers
   `session start --list-agents` by sessiontools' agents-folder rule; a
   `session.agents` file switches that to `absent` (exit 2) or `empty`.
+  `session agent default` prints the default seat's name, as sessiontools'
+  verb does (one word, a newline, exit 0): `claude`, or the word in a
+  `session.seat` file; `absent` (exit 2), `error` (exit 1), `garbage` (two
+  lines) and `slow` switch it.
 - `message`: `message box path NAME` exits 0 when `$HOME/.mail/agents/NAME`
   is a maildir (`new/`, `cur/`, `tmp/`: a bare directory is no box to the
   real `message`), else 2. A mode file switches it to exit 3 or slow.
@@ -27,12 +31,14 @@ Setup is never run against a real HOME (S7).
 
 from __future__ import annotations
 
+import ast
 import json
 import os
 import re
 import stat
 import sys
 import time
+import tomllib
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -50,6 +56,22 @@ import json, os, sys, time
 from pathlib import Path
 mode_file = Path(__file__).with_name("session.mode")
 mode = mode_file.read_text().strip() if mode_file.exists() else "model"
+if sys.argv[1:] == ["agent", "default"]:
+    seat_file = Path(__file__).with_name("session.seat")
+    seat = seat_file.read_text().strip() if seat_file.exists() else "claude"
+    if seat == "absent":
+        print("session: unknown verb 'agent'", file=sys.stderr)
+        sys.exit(2)
+    if seat == "error":
+        print("session agent: broken install", file=sys.stderr)
+        sys.exit(1)
+    if seat == "garbage":
+        print("claude\nclaude")
+        sys.exit(0)
+    if seat == "slow":
+        time.sleep(30)
+    print(seat)
+    sys.exit(0)
 if sys.argv[1:] == ["start", "--list-agents"]:
     agents_file = Path(__file__).with_name("session.agents")
     agents = agents_file.read_text().strip() if agents_file.exists() else "model"
@@ -213,6 +235,10 @@ class Rig(SimpleNamespace):
     def remove(self, program: str) -> None:
         (self.bin / program).unlink()
 
+    def seat(self, word: str) -> None:
+        """What the fake `session agent default` answers (module docstring)."""
+        (self.bin / "session.seat").write_text(word)
+
     def setup_mode(self, mode: str) -> None:
         """Switch the fake `message setup` (see the module docstring)."""
         (self.bin / "message.setup").write_text(mode)
@@ -285,14 +311,24 @@ def expected(block: dict) -> str:
     return json.dumps({"_about": ABOUT, "operator": block}, indent=2) + "\n"
 
 
-def agent_step_lines(rig: Rig, name: str = setup_mod.DEFAULT_AGENT) -> list[str]:
+def agent_step_lines(
+    rig: Rig, name: str = setup_mod.DEFAULT_AGENT, seat: str | None = "claude"
+) -> list[str]:
     """What a real run's agent half prints on a fresh home: the write, the
-    verify, the launch step."""
+    verify, the launch step (bare when NAME is the rig's seat, `claude`)."""
     return [
         f"Wrote {rig.agent(name)}: the agent {name!r}, not keyed.",
         f"session start --list-agents: lists {name!r}.",
-        setup_mod.launch_sentence(name),
+        setup_mod.launch_sentence(name, seat),
     ]
+
+
+def no_ears_line(name: str) -> str:
+    """The wake seat's one line when `ears` is not on the PATH."""
+    return (
+        "No wake seat added: `ears` is not on the PATH. "
+        f"Once it is, run: ears wake add {name}"
+    )
 
 
 def assert_nothing_written(rig: Rig, before: list[Path] | None = None) -> None:
@@ -348,6 +384,7 @@ def test_no_flag_and_no_box_writes_nothing_and_says_how(rig: Rig) -> None:
         for line in result.output.strip().splitlines()
         if not line.startswith("message setup:")  # the fake verb's DONE line
         and line not in agent_step_lines(rig)  # the agent half, its own lines
+        and line != no_ears_line("claude")  # the wake seat's one line
     ]
     assert len(lines) <= 2
     assert "sessionkit setup --address" in result.output
@@ -798,6 +835,76 @@ def test_help_names_the_flags_and_the_file() -> None:
         assert word in result.output
 
 
+# INSTALL.md ships in neither the wheel nor the sdist, so every pointer the
+# installed kit prints to it names the repository it lives in: pyproject's
+# Repository URL, which a wheel-installed user can open.
+
+
+def test_the_repository_is_pyprojects() -> None:
+    urls = tomllib.loads((ROOT / "pyproject.toml").read_text())["project"]["urls"]
+    assert setup_mod.REPOSITORY == urls["Repository"]
+
+
+def test_every_pointer_to_install_md_names_the_repository() -> None:
+    help_text = " ".join(CliRunner().invoke(main, ["setup", "--help"]).output.split())
+    assert ('See INSTALL.md, "Operator and administrators" and "Mail between agents", '
+            f"in {setup_mod.REPOSITORY}.") in help_text
+    assert setup_mod.ABOUT.endswith(f"See INSTALL.md, in {setup_mod.REPOSITORY}.")
+    assert setup_mod.MAIL_DOC == f'INSTALL.md, "Mail between agents", in {setup_mod.REPOSITORY}'
+    # The headings the pointers name are INSTALL.md's own.
+    install = (ROOT / "INSTALL.md").read_text(encoding="utf-8")
+    for heading in ("### Operator and administrators\n", "### Mail between agents\n"):
+        assert heading in install
+
+
+def _install_md_pointers(source: str):
+    """(text, names the repository) for each string in SOURCE naming INSTALL.md:
+    docstrings and plain strings by their words, f-strings by their REPOSITORY."""
+    tree = ast.parse(source)
+    inside = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.JoinedStr):
+            inside.update(id(v) for v in node.values)
+            text = "".join(v.value for v in node.values if isinstance(v, ast.Constant))
+            names = {n.id for n in ast.walk(node) if isinstance(n, ast.Name)}
+            if "INSTALL.md" in text:
+                yield text, "REPOSITORY" in names
+    for node in ast.walk(tree):
+        if (isinstance(node, ast.Constant) and isinstance(node.value, str)
+                and id(node) not in inside and "INSTALL.md" in node.value):
+            yield node.value, setup_mod.REPOSITORY in " ".join(node.value.split())
+
+
+def test_no_pointer_to_install_md_is_bare() -> None:
+    # A bare "See INSTALL.md." names a file the installed kit does not have:
+    # every string in the kit's source that names INSTALL.md names the
+    # repository too.
+    seen = 0
+    for path in sorted((ROOT / "src" / "sessionkit").glob("*.py")):
+        for text, named in _install_md_pointers(path.read_text(encoding="utf-8")):
+            seen += 1
+            assert named, (path.name, text)
+    assert seen >= 3  # the setup help, ABOUT and MAIL_DOC at least
+
+
+def test_the_bare_pointer_guard_hits() -> None:
+    # A zero is a receipt only when the same guard is shown to hit.
+    planted = (
+        'def f():\n    """See INSTALL.md."""\n'
+        "A = 'See INSTALL.md.'\n"
+        "B = f'See INSTALL.md, {OTHER}'\n"
+        f"C = 'See INSTALL.md, in {setup_mod.REPOSITORY}.'\n"
+        "D = f'See INSTALL.md, in {REPOSITORY}.'\n"
+    )
+    assert dict(_install_md_pointers(planted)) == {
+        "See INSTALL.md.": False,                               # docstring and A
+        "See INSTALL.md, ": False,                              # B: another name
+        f"See INSTALL.md, in {setup_mod.REPOSITORY}.": True,    # C
+        "See INSTALL.md, in .": True,                           # D
+    }
+    assert len(list(_install_md_pointers(planted))) == 5
+
+
 # --- mail first: sessionmail's setup verb, a FAKE here ------------------------
 # The verb is called by the argv in setup_mod.MAIL_SETUP_ARGV (sessionmail's
 # `message setup`), before the operator, and its exits are read:
@@ -858,7 +965,7 @@ def test_the_box_set_hook_feeds_the_argv(
 ) -> None:
     rig.box(STRANGER)
     monkeypatch.setattr(
-        setup_mod, "mail_setup_boxes", lambda m, a, agent: ("one", "two")
+        setup_mod, "mail_setup_boxes", lambda m, a, agent, seat: ("one", "two")
     )
     assert rig.run().exit_code == 0
     assert rig.setup_calls() == [["setup", "--box", "one", "--box", "two"]]
@@ -872,9 +979,14 @@ def test_no_mailbox_passes_only_the_agents_box(rig: Rig) -> None:
     result = rig.run()
     assert result.exit_code == 0, result.output
     assert rig.setup_calls() == [["setup", "--box", "claude"]]
-    assert setup_mod.mail_setup_boxes(None, None, None) == ()
-    assert setup_mod.mail_setup_boxes(None, "someone@stranger.test", None) == ()
-    assert setup_mod.mail_setup_boxes(None, "a@host.test", "claude") == ("claude",)
+    # The default seat's box rides every run, even with no agent named.
+    assert setup_mod.mail_setup_boxes(None, None, None, "claude") == ("claude",)
+    assert setup_mod.mail_setup_boxes(
+        None, "someone@stranger.test", None, "claude"
+    ) == ("claude",)
+    assert setup_mod.mail_setup_boxes(None, "a@host.test", "claude", "claude") == (
+        "claude",
+    )
     assert sorted(p.name for p in (rig.home / ".mail" / "agents").iterdir()) == [
         "claude",
         STRANGER,
@@ -889,8 +1001,14 @@ def test_a_mailbox_passes_exactly_that_box(rig: Rig) -> None:
     result = rig.run("--mailbox", "named")
     assert result.exit_code == 0, result.output
     assert rig.setup_calls() == [["setup", "--box", "named", "--box", "claude"]]
-    assert setup_mod.mail_setup_boxes("named", None, "claude") == ("named", "claude")
-    assert setup_mod.mail_setup_boxes("same", None, "same") == ("same",)
+    assert setup_mod.mail_setup_boxes("named", None, "claude", "claude") == (
+        "named",
+        "claude",
+    )
+    assert setup_mod.mail_setup_boxes("same", None, "same", "claude") == (
+        "same",
+        "claude",
+    )
     assert (rig.home / ".mail" / "agents" / "named" / "new").is_dir()
     assert rig.target.read_text() == expected({"mailbox": "named"})
 
@@ -982,7 +1100,7 @@ def test_a_sessionmail_without_the_verb_gets_the_exact_step(rig: Rig) -> None:
     assert rig.setup_calls() == []  # probed, never run
     assert "this sessionmail has no `message setup`" in result.output
     assert "exited 2" in result.output
-    assert 'INSTALL.md, "Mail between agents"' in result.output
+    assert f'INSTALL.md, "Mail between agents", in {setup_mod.REPOSITORY}' in result.output
     assert "run: message setup --box claude" in result.output  # the agent's box
     # The operator still runs, and is written.
     assert rig.target.read_text() == expected({"mailbox": STRANGER})
@@ -992,8 +1110,13 @@ def test_a_sessionmail_without_the_verb_gets_the_exact_step(rig: Rig) -> None:
     ("args", "step"),
     [
         ((), "message setup --box claude"),
-        (("--agent", "alice"), "message setup --box alice"),
+        (("--agent", "alice"), "message setup --box alice --box claude"),
         (("--mailbox", "named"), "message setup --box named --box claude"),
+        (
+            ("--mailbox", "named", "--agent", "other"),
+            "message setup --box named --box other --box claude",
+        ),
+        (("--agent", "other", "--dry-run"), "message setup --box other --box claude"),
         (("--dry-run",), "message setup --box claude"),  # the step to run is the real one
     ],
 )
@@ -1346,7 +1469,8 @@ def test_the_old_root_pattern_tells_the_root_from_a_dotted_name() -> None:
 
 def test_the_docs_name_the_old_file_once_in_the_upgrade_note() -> None:
     # Outside CHANGELOG history and its union fixtures, the old root appears
-    # ONCE in the docs: INSTALL.md's "Upgrading from 0.1.0" note.
+    # only in INSTALL.md's "Upgrading from 0.1.0" note: its prose and the move
+    # and remove blocks under it.
     hits = []
     for top, dirs, names in os.walk(ROOT):
         dirs[:] = sorted(d for d in dirs if not d.startswith("."))  # .venv, caches
@@ -1355,10 +1479,11 @@ def test_the_docs_name_the_old_file_once_in_the_upgrade_note() -> None:
             if rel == "CHANGELOG.md" or rel.startswith("tests/fixtures/changelog_union/"):
                 continue  # CHANGELOG history and its copies
             hits += [rel] * len(OLD_ROOT.findall((Path(top) / name).read_text(encoding="utf-8")))
-    assert hits == ["INSTALL.md"]
+    assert set(hits) == {"INSTALL.md"}
     install = (ROOT / "INSTALL.md").read_text(encoding="utf-8")
     start = install.index("- **Upgrading from 0.1.0.**")
-    note = install[start : install.index("\n- ", start + 1)]
+    note = install[start : install.index("\n## 3. ", start)]
+    assert len(OLD_ROOT.findall(note)) == len(hits) == 3
     assert f"`~/{OLD_DROP_IN}`" in note
     assert f"`~/{OPERATOR_DROP_IN}`" in note
     assert "exits 1" in note and "--dry-run" in note
@@ -1381,6 +1506,9 @@ claude, so the session hears mail to the box claude. Edit this file as you
 like: setup never writes over it.
 """
 SENTENCE = "To hear Delta messages, start Claude with: session start {}"
+# The bare form: when setup's agent IS the default seat, a bare `session start`
+# takes it (SK-206 do-004). The rig's seat is `claude` unless a test says so.
+SEAT_SENTENCE = "To hear Delta messages, start Claude with: session start"
 
 
 def keyed(text: str) -> bool:
@@ -1523,7 +1651,7 @@ def test_a_flat_file_already_there_is_left_alone(rig: Rig) -> None:
     assert mine.read_text() == "---\nmodel: opus\n---\nMine.\n"
     assert mine.stat().st_mtime_ns == before
     assert f"Agent 'claude' is already in {mine}; left as it is." in result.output
-    assert result.output.strip().splitlines()[-1] == SENTENCE.format("claude")
+    assert result.output.strip().splitlines()[-1] == SEAT_SENTENCE
 
 
 def test_a_directory_agent_already_there_is_left_alone(rig: Rig) -> None:
@@ -1606,7 +1734,7 @@ def test_a_second_run_writes_no_agent_and_exits_as_the_first(rig: Rig) -> None:
     assert again.exit_code == first.exit_code
     assert (path.read_bytes(), path.stat().st_mtime_ns) == stamp
     assert f"Agent 'claude' is already in {path}; left as it is." in again.output
-    assert again.output.strip().splitlines()[-1] == SENTENCE.format("claude")
+    assert again.output.strip().splitlines()[-1] == SEAT_SENTENCE
 
 
 # --- the box: `--box NAME` to the mail verb ---------------------------------------
@@ -1616,10 +1744,12 @@ def test_a_second_run_writes_no_agent_and_exits_as_the_first(rig: Rig) -> None:
     ("args", "boxes"),
     [
         ((), ["claude"]),
-        (("--agent", "alice"), ["alice"]),
-        (("--mailbox", "named", "--agent", "alice"), ["named", "alice"]),
-        (("--address", "a@host.test", "--agent", "alice"), ["alice"]),
-        (("--mailbox", "alice", "--agent", "alice"), ["alice"]),
+        (("--agent", "alice"), ["alice", "claude"]),
+        (("--mailbox", "named", "--agent", "alice"), ["named", "alice", "claude"]),
+        (("--address", "a@host.test", "--agent", "alice"), ["alice", "claude"]),
+        (("--mailbox", "alice", "--agent", "alice"), ["alice", "claude"]),
+        (("--mailbox", "claude", "--agent", "other"), ["claude", "other"]),
+        (("--mailbox", "claude"), ["claude"]),
     ],
 )
 def test_the_agents_box_rides_the_verbs_argv(rig: Rig, args, boxes) -> None:
@@ -1641,6 +1771,134 @@ def test_the_verb_makes_the_agents_box(rig: Rig) -> None:
     assert (rig.home / ".mail/agents/alice/new").is_dir()
 
 
+# --- the default seat's box: asked for on every run, whatever --agent names -----
+
+
+def test_the_default_seat_is_read_from_session_agent_default() -> None:
+    assert setup_mod.DEFAULT_SEAT_ARGV == ("session", "agent", "default")
+    assert not hasattr(setup_mod, "DEFAULT_SEAT"), "the seat's name is never a literal"
+
+
+def test_the_default_seat_follows_the_verb(rig: Rig) -> None:
+    """The box, the wake seat and the seat are one word from one place: the
+    word `session agent default` prints, whatever it is."""
+    rig.box(STRANGER)
+    rig.seat("other")
+    assert setup_mod.default_seat(os.environ) == "other"
+    add_ears(rig)
+    result = rig.run()
+    assert result.exit_code == 0, result.output
+    assert rig.setup_calls() == [["setup", "--box", "claude", "--box", "other"]]
+    assert ears_calls(rig)[0] == ["wake", "add", "other"]
+    assert list(wake_seats(rig)) == ["other"]
+
+
+@pytest.mark.parametrize("answer", ["absent", "error", "garbage", "Not A Name"])
+def test_a_verb_that_does_not_answer_names_no_seat(rig: Rig, answer: str) -> None:
+    """No literal stands in: no seat name means no default seat's box, no
+    wake seat, one line, and the exit a run would have had anyway."""
+    rig.box(STRANGER)
+    rig.seat(answer)
+    add_ears(rig)
+    assert setup_mod.default_seat(os.environ) is None
+    result = rig.run("--agent", "other")
+    assert result.exit_code == 0, result.output
+    assert rig.setup_calls() == [["setup", "--box", "other"]]
+    unknown = setup_mod.SEAT_UNKNOWN_LINE.format(verb="session agent default")
+    assert result.output.splitlines().count(unknown) == 1
+    # --agent names the wake seat; it needs no verb.
+    assert ears_calls(rig)[0] == ["wake", "add", "other"]
+
+
+def test_no_seat_and_no_agent_adds_no_wake_seat(rig: Rig) -> None:
+    rig.box(STRANGER)
+    rig.seat("absent")
+    add_ears(rig)
+    result = rig.run()
+    assert result.exit_code == 0, result.output
+    assert rig.setup_calls() == [["setup", "--box", "claude"]]
+    assert ["wake", "add", "claude"] not in ears_calls(rig)
+    assert not wake_file(rig).exists()
+
+
+def test_a_slow_seat_verb_is_not_waited_on(
+    rig: Rig, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    rig.seat("slow")
+    monkeypatch.setattr(setup_mod, "DEFAULT_SEAT_TIMEOUT", 0.5)
+    start = time.monotonic()
+    assert setup_mod.default_seat(os.environ) is None
+    assert time.monotonic() - start < 10
+
+
+@pytest.mark.parametrize(
+    ("mailbox", "address", "agent"),
+    [
+        (None, None, None),
+        (None, None, "claude"),
+        (None, None, "other"),
+        ("named", None, "other"),
+        (None, "a@host.test", "other"),
+        ("claude", None, "claude"),
+    ],
+)
+def test_every_box_set_holds_the_default_seat_once(mailbox, address, agent) -> None:
+    boxes = setup_mod.mail_setup_boxes(mailbox, address, agent, "claude")
+    assert boxes.count("claude") == 1, boxes
+    assert len(boxes) == len(set(boxes)), boxes
+    if agent is not None:
+        assert agent in boxes
+
+
+def test_another_agent_still_makes_the_default_seats_box(rig: Rig) -> None:
+    """A fresh install with `--agent other` makes the box `other` and the
+    default seat's box `claude`: a session started as `claude` is not deaf."""
+    rig.setup_mode("makes-boxes")
+    (rig.bin / "message.account").write_text(STRANGER)
+    result = rig.run("--agent", "other")
+    assert result.exit_code == 0, result.output
+    assert rig.setup_calls() == [["setup", "--box", "other", "--box", "claude"]]
+    agents = rig.home / ".mail" / "agents"
+    assert sorted(p.name for p in agents.iterdir()) == ["claude", "other", STRANGER]
+    assert (agents / "claude" / "new").is_dir()
+
+
+def test_a_rerun_with_another_agent_changes_no_box(rig: Rig) -> None:
+    rig.setup_mode("makes-boxes")
+    (rig.bin / "message.account").write_text(STRANGER)
+    assert rig.run("--agent", "other").exit_code == 0
+    agents = rig.home / ".mail" / "agents"
+    before = sorted(str(p.relative_to(agents)) for p in agents.rglob("*"))
+    again = rig.run("--agent", "other")
+    assert again.exit_code == 0, again.output
+    assert sorted(str(p.relative_to(agents)) for p in agents.rglob("*")) == before
+
+
+def test_a_dry_run_with_another_agent_names_the_default_seats_box(rig: Rig) -> None:
+    rig.box(STRANGER)
+    result = rig.run("--dry-run", "--agent", "other")
+    assert result.exit_code == 0, result.output
+    assert rig.setup_calls() == [
+        ["setup", "--dry-run", "--box", "other", "--box", "claude"]
+    ]
+    assert "Would ask `message setup` for the agent's box 'other' (--box other)." in (
+        result.output
+    )
+    assert (
+        "Would ask `message setup` for the default seat's box 'claude' "
+        "(--box claude) too."
+    ) in result.output
+    assert_nothing_written(rig)
+
+
+def test_a_dry_run_for_the_default_agent_names_its_box_once(rig: Rig) -> None:
+    rig.box(STRANGER)
+    result = rig.run("--dry-run")
+    assert result.exit_code == 0, result.output
+    assert "default seat's box" not in result.output
+    assert result.output.count("(--box claude)") == 1
+
+
 # --- dry run: prints the file and the box; writes nothing -----------------------
 
 
@@ -1654,7 +1912,7 @@ def test_a_dry_run_prints_the_agent_file_and_box_and_writes_nothing(rig: Rig) ->
         result.output
     )
     assert not (rig.home / ".session").exists()
-    assert result.output.strip().splitlines()[-1] == SENTENCE.format("claude")
+    assert result.output.strip().splitlines()[-1] == SEAT_SENTENCE
 
 
 def test_a_dry_run_over_an_existing_file_says_so(rig: Rig) -> None:
@@ -1710,9 +1968,37 @@ def test_the_launch_step_is_the_shared_sentence_last(rig: Rig) -> None:
     result = rig.run()
     assert result.exit_code == 0
     assert result.output.strip().splitlines()[-1] == (
-        "To hear Delta messages, start Claude with: session start claude"
+        "To hear Delta messages, start Claude with: session start"
     )
     assert setup_mod.launch_sentence("x") == SENTENCE.format("x")
+    assert setup_mod.launch_sentence("x", "x") == SEAT_SENTENCE
+    assert setup_mod.launch_sentence("x", "y") == SENTENCE.format("x")
+
+
+# The default seat (SK-206 do-004, measured at sessiontools 1ba50f6): a bare
+# `session start` takes the seat `session agent default` names, so the step is
+# bare only when setup's agent IS that seat. After `--agent other` a bare start
+# took `claude`, not `other`; a sessiontools without the verb (0.3.0) started
+# a bare start plain. Both keep the named form.
+@pytest.mark.parametrize(
+    "seat, args, last",
+    [
+        ("claude", (), SEAT_SENTENCE),  # no --agent: the agent is the seat
+        ("claude", ("--agent", "claude"), SEAT_SENTENCE),  # named, the seat's word
+        ("claude", ("--agent", "other"), SENTENCE.format("other")),  # another agent
+        ("absent", (), SENTENCE.format("claude")),  # no verb: no seat known
+        ("other", (), SENTENCE.format("claude")),  # the seat is not setup's agent
+    ],
+)
+def test_the_launch_step_is_bare_only_for_the_default_seat(
+    rig: Rig, seat: str, args: tuple[str, ...], last: str
+) -> None:
+    rig.box(STRANGER)
+    if seat != "claude":
+        rig.seat(seat)
+    result = rig.run(*args)
+    assert result.exit_code == 0, result.output
+    assert result.output.strip().splitlines()[-1] == last
 
 
 def test_the_launch_step_prints_when_the_operator_refuses(rig: Rig) -> None:
@@ -1721,7 +2007,7 @@ def test_the_launch_step_prints_when_the_operator_refuses(rig: Rig) -> None:
     result = rig.run()
     assert result.exit_code == 1
     assert rig.agent().is_file()
-    assert result.output.strip().splitlines()[-1] == SENTENCE.format("claude")
+    assert result.output.strip().splitlines()[-1] == SEAT_SENTENCE
 
 
 # --- --agent shape: a usage error, nothing run, nothing written -----------------
@@ -1775,15 +2061,57 @@ def test_the_agent_file_holds_no_name_of_ours(rig: Rig) -> None:
 # install`, exit 0. A `ears.mode` file switches it: `ok` (the default),
 # `missing`, `slow`, `error` (exit 1) or `garbage`. Every argv is logged, one
 # JSON list a line, to `ears.calls`, so a test can see `ears install` never ran.
+#
+# `ears wake add SEAT` / `ears wake list` model sessionvoice's wake verbs
+# (src/ears/wake.py): the wake file is $EARS_WAKE, else
+# ~/.sessionkit/voice/settings/wake.json; add lower-cases the key, keeps the
+# seat's names with the key moved first, writes atomically (indent 2, one
+# newline) and exits 0 when the seat is already there; list is read only,
+# exit 0 either way. An `ears.wake` file switches them: `refuse` (exit 1,
+# `ears wake: <reason>` on stderr) or `slow`.
 FAKE_EARS = r"""
-import json, sys, time
+import json, os, sys, tempfile, time
 from pathlib import Path
 here = Path(__file__)
 with here.with_name("ears.calls").open("a") as log:
     log.write(json.dumps(sys.argv[1:]) + "\n")
 mode_file = here.with_name("ears.mode")
 mode = mode_file.read_text().strip() if mode_file.exists() else "ok"
-if sys.argv[1:] != ["backends"]:
+args = sys.argv[1:]
+if args[:1] == ["wake"]:
+    wake_file = here.with_name("ears.wake")
+    wake = wake_file.read_text().strip() if wake_file.exists() else "real"
+    if wake == "refuse":
+        print("ears wake: the wake file was left at the old place.", file=sys.stderr)
+        sys.exit(1)
+    if wake == "slow":
+        time.sleep(30)
+    target = Path(os.environ.get("EARS_WAKE")
+                  or Path(os.environ["HOME"]) / ".sessionkit/voice/settings/wake.json")
+    conf = json.loads(target.read_text()) if target.is_file() else {}
+    if args[1:] == ["list"]:
+        found = conf.get("seats") or {}
+        if not found:
+            print(f"no seats in {target}", file=sys.stderr)
+        for key, entry in sorted(found.items()):
+            print(f"{key}: {'|'.join(entry.get('names') or [key])}")
+        sys.exit(0)
+    if args[1:2] == ["add"] and len(args) == 3:
+        key = args[2].strip().lower()
+        seats = conf.setdefault("seats", {})
+        entry = seats.get(key) or {}
+        entry["names"] = [key] + [n for n in entry.get("names") or [] if n != key]
+        seats[key] = entry
+        target.parent.mkdir(parents=True, exist_ok=True)
+        fd, tmp = tempfile.mkstemp(dir=target.parent, suffix=".tmp")
+        with os.fdopen(fd, "w") as f:
+            json.dump(conf, f, indent=2)
+            f.write("\n")
+        os.replace(tmp, target)
+        print(f"{key}: {'|'.join(entry['names'])}  ({target})")
+        sys.exit(0)
+    sys.exit(2)
+if args != ["backends"]:
     sys.exit(2)
 if mode == "slow":
     time.sleep(30)
@@ -1824,7 +2152,7 @@ def test_a_present_model_adds_no_line(rig: Rig) -> None:
     assert result.exit_code == 0, result.output
     assert setup_mod.EARS_MODEL_LINE not in result.output
     assert "ears install" not in result.output
-    assert ears_calls(rig) == [["backends"]]
+    assert ears_calls(rig) == [["wake", "add", "claude"], ["backends"]]
 
 
 @pytest.mark.parametrize("verb_mode, code", [(None, 0), ("left", 4)])
@@ -1840,10 +2168,10 @@ def test_a_missing_model_says_one_line_and_keeps_the_exit(
     lines = result.output.splitlines()
     assert lines.count(setup_mod.EARS_MODEL_LINE) == 1
     # Just before the launch step, which stays the run's last line.
-    assert lines[-1] == setup_mod.launch_sentence(setup_mod.DEFAULT_AGENT)
+    assert lines[-1] == SEAT_SENTENCE
     assert lines[-2] == setup_mod.EARS_MODEL_LINE
     # Read only: setup asked, and never ran `ears install`.
-    assert ears_calls(rig) == [["backends"]]
+    assert ears_calls(rig) == [["wake", "add", "claude"], ["backends"]]
 
 
 def test_the_model_line_names_ears_install_and_why() -> None:
@@ -1865,7 +2193,7 @@ def test_a_dry_run_asks_too_and_writes_nothing(rig: Rig) -> None:
     add_ears(rig, "missing")
     result = rig.run("--dry-run")
     assert setup_mod.EARS_MODEL_LINE in result.output
-    assert ears_calls(rig) == [["backends"]]
+    assert ears_calls(rig) == [["wake", "list"], ["backends"]]
     assert_nothing_written(rig)
 
 
@@ -1908,3 +2236,193 @@ def test_the_install_doc_quotes_the_model_line() -> None:
     flat = " ".join(install.split())
     assert f"``{setup_mod.EARS_MODEL_LINE}``" in flat
     assert "It never runs `ears install` itself, and the line never changes its exit." in flat
+
+
+# --- the wake seat: `ears wake add NAME`, so "hey NAME" wakes the seat ----------
+
+
+def wake_file(rig: Rig) -> Path:
+    """The wake file the fake `ears wake` writes: the user file under HOME."""
+    return rig.home / ".sessionkit" / "voice" / "settings" / "wake.json"
+
+
+def wake_seats(rig: Rig) -> dict:
+    return json.loads(wake_file(rig).read_text())["seats"]
+
+
+WAKE_PREFIXES = ("No wake seat added", "Wake seat ", "Would add wake seat ")
+
+
+def wake_lines(output: str) -> list[str]:
+    """The wake seat's lines in a run's output."""
+    return [line for line in output.splitlines() if line.startswith(WAKE_PREFIXES)]
+
+
+def wake_mode(rig: Rig, mode: str) -> None:
+    (rig.bin / "ears.wake").write_text(mode)
+
+
+def test_a_fresh_home_gets_the_default_seat_as_its_wake_seat(rig: Rig) -> None:
+    rig.box(STRANGER)
+    add_ears(rig)
+    assert not wake_file(rig).exists()
+    result = rig.run()
+    assert result.exit_code == 0, result.output
+    assert wake_seats(rig) == {"claude": {"names": ["claude"]}}
+    assert "Wake seat 'claude': \"hey claude\" wakes it." in result.output.splitlines()
+
+
+def test_a_rerun_leaves_the_wake_file_byte_identical(rig: Rig) -> None:
+    """The verb rewrites atomically, so its mtime moves: compare bytes."""
+    rig.box(STRANGER)
+    add_ears(rig)
+    assert rig.run().exit_code == 0
+    before = wake_file(rig).read_bytes()
+    again = rig.run()
+    assert again.exit_code == 0, again.output
+    assert wake_file(rig).read_bytes() == before
+
+
+def test_a_seat_already_there_keeps_its_names(rig: Rig) -> None:
+    rig.box(STRANGER)
+    add_ears(rig)
+    wake_file(rig).parent.mkdir(parents=True)
+    wake_file(rig).write_text(
+        json.dumps(
+            {
+                "seats": {
+                    "claude": {"names": ["clawed", "claude"], "hint": "Claude"},
+                    "dave": {"names": ["dave"]},
+                }
+            }
+        )
+    )
+    result = rig.run()
+    assert result.exit_code == 0, result.output
+    seats = wake_seats(rig)
+    assert seats["claude"] == {"names": ["claude", "clawed"], "hint": "Claude"}
+    assert seats["dave"] == {"names": ["dave"]}
+
+
+def test_agent_names_the_wake_seat(rig: Rig) -> None:
+    rig.box(STRANGER)
+    add_ears(rig)
+    result = rig.run("--agent", "alice")
+    assert result.exit_code == 0, result.output
+    assert list(wake_seats(rig)) == ["alice"]
+    assert ["wake", "add", "claude"] not in ears_calls(rig)
+
+
+def test_setup_never_runs_ears_services_install(rig: Rig) -> None:
+    """The ORDER: no `ears services install`, ever, so `ears wake add` is the
+    first thing setup asks of the ears (the model probe comes after it)."""
+    rig.box(STRANGER)
+    add_ears(rig, "missing")
+    for args in ((), ("--agent", "alice"), ("--dry-run",)):
+        (rig.bin / "ears.calls").unlink(missing_ok=True)
+        rig.run(*args)
+        calls = ears_calls(rig)
+        assert all(call[:1] != ["services"] for call in calls), calls
+        assert calls[0][:2] in (["wake", "add"], ["wake", "list"]), calls
+        assert calls[-1] == ["backends"], calls
+    assert '"services"' not in (ROOT / "src/sessionkit/setup.py").read_text()
+
+
+@pytest.mark.parametrize(
+    ("args", "code"), [((), 0), (("--mailbox", "nobody"), 1), ((), 4)]
+)
+def test_no_ears_is_one_line_and_keeps_the_exit(rig: Rig, args, code: int) -> None:
+    rig.box(STRANGER)
+    if code == 4:
+        rig.setup_mode("left")
+    assert not (rig.bin / "ears").exists()
+    result = rig.run(*args)
+    assert result.exit_code == code, result.output
+    lines = result.output.splitlines()
+    assert lines.count(no_ears_line("claude")) == 1
+    assert wake_lines(result.output) == [no_ears_line("claude")]
+
+
+@pytest.mark.parametrize("code", [0, 4])
+def test_a_refusal_is_one_line_and_keeps_the_exit(rig: Rig, code: int) -> None:
+    rig.box(STRANGER)
+    if code == 4:
+        rig.setup_mode("left")
+    add_ears(rig)
+    wake_mode(rig, "refuse")
+    result = rig.run()
+    assert result.exit_code == code, result.output
+    wake = wake_lines(result.output)
+    assert wake == [
+        (
+            "No wake seat added (ears wake: the wake file was left at the old "
+            "place). Fix that, then run: ears wake add claude"
+        )
+    ]
+    assert not wake_file(rig).exists()
+
+
+def test_a_slow_wake_add_is_one_line_and_not_waited_on(
+    rig: Rig, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    rig.box(STRANGER)
+    add_ears(rig)
+    wake_mode(rig, "slow")
+    monkeypatch.setattr(setup_mod, "WAKE_TIMEOUT", 0.5)
+    start = time.monotonic()
+    result = rig.run()
+    assert time.monotonic() - start < 10
+    assert result.exit_code == 0, result.output
+    wake = wake_lines(result.output)
+    assert wake == [
+        (
+            "No wake seat added: `ears wake add claude` did not answer. "
+            "Run it yourself: ears wake add claude"
+        )
+    ]
+
+
+def test_the_wake_line_comes_before_the_model_line_and_the_launch_step(
+    rig: Rig,
+) -> None:
+    rig.box(STRANGER)
+    add_ears(rig, "missing")
+    lines = rig.run().output.splitlines()
+    assert lines[-3:] == [
+        "Wake seat 'claude': \"hey claude\" wakes it.",
+        setup_mod.EARS_MODEL_LINE,
+        SEAT_SENTENCE,
+    ]
+
+
+def test_a_dry_run_lists_and_writes_no_wake_seat(rig: Rig) -> None:
+    rig.box(STRANGER)
+    add_ears(rig)
+    result = rig.run("--dry-run")
+    assert result.exit_code == 0, result.output
+    assert "Would add wake seat 'claude': ears wake add claude" in result.output
+    assert ears_calls(rig) == [["wake", "list"], ["backends"]]
+    assert not wake_file(rig).exists()
+    assert_nothing_written(rig)
+
+
+def test_a_dry_run_with_the_seat_there_says_so_and_writes_nothing(rig: Rig) -> None:
+    rig.box(STRANGER)
+    add_ears(rig)
+    wake_file(rig).parent.mkdir(parents=True)
+    wake_file(rig).write_text(json.dumps({"seats": {"claude": {"names": ["claude"]}}}))
+    before = wake_file(rig).read_bytes()
+    result = rig.run("--dry-run")
+    assert result.exit_code == 0, result.output
+    assert (
+        "Wake seat 'claude' is already there; a real run leaves its names as they are."
+    ) in result.output
+    assert wake_file(rig).read_bytes() == before
+    assert ["wake", "add", "claude"] not in ears_calls(rig)
+
+
+def test_a_dry_run_without_ears_is_the_same_one_line(rig: Rig) -> None:
+    rig.box(STRANGER)
+    result = rig.run("--dry-run")
+    assert result.exit_code == 0, result.output
+    assert result.output.splitlines().count(no_ears_line("claude")) == 1

@@ -16,8 +16,8 @@ editor and a release archive. So:
   `#anchor`, if any, a heading there), and an absolute target is https.
 
 Each check is shown to hit on a planted sample: a zero is a receipt only when
-the same check can fail. docs/components.md, written in the same style, is
-held to the same rules.
+the same check can fail. docs/components.md and docs/dependencies.md, written
+in the same style, are held to the same rules.
 """
 
 from __future__ import annotations
@@ -28,7 +28,7 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
-GUARDED = ("README.md", "docs/components.md")
+GUARDED = ("README.md", "docs/components.md", "docs/dependencies.md")
 
 FENCE = re.compile(r"^ *(```|~~~).*?^ *\1 *$", re.MULTILINE | re.DOTALL)
 CODE_SPAN = re.compile(r"(`+)(?!`).*?(?<!`)\1(?!`)", re.DOTALL)

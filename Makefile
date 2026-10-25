@@ -32,8 +32,10 @@ docs-import:  ## copy each command's page in from the repo that ships it (SRC=fo
 build:  ## wheel + sdist into dist/
 	@uv build
 
+# release.py is stdlib-only, so python3 runs it: a plain `uv run` would re-lock
+# the project before the script starts.
 release:  ## bump (BUMP=patch|minor|major) or set (VERSION=X.Y.Z), then mirror, changelog, commit, tag
-	@uv run python scripts/release.py $(or $(VERSION),$(BUMP))
+	@python3 scripts/release.py $(or $(VERSION),$(BUMP))
 
 push:  ## push the branch and the tags to origin (release never pushes; this is the line it printed)
 	@git push origin HEAD && git push origin --tags

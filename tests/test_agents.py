@@ -123,6 +123,7 @@ MAINTAINER_NOTES = (
     "docs/family-docs.md",
     "docs/family-docs-agents.md",
     "docs/family-docs-changelog.md",
+    "docs/family-docs-dependencies.md",
     "docs/family-docs-license.md",
     "docs/family-docs-readme.md",
     "docs/family-file-structure.md",

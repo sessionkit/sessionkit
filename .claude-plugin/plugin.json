@@ -1,6 +1,6 @@
 {
   "name": "sessionkit",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Session Kit gives your Claude Code sessions voice, mail, a phone line and a tmux sidebar, in one install.",
   "author": {
     "name": "Mike Bailey",

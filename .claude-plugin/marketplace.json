@@ -2,7 +2,7 @@
   "name": "sessionkit",
   "metadata": {
     "description": "Self-hosting marketplace for the sessionkit plugin and the session family it installs - add with `claude plugin marketplace add <path or url>`.",
-    "version": "0.3.0"
+    "version": "0.3.1"
   },
   "owner": {
     "name": "Mike Bailey",

@@ -93,18 +93,23 @@ def _shape(check):
 @click.option(
     "--agent",
     metavar="NAME",
-    default=operator_setup.DEFAULT_AGENT,
-    show_default=True,
+    default=None,
     callback=_shape(operator_setup.check_agent_shape),
     help="Your assistant's name: setup writes its agent file and makes its "
-    "mail box, so `session start NAME` starts Claude as NAME, hearing mail to NAME.",
+    "mail box, so `session start NAME` starts Claude as NAME, hearing mail to NAME, "
+    'and adds NAME as the seat "hey NAME" wakes. '
+    f"[default: {operator_setup.DEFAULT_AGENT}] "
+    "The default seat's box, named by `session agent default`, is made too, "
+    "whatever NAME is; with no --agent, the default seat is the one woken.",
 )
 @click.option(
     "--dry-run",
     is_flag=True,
     help="Run every check and print what would be written; write nothing.",
 )
-def setup(mailbox: str | None, address: str | None, agent: str, dry_run: bool) -> None:
+def setup(
+    mailbox: str | None, address: str | None, agent: str | None, dry_run: bool
+) -> None:
     """Set up mail on this Mac, write you as the operator, and define your assistant.
 
     Mail first: it runs sessionmail's mail setup (`message setup`), which
@@ -123,17 +128,23 @@ def setup(mailbox: str | None, address: str | None, agent: str, dry_run: bool) -
     Then your assistant (--agent, default claude): it writes NAME.md where
     `session start` looks for agents (~/.session/agents, unless
     $AGENTS_DIR or ~/.session/agent/config says otherwise), not keyed, and
-    asks `message setup` for the box NAME. A file already there, in either
-    layout, is left as it is. It ends with the one launch step:
-    `session start NAME`.
+    asks `message setup` for the box NAME and for the default seat's box,
+    the name `session agent default` prints, whatever NAME is. A file
+    already there, in either layout, is left as it is. It ends with the one
+    launch step: `session start NAME`.
 
-    Before that step it asks `ears backends`, read only. If the ears'
-    voice-activity model is missing, it says one line naming `ears install`.
-    It never runs `ears install`, and the line never changes the exit.
+    Before that step it adds the wake seat with `ears wake add`: NAME when
+    --agent is given, else the default seat, so saying "hey" and its name
+    wakes it. Without `ears` on the PATH, or when it refuses, it says one line
+    with the step to run; that line never changes the exit. It never runs
+    `ears services install`. Then it asks `ears backends`, read only. If
+    the ears' voice-activity model is missing, it says one line naming
+    `ears install`. It never runs `ears install`, and the line never
+    changes the exit.
 
     Exit 0 all done, 1 refused or failed, 2 usage, 4 done what it could,
     mail steps left for you. See INSTALL.md, "Operator and administrators"
-    and "Mail between agents".
+    and "Mail between agents", in https://github.com/sessionkit/sessionkit.
     """
     if mailbox is not None and address is not None:
         raise click.UsageError("give --mailbox or --address, not both")

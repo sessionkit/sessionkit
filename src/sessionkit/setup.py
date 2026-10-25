@@ -75,8 +75,13 @@ PRIVILEGED_KEY = "privileged"
 # is absent. It never opens, copies, moves or writes it, and never falls back
 # to it: no value is ever read from this path.
 LEGACY_OPERATOR_FILE = "~/.settings/session/session.d/10-operator.json"
+# INSTALL.md ships in neither the wheel nor the sdist, so a pointer to it names
+# the repository it lives in: pyproject's Repository URL, which a wheel-installed
+# user can open (tests/test_setup.py holds the two equal).
+REPOSITORY = "https://github.com/sessionkit/sessionkit"
 ABOUT = (
-    "written by `sessionkit setup`: the operator. Edit it to change it. See INSTALL.md."
+    "written by `sessionkit setup`: the operator. Edit it to change it. "
+    f"See INSTALL.md, in {REPOSITORY}."
 )
 
 # Sets the ask address in `session operator`, never privilege (sessiontools). It
@@ -366,24 +371,32 @@ MAIL_FAILED = 1
 MAIL_REFUSED = 2
 MAIL_LEFT = 4
 
-MAIL_DOC = 'INSTALL.md, "Mail between agents"'
+MAIL_DOC = f'INSTALL.md, "Mail between agents", in {REPOSITORY}'
 
 
 def mail_setup_boxes(
-    mailbox: str | None, address: str | None, agent: str | None
+    mailbox: str | None,
+    address: str | None,
+    agent: str | None,
+    seat: str | None = None,
 ) -> tuple[str, ...]:
     """The boxes the installer asks the verb for, as `--box NAME` each.
 
     `--mailbox NAME` passes NAME, so a named box on a fresh install is made
     before the operator check looks for it. Then the agent's box (`--agent`,
     default `claude`): a seat started with `session start NAME` hears the
-    box NAME, so the box must exist for mail to it to land. The verb's own
-    floor (the operator's box, `operator.mailbox`, else the installing
-    account's name) is made besides. A session's own box is made by its
-    pager, never here. The verb is idempotent: a box that exists stays.
+    box NAME, so the box must exist for mail to it to land. Then the default
+    seat's box, SEAT (`default_seat`: the name `session agent default`
+    prints), whatever `--agent` names: the seat a bare `session start`
+    takes hears it, and `session start` only checks for that box, never
+    makes it. SEAT is None when that verb did not answer; then no default
+    seat's box is asked for. Each name is passed once. The verb's own floor
+    (the operator's box, `operator.mailbox`, else the installing account's
+    name) is made besides. A session's own box is made by its pager, never
+    here. The verb is idempotent: a box that exists stays.
     """
     del address  # an address needs no box
-    boxes = [name for name in (mailbox, agent) if name is not None]
+    boxes = [name for name in (mailbox, agent, seat) if name is not None]
     return tuple(dict.fromkeys(boxes))
 
 
@@ -502,6 +515,42 @@ def run_mail_setup(
 # The assistant setup defines when no `--agent` is given.
 DEFAULT_AGENT = "claude"
 
+# The default seat: the seat a bare `session start` takes on this host. Its
+# name is read from sessiontools, never written here: `session agent
+# default` prints the vendor's own word (one line, exit 0), the same word a
+# bare `session start` gives its seat. Its box is asked for on every run,
+# beside the `--agent` box (mail_setup_boxes), and with no `--agent` it is
+# the seat "hey NAME" wakes (run_wake): one word, from one place.
+DEFAULT_SEAT_ARGV: tuple[str, ...] = ("session", "agent", "default")
+# The verb reads no host state and answers at once; a slow one is not waited on.
+DEFAULT_SEAT_TIMEOUT = 5.0
+
+
+def default_seat(environ: Mapping[str, str]) -> str | None:
+    """The default seat's name: `session agent default`'s one line, or None.
+
+    None when the verb does not answer (not on the PATH, a sessiontools
+    without it, non-zero, a timeout) or prints anything but one name of an
+    agent's shape. No name stands in for it: an unknown seat is said so
+    (SEAT_UNKNOWN_LINE), never guessed."""
+    done = _run(DEFAULT_SEAT_ARGV, environ, timeout=DEFAULT_SEAT_TIMEOUT)
+    if done is None or done.returncode != 0:
+        return None
+    lines = (done.stdout or "").splitlines()
+    if len(lines) != 1:
+        return None
+    try:
+        return check_agent_shape(lines[0].strip())
+    except ShapeError:
+        return None
+
+
+SEAT_UNKNOWN_LINE = (
+    "The default seat has no name here: `{verb}` did not answer, so setup "
+    "asked for no box and added no wake seat for it. Once a sessiontools "
+    "that has the verb is installed, run sessionkit setup again."
+)
+
 # Where `session start NAME` looks for agents: sessiontools'
 # `start/agents.py:agents_root`, the same rule, mirrored here so the kit does
 # not import sessiontools' internals. `$AGENTS_DIR`, else
@@ -516,8 +565,12 @@ AGENTS_DIR_NAME = "agents"
 LIST_AGENTS_ARGV: tuple[str, ...] = ("session", "start", "--list-agents")
 
 # The one launch step, in sessionphone's final words: the same line its Delta
-# bot prints. Spelled once: change it here only.
+# bot prints. Spelled once: change it here only. A bare `session start` takes
+# the default seat (sessiontools' `session agent default`), so the step is
+# bare when setup's agent IS that seat. Any other agent, or no seat known (a
+# sessiontools without the verb, where a bare start is plain), keeps the name.
 LAUNCH_SENTENCE = "To hear Delta messages, start Claude with: session start {agent}"
+LAUNCH_SENTENCE_SEAT = "To hear Delta messages, start Claude with: session start"
 
 # The agent file. No `start:` keys: the seat is NOT keyed. No front matter at
 # all: Claude Code (2.1.304, measured) names an agent by its file, so `name:`
@@ -553,7 +606,11 @@ def agent_text(agent: str) -> str:
     return AGENT_TEXT.format(agent=agent)
 
 
-def launch_sentence(agent: str) -> str:
+def launch_sentence(agent: str, seat: str | None = None) -> str:
+    """The launch step for AGENT: bare when AGENT is the default seat SEAT,
+    else named. SEAT is None when `session agent default` did not answer."""
+    if seat is not None and agent == seat:
+        return LAUNCH_SENTENCE_SEAT
     return LAUNCH_SENTENCE.format(agent=agent)
 
 
@@ -666,6 +723,59 @@ def ears_model_missing(environ: Mapping[str, str]) -> bool:
     return False
 
 
+# --- the wake seat: "hey NAME" wakes the seat ----------------------------------
+
+# sessionvoice's wake verbs. `add` is idempotent (exit 0 with the seat
+# already there), touches only that seat, and keeps a user's names for it;
+# `list` is read only, exit 0 either way. A refusal is exit 1 with
+# `ears wake: <reason>` on stderr. Setup never runs `ears services install`.
+WAKE_ADD_ARGV: tuple[str, ...] = ("ears", "wake", "add")
+WAKE_LIST_ARGV: tuple[str, ...] = ("ears", "wake", "list")
+WAKE_TIMEOUT = 10.0
+
+
+def wake_step(name: str) -> str:
+    """The one command that adds NAME's wake seat by hand."""
+    return " ".join((*WAKE_ADD_ARGV, name))
+
+
+def run_wake(*, name: str, dry_run: bool, environ: Mapping[str, str]) -> list[str]:
+    """Add NAME as a wake seat with `ears wake add NAME`; one line either way.
+
+    Only when `ears` is on the PATH. No ears, a refusal, a timeout: ONE line
+    naming the step to run, and never the exit (as `ears_model_missing`). A
+    dry run asks `ears wake list`, read only, and writes nothing."""
+    step = wake_step(name)
+    if _find(WAKE_ADD_ARGV[0], environ) is None:
+        return [
+            (
+                f"No wake seat added: `{WAKE_ADD_ARGV[0]}` is not on the PATH. "
+                f"Once it is, run: {step}"
+            )
+        ]
+    if dry_run:
+        done = _run(WAKE_LIST_ARGV, environ, timeout=WAKE_TIMEOUT)
+        listed = done is not None and done.returncode == 0
+        if listed and any(
+            line.split(":", 1)[0].strip() == name
+            for line in (done.stdout or "").splitlines()
+        ):
+            return [
+                f"Wake seat {name!r} is already there; a real run leaves its names as they are."
+            ]
+        return [f"Would add wake seat {name!r}: {step}"]
+    done = _run((*WAKE_ADD_ARGV, name), environ, timeout=WAKE_TIMEOUT)
+    if done is None:
+        return [f"No wake seat added: `{step}` did not answer. Run it yourself: {step}"]
+    if done.returncode != 0:
+        why = next(
+            (line.strip() for line in (done.stderr or "").splitlines() if line.strip()),
+            f"it exited {done.returncode}",
+        ).rstrip(".")
+        return [f"No wake seat added ({why}). Fix that, then run: {step}"]
+    return [f'Wake seat {name!r}: "hey {name}" wakes it.']
+
+
 # --- the run ------------------------------------------------------------------
 
 
@@ -716,7 +826,7 @@ def run_setup(
     *,
     mailbox: str | None = None,
     address: str | None = None,
-    agent: str = DEFAULT_AGENT,
+    agent: str | None = None,
     dry_run: bool = False,
     home: Path | None = None,
     environ: Mapping[str, str] | None = None,
@@ -728,12 +838,17 @@ def run_setup(
     The verb would otherwise make the operator's box from settings that
     cannot see that file. Past it, all three always run. Mail goes first
     because the operator is written only for a box that exists, and the
-    mail setup verb is what makes the operator's box and the agent's. The
-    exit is the worst of the three: 1 if any refused or failed, else 4 if
-    mail left steps for you, else 0. Then `ears backends` is asked, read
-    only: when the ears' model is missing, one line (EARS_MODEL_LINE) names
-    `ears install`; it never changes the exit. With the agent defined, the
-    run ends on the one launch step (LAUNCH_SENTENCE). MAILBOX / ADDRESS /
+    mail setup verb is what makes the operator's box, the agent's and the
+    default seat's (its name read once, from `default_seat`). The exit is
+    the worst of the three: 1 if any refused or failed, else 4 if mail left
+    steps for you, else 0. Then the wake seat (run_wake): `ears wake add
+    NAME`, NAME the `--agent` given, else the default seat; one line, never
+    the exit. Then `ears backends` is asked, read only: when the ears'
+    model is missing, one line (EARS_MODEL_LINE) names `ears install`; it
+    never changes the exit. With the agent defined, the run ends on the one
+    launch step (LAUNCH_SENTENCE: bare when the agent is the default seat,
+    else named). AGENT is None when `--agent` was not
+    given: the agent file is then DEFAULT_AGENT's. MAILBOX / ADDRESS /
     AGENT are already shape-checked by the caller.
     """
     environ = os.environ if environ is None else environ
@@ -741,11 +856,14 @@ def run_setup(
     stop = stranded(resolved, settings_dir_for(resolved))
     if stop is not None:
         return stop
+    named = agent
+    agent = DEFAULT_AGENT if named is None else named
+    seat = default_seat(environ)
     # No mail setting is written, here or by the verb: the file drop is
     # sessionmail's default carrier, and postfix is the user's opt-in.
     # `--write-maps` is never passed: writing postfix maps is opt-in too.
     mail = run_mail_setup(
-        boxes=mail_setup_boxes(mailbox, address, agent),
+        boxes=mail_setup_boxes(mailbox, address, agent, seat),
         dry_run=dry_run,
         environ=environ,
     )
@@ -765,11 +883,22 @@ def run_setup(
         lines.append(
             f"Would ask `{_verb()}` for the agent's box {agent!r} (--box {agent})."
         )
+        if seat is not None and seat != agent:
+            lines.append(
+                f"Would ask `{_verb()}` for the default seat's box "
+                f"{seat!r} (--box {seat}) too."
+            )
+    # Neither the seat line nor the wake seat is ever part of the exit.
+    if seat is None:
+        lines.append(SEAT_UNKNOWN_LINE.format(verb=" ".join(DEFAULT_SEAT_ARGV)))
+    wake = named if named is not None else seat
+    if wake is not None:
+        lines += run_wake(name=wake, dry_run=dry_run, environ=environ)
     # Read only, and never part of the exit: 4 means mail steps are left.
     if ears_model_missing(environ):
         lines.append(EARS_MODEL_LINE)
     if defined.code == EXIT_OK:
-        lines.append(launch_sentence(agent))
+        lines.append(launch_sentence(agent, seat))
     return Outcome(code, lines)
 
 

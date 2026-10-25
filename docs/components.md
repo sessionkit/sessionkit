@@ -34,28 +34,59 @@ the order of your PATH.
 
 ### First commands
 
-Mail ([sessionmail][pkg-mail]); inside a Claude Code session:
+Mail ([sessionmail][pkg-mail]), inside a Claude Code session. What would
+page you now; it never blocks:
 
 ```bash
-pager status                      # what would page you now; never blocks
-message list                      # one line per message, no bodies
-memory ls /                       # your mailbox, read as a filesystem
+pager status
 ```
 
-Sessions ([sessiontools][pkg-tools]):
+One line per message, no bodies:
 
 ```bash
-session list                      # every live session, with its context
-session context <seat>            # how full one session's window is
-session settings <session-id>     # each setting, with the file that set it
+message list
 ```
 
-Voice ([sessionvoice][pkg-voice]):
+Your mailbox, read as a filesystem:
 
 ```bash
-ears install                      # fetch the voice-activity model
-ears backends                     # which speech engines run on this Mac
-mouth devices                     # your output devices, as --device takes them
+memory ls /
+```
+
+Sessions ([sessiontools][pkg-tools]). Every live session, with its context:
+
+```bash
+session list
+```
+
+How full one session's window is, a seat or a session id in place of SEAT:
+
+```bash
+session context SEAT
+```
+
+Each setting, with the file that set it, a session id in place of SID:
+
+```bash
+session settings SID
+```
+
+Voice ([sessionvoice][pkg-voice]). Fetch the voice-activity model:
+
+```bash
+ears install
+```
+
+Which speech engines run on this Mac:
+
+```bash
+ears backends
+```
+
+Your output devices, as `--device` takes them:
+
+```bash
+mouth devices
 ```
 
 Phone ([sessionphone][pkg-phone]): installed, and walked on a fresh Mac for a

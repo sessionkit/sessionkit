@@ -9,6 +9,218 @@ stamps this file.
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-10-25
+
+### Added
+
+- docs/dependencies.md lists everything the kit depends on: what needs each
+  one, by command, whether you need it, where it comes from and how you
+  upgrade it.
+- docs/dependencies.md links `uv.lock`, the full resolved set: every package
+  at the version the kit is tested with.
+- `sessionkit setup` adds a wake seat, so saying "hey" and the seat's name
+  wakes it on a fresh install with no step of your own. It runs
+  `ears wake add NAME`, where NAME is the `--agent` you give, else the
+  default seat. A re-run leaves the wake file as it was, and a seat already
+  there keeps its names. With no `ears` on the PATH, or when it refuses, it
+  prints one line with the step to run, and that line never changes its
+  exit. It never runs `ears services install`. `--dry-run` asks
+  `ears wake list`, read only, says which seat it would add, and writes
+  nothing.
+- `sessionkit setup` reads the default seat's name from
+  `session agent default`, the same word a bare `session start` gives its
+  seat. The default seat's box and its wake seat both take that name. When
+  the verb does not answer, setup asks for neither and says so in one line.
+- The README's Quick start starts Claude with a bare `session start`. The
+  first session on a Mac is `claude`, the default seat, and it hears your
+  Delta messages and calls. A second session started the same way starts
+  plain, and its one line names the session that holds `claude`. The lines
+  are the ones sessiontools prints. INSTALL.md section 4 says only one
+  session holds `claude`. Section 2 shows setup's wake seat line, and
+  section 5 installs the voice services with no `--agent`, keeping
+  `--agent` and `ears wake add` for when setup added no wake seat.
+- docs/sessionview.md is sessionview's own page, imported from sessionview.
+  It replaces the page that said none was written yet. It lists each
+  `sessionview` verb and its form, and links what an install changes.
+- INSTALL.md section 5 has a short "How waking works" part. It names the
+  session box, subscriptions, the pager's wake and ride-along rules, that
+  mail to the session id wakes by default, and the wake seat setup makes,
+  with what was measured. The waking steps link to it.
+
+### Fixed
+
+- INSTALL.md no longer says nobody is woken when you speak without a wake
+  seat. Without one, "hey" and a name wakes no one by mail, and room mode
+  still wakes your agent.
+- README.md no longer says the mouth needs a device. With no device set it
+  plays on the Mac's default output, so the README and INSTALL.md test lines
+  pass no `--device default`.
+- INSTALL.md section 4 says the session box is made when the session starts,
+  by the sessionmail plugin's start hook, not the first time the pager listens.
+- `sessionkit setup` asks mail setup for the default seat's box, `claude`,
+  on every run, beside the operator's box and the `--mailbox` and `--agent`
+  boxes. With `--agent` naming another assistant it had asked for that box
+  alone, so a session started as `claude` had no box and heard no mail. The
+  step it prints when sessionmail has no mail setup, and `--dry-run`, carry
+  the same boxes.
+- The README's Claude Code link goes to the Claude Code docs. It had gone
+  to claude.ai/code, Claude on the web.
+- docs/session.md says a bare `session start` takes the default seat,
+  `claude`, when no other session holds it and its box is there, and starts
+  plain only when one does or the box is missing. It had said a bare start
+  was always a plain session.
+- The README lists what you need before the install, and gives Claude
+  Code's own installer. Each command sits in a block of its own, under a
+  label for its path ("No Homebrew:", "No uv:"), and opening a new terminal
+  after it is a bullet of its own. INSTALL.md's install steps follow the
+  same rule.
+- INSTALL.md section 3's blocks paste into zsh as written. The clone and
+  clones-removal blocks had a `<name>` to fill in, which zsh reads as a
+  redirect; they are loops over the five now. The install loop's trailing
+  comment, which a fresh Mac's zsh reads as words, is gone. `r` and the
+  moved clone's folder are set in blocks of their own.
+- INSTALL.md section 2's `command not found` follow-up is a bullet with its
+  own block, and so is `uv tool update-shell`. They had sat in sentences.
+- `source ~/.local/bin/env`, after uv's installer, is a block of its own
+  in the README and INSTALL.md section 1, not a clause of the "open a new
+  terminal" bullet. The README's "Then quit Claude Code and start it
+  again" is a bullet, as INSTALL.md's is.
+- INSTALL.md sections 4 to 8, and section 2's "Operator and administrators"
+  notes, follow the family command rule. Each command you run sits in a
+  block of its own, under a label for its path ("No file yet:", "From your
+  own clones"), and what to do after it is a bullet of its own. A value you
+  type is an UPPERCASE word, named before its block. Section 8 looks with
+  `--dry-run` before the voice jobs' real uninstall, and its clones route
+  removes the five marketplaces with one loop. Each keep-or-delete choice in
+  section 8 (the speech models, the mouth's box, the notmuch index and the
+  files shared with VoiceMode) is a labelled bullet, its lines under the one
+  that deletes. The two account folders each have a block of their own, so
+  a reader who keeps one pastes only the other.
+- The README and INSTALL.md section 6 put the speech server before the
+  phone: `ears services install --only speech` comes before you link the
+  phone with `sessionphone setup`. A call hears you through the speech
+  server. With the phone linked first, the missing server showed only at
+  the last step.
+- The README, INSTALL.md and docs/dependencies.md say what a call needs on
+  a Mac, in one order: Homebrew, then `brew install ffmpeg`, then the
+  speech server, then the phone link. The README had said the Command Line
+  Tools alone would do, and named ffmpeg nowhere; a Mac with no Homebrew
+  had no way to get it. A call without Homebrew is the workaround case,
+  which the docs do not cover.
+- INSTALL.md section 2 gives upgrade and reinstall each its own labelled
+  block. One block held both, so a paste ran both. Running the setup again
+  after exit 4 is a bullet with its own block; it had sat in the paragraph
+  on its exits.
+- The README and INSTALL.md give the two lines that put Claude Code on your
+  PATH. Its installer does not change your PATH: run before uv's, it prints
+  `~/.local/bin is not in your PATH`, and a new terminal has no `claude`.
+- INSTALL.md section 4 makes turning the mail hooks on a step you take, and
+  gives the file to make and its content. It had said the first run tells
+  you so; the plugin writes the file with the hooks off at the first tool
+  call, and tells only the agent.
+- INSTALL.md says a plugin installed from your own clone runs in place, from
+  the clone. It had said such a plugin runs from a copy in Claude Code's
+  plugin cache. The kit's own plugins still run from their copy.
+- INSTALL.md section 5 says that from sessionvoice 0.3.0 a bare
+  `ears services install` refuses until you give `--agent NAME` or
+  `--no-agent`, and which warnings a Mac with no postfix can ignore: the two
+  about postfix, never the one about `--agent`.
+- INSTALL.md section 1 counts the 8 GB or so that macOS takes for itself in
+  its first minutes on a fresh install, and the sizes measured on a walk.
+- INSTALL.md section 7 explains why `sessionview install --check` says
+  `not ready` when only `neomutt` is missing, and the question
+  `sessionview agents` asks the first time it opens.
+- INSTALL.md warns that Claude Code's folder-trust prompt has "No, exit"
+  ready (section 4), and that `/exit` asks one more question while the
+  pager's monitor runs (section 8).
+- INSTALL.md's MEASURED tags no longer carry a date. Each names what ran
+  and on which versions.
+- The MEASURED claims in docs/agent-letter.md and site/README.md no longer
+  carry a date either. Each keeps what ran, the version and the OS.
+- No command the docs give you to paste ends in a `#` comment any more:
+  the README's Quick start and Development blocks, INSTALL.md's speaker
+  names, docs/components.md's first commands and site/README.md. In a Mac's
+  zsh a pasted `#` is a word, so `session list   # your live sessions`
+  ran `session list` with four more words, and a comment's apostrophe
+  opened a quote that ate the lines after it. Each explanation is prose
+  now, beside its command. AGENTS.md's make targets are a list.
+- A value you type into a command is an UPPERCASE word now, the word the
+  command's own help uses: `message send TO` in the README's Quick start,
+  `--address ADDR`, `--mailbox NAME`, `--agent NAME` and `--box NAME` in
+  INSTALL.md, and `SEAT` and `SID` in docs/components.md. The sentence
+  before each block says what goes in its place. A `<box>` is a redirection
+  in zsh and in bash, so a pasted line stopped on it and did not run.
+  docs/family-docs.md's "How a command is written" names the form.
+- A test reads every shell block in the docs as zsh reads a paste, and
+  fails on a `#` comment, a quote left open or an unquoted `<word>`.
+- `sessionkit setup --help`, the operator file it writes and its "set mail
+  up by hand" line now say where INSTALL.md is: in the kit's repository,
+  https://github.com/sessionkit/sessionkit. INSTALL.md is not in the wheel
+  or the sdist, so "See INSTALL.md" named a file an installed kit does not
+  have.
+- INSTALL.md names 0.3.0 where it said which release the kit installs or
+  asks for. It had named 0.2.0 or 0.2.1 for sessionmail, sessiontools,
+  sessionphone, sessionview and sessionvoice. Measurements made on 0.2.x keep
+  their release and say they are not yet repeated on 0.3.0.
+- INSTALL.md no longer says every command answers `--help`. Four
+  `sessionview` verbs run instead: `install`, `autostart`, `from` and
+  `sidebar`, which opens the sidebar.
+- The README's step that turns the mail hooks on no longer writes
+  `~/.sessionkit/mail/settings/mail.json` over. The plugin writes that file
+  itself, with `"sendmail": "drop"` beside `"hooks": false`, and the old
+  `echo` deleted every key but `version` and `hooks`, a carrier set by hand
+  included. The step now edits the file when it is there, and writes the
+  plugin's own template with the hooks on when it is not.
+- The README's mail hooks step now also turns the hooks on in a
+  `mail.json` that has no `"hooks"` key, such as one made by hand with only
+  a `sendmail` key. It adds `"hooks": true` as the first key and keeps the
+  rest. Before, it changed only a `"hooks": false` written on one line with
+  no space before the colon, so such a file, or a pretty-printed one with a
+  space or a line break there, kept its hooks off. INSTALL.md's postfix
+  example now carries `"hooks": true`: sessionmail reads a `mail.json` with
+  no `hooks` key as malformed and leaves the hooks off. And INSTALL.md says
+  `ears install` downloads the voice-activity model from GitHub, in the
+  requirements and in the first checks, where it said only "network".
+- A release no longer re-locks the project. `scripts/release.py` runs
+  `uv version --frozen`, on a dry run too, and writes the new version onto
+  uv.lock's own `sessionkit` line as text, so a release changes no other
+  line of uv.lock and resolves nothing. A plain `uv version` re-locked: cut
+  before the family's new releases were on PyPI, it failed, and with
+  `UV_FIND_LINKS` set it wrote a lock of local paths that the release then
+  committed. The script refuses a uv.lock without exactly one root
+  `sessionkit` block holding one `version` line, before it writes anything.
+  `make release` runs the script with `python3`, not `uv run`, which
+  re-locked before the script started.
+
+### Changed
+
+- The README's Quick start makes and enters a project folder
+  (`mkdir -p ~/work && cd ~/work`) before `session start claude`, and says
+  why: started in the home folder, Claude Code asks macOS for access to
+  folders such as Desktop, Downloads, Photos and Media Library.
+- The README's Command Line Tools bullet says the dialog can open behind the
+  Terminal window, and to look for it in the Dock or with Cmd-Tab.
+- The README says `ears install` downloads its voice-activity model from
+  GitHub, one pinned release of Silero VAD checked against its SHA-256,
+  where it said only "network".
+- `sessionkit setup`'s last line is the bare launch step,
+  `To hear Delta messages, start Claude with: session start`, when its
+  agent is the default seat: no `--agent`, or `--agent` naming the seat's
+  word. A bare `session start` takes that seat. With `--agent` naming
+  another agent the line still ends `session start NAME`, and with a
+  sessiontools that has no default seat it ends `session start claude`.
+  INSTALL.md sections 2 and 4 and docs/sessionkit.md quote the bare line.
+- INSTALL.md follows sessionmail's mail setup, which now runs `notmuch new`
+  once on its own profile to build the index. You no longer run `notmuch
+  new` by hand: with notmuch found, one setup run does it all, exit 0; with
+  notmuch not found, the first run leaves both notmuch steps `BLOCKED` and
+  exits 4, and the run after `brew install notmuch` finishes them. Section
+  2 quotes the new numbered list of steps left, section 5 step 3 drops the
+  hand `notmuch new`, and the uninstall says setup made the index.
+  docs/dependencies.md says the same.
+- sessionphone 0.3.1 carries a security fix for the bot's caller check;
+  upgrade, and read sessionphone's release notes.
+
 ## [0.3.0] - 2026-10-24
 
 ### Added

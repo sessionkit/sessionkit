@@ -1,6 +1,6 @@
 [project]
 name = "sessionkit"
-version = "0.3.0"
+version = "0.3.1"
 description = "Session Kit gives your Claude Code sessions voice, mail, a phone line and a tmux sidebar, in one install."
 readme = "README.md"
 license = "AGPL-3.0-or-later"
@@ -14,6 +14,10 @@ requires-python = ">=3.11,<3.15"
 # with the family's 0.3.0, so it needs every family package at 0.3.0 or
 # later, and PyPI's 0.0.1 name placeholders and the 0.1.0 alphas must never
 # satisfy these.
+# sessiontools and sessionmail are floored at 0.3.1, for what the kit's code
+# and docs call on: `sessionkit setup` asks sessiontools 0.3.1's
+# `session agent default`, and INSTALL.md describes sessionmail 0.3.1's
+# one-run mail setup.
 # sessionphone with its media extra: the bot, calls and `sessionphone web` need it.
 # sessionvoice with its capture extra, so the ears can hear the room.
 # This is the RULED list, kept in tests/_ruled_deps.py with the ruling;
@@ -21,8 +25,8 @@ requires-python = ">=3.11,<3.15"
 # uv.lock drift from it.
 dependencies = [
     "click>=8.1",
-    "sessionmail>=0.3.0",
-    "sessiontools>=0.3.0",
+    "sessionmail>=0.3.1",
+    "sessiontools>=0.3.1",
     "sessionphone[media]>=0.3.0",
     "sessionview>=0.3.0",
     "sessionvoice[capture]>=0.3.0",

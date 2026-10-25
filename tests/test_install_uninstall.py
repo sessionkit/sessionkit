@@ -109,12 +109,12 @@ def test_part_a_deletes_no_user_data():
 
 def test_reverse_order_service_verbs_then_plugins_then_data():
     section = _section_8()
-    bot = section.index("`sessionphone bot uninstall`")
-    voice = section.index("services uninstall`")
-    plugins = section.index("- `claude plugin marketplace remove <r>`")
-    kit_plugins = section.index("- `claude plugin marketplace remove sessionkit`")
+    bot = section.index("  sessionphone bot uninstall\n")
+    voice = section.index("  ears services uninstall\n")
+    plugins = section.index('    claude plugin marketplace remove "$r"\n')
+    kit_plugins = section.index("  claude plugin marketplace remove sessionkit\n")
     assert voice < kit_plugins < section.index(PART_B)
-    kit = section.index("- `uv tool uninstall sessionkit`")
+    kit = section.index("  uv tool uninstall sessionkit\n")
     data = section.index(PART_B)
     assert bot < voice < min(plugins, kit) < data
     # The clones go only after the plugins that were installed from them (G36).
@@ -129,10 +129,10 @@ def test_the_off_path_verbs_come_before_step_5_removes_the_session_command():
     off_path = section.index("**Did you go off the install path?**")
     assert section.index("**4. The voice") < off_path
     assert off_path < section.index("**5. The plugins and the kit command")
-    assert off_path < section.index("`session pane-state agent off`")
+    assert off_path < section.index("  session pane-state agent off\n")
     # `off` alone keeps the engine binaries it built (PROGRAM files); only
     # `--purge` removes them (sessiontools sound/service.py `cmd_off`).
-    assert off_path < section.index("`session sound engine off --purge`")
+    assert off_path < section.index("  session sound engine off --purge\n")
 
 
 def test_every_rm_on_a_variable_path_fails_loudly_when_it_is_empty():
@@ -276,9 +276,16 @@ def test_part_b_deletes_the_notmuch_index_only_when_mail_setup_made_it():
     assert 'rm -rf "${HOME:?}/.mail/agents/mouth"' in lines
     before = flat.split(" ".join(own.split()), 1)[0]
     assert "Delete it only if mail setup made the profile for it" in before
-    assert "its first run said `wrote` on its `notmuch-profile` line" in flat
-    assert "If that line said `MANUAL`, the database was in the mail folder before the kit" in flat
-    assert "If you cannot tell, leave it" in flat
+    # Each answer of the profile line is its own labelled bullet, and the
+    # block sits under the one that deletes (the family command rule).
+    assert "Mail setup's first run said which, on its `notmuch-profile` line" in flat
+    assert "- It said `MANUAL`: the database was in the mail folder before the kit" in flat
+    assert "- You cannot tell: leave it." in flat
+    # Mail setup runs the profile's first `notmuch new` itself (SK-210), so
+    # the reader ran none: the bullet says setup did.
+    assert "- It said `wrote`: mail setup then ran `notmuch new` once on that profile" in before
+    assert "you then ran section 5's `notmuch new`" not in flat
+    assert before.rindex("- It said `wrote`") > before.rindex("- You cannot tell")
     # The mail folder's rmdir comes after the index line, so it can empty it.
     assert lines.index(own) < lines.index('rmdir "${HOME:?}/.mail"')
 
@@ -537,7 +544,12 @@ def test_the_voice_uninstall_offers_its_dry_run_first():
     section = _section_8()
     flat = " ".join(section.split())
     assert "has no dry run" not in section
-    assert "**Look first with `--dry-run`.** `ears services uninstall --dry-run` names each" in flat
+    assert ("**Look first with `--dry-run`.** This names each job it would boot out and each "
+            "plist it would delete, and changes nothing: ```bash ears services uninstall "
+            "--dry-run ```") in flat
+    # The look comes before the run it looks at.
+    assert section.index("  ears services uninstall --dry-run\n") < section.index(
+        "  ears services uninstall\n")
     assert "printed `dry run: nothing booted out, nothing deleted`, and exited 0" in flat
     assert "`launchctl` acts on your own user's jobs whatever `HOME` says" in flat
     assert "`ears services status` only reads too" in flat
@@ -548,15 +560,18 @@ def test_the_voice_uninstall_offers_its_dry_run_first():
 # bullet goes: the kit's own `ears` (0.2.1) knows every label form.
 def test_the_voice_uninstall_uses_the_kits_own_ears():
     section = _section_8()
-    assert "Run `ears services uninstall`, the kit's own `ears`" in section
+    assert ("**The voice jobs.** This is the kit's own `ears`, the one that installed them "
+            "(section 5 step 2): ```bash ears services uninstall ```") in " ".join(section.split())
     assert "**On sessionvoice 0.1.0**" not in section
     assert not re.search(r"bin/ears(?![-\w])", section)
     assert "on 0.1.0, the plugin's" not in section
     # SK-137: 0.2.0's own are dev.sessionkit.voice.*; it retires both old forms.
+    # The kit installs sessionvoice 0.3.0, read in its source for the same labels.
     flat = " ".join(section.split())
     assert (
-        "0.2.1 knows its own labels, `dev.sessionkit.voice.*`, and both old forms it retires: "
-        "`com.sessionvoice.*`, and the older `com.voicemode.ears-*`"
+        "0.3.0 knows its own labels, `dev.sessionkit.voice.*`, and both old forms it retires: "
+        "`com.sessionvoice.*`, and the older `com.voicemode.ears-*` that 0.1.0 used "
+        "(read in its 0.3.0 source"
     ) in flat
     assert "0.1.0 knows the older set only" not in flat
 
@@ -567,7 +582,7 @@ def test_section_8_has_no_0_1_0_branches_left():
     flat = " ".join(_section_8().split())
     assert "printed `Uninstalled 14 executables`" in flat
     assert "Uninstalled 9 executables" not in flat
-    assert "(2030-06-09, sessionphone 0.2.1)" in flat
+    assert "(sessionphone 0.2.1)" in flat
     assert "any on 0.1.0" not in flat
     assert "newer than 0.1.0" not in flat
 
@@ -577,7 +592,9 @@ def test_the_kept_marketplace_line_is_still_the_plugin_step():
     # test_readme.py's README/INSTALL.md agreement tests expect.
     step_5 = _steps(_section_8().split(PART_B, 1)[0])[4]
     assert step_5.startswith("**5. The plugins and the kit command")
-    assert "claude plugin marketplace remove <r>` for each of the five" in step_5
+    assert ("for r in sessionmail sessiontools sessionphone sessionvoice sessionview; do\n"
+            '    claude plugin marketplace remove "$r"\n'
+            "  done\n") in step_5
 
 
 # SK-169: a kit install (section 3's first lines) has ONE marketplace,
@@ -585,29 +602,31 @@ def test_the_kept_marketplace_line_is_still_the_plugin_step():
 # route has one marketplace and one cache folder per child. Step 5 gives each
 # route its own lines, so a kit-route reader no longer misses cache/sessionkit/.
 KIT_CACHE_BLOCK = 'rm -rf "${HOME:?}/.claude/plugins/cache/sessionkit"\nclaude plugin list\n'
+CLONES_CACHE_BLOCK = (
+    "for r in sessionmail sessiontools sessionphone sessionvoice sessionview; do\n"
+    'rm -rf "${HOME:?}/.claude/plugins/cache/${r:?}"\n'
+    "done\nclaude plugin list\n"
+)
 
 
 def test_step_5_removes_the_kits_marketplace_for_a_kit_install():
     step_5 = _step(5)
     flat = " ".join(step_5.split())
-    assert ("- `claude plugin marketplace remove sessionkit`, if you installed from the kit's "
-            "marketplace (section 3's first lines). This removes its six plugins too.") in flat
+    assert ("- From the kit's marketplace (section 3's first lines). This removes its six "
+            "plugins too: ```bash claude plugin marketplace remove sessionkit ```") in flat
     assert "Run the lines for your route, and both sets if you used both." in flat
     # The clones route keeps its per-child marketplace remove.
-    assert "if you installed them from your own clones" in flat
+    assert "- From your own clones (section 3's" in flat
+    assert "This removes each of the five marketplaces, and its plugin too" in flat
     assert "(#from-your-own-clones-to-work-on-the-plugins-optional)" in step_5
     assert "### From your own clones, to work on the plugins (optional)\n" in INSTALL_DOC
 
 
 def test_step_5_deletes_the_kits_cache_folder_and_each_clones_own():
     step_5 = _step(5)
-    blocks = _blocks(step_5)
+    blocks = [block for block in _blocks(step_5) if "plugins/cache" in block]
     assert blocks[0] == KIT_CACHE_BLOCK
-    assert blocks[1] == (
-        "for r in sessionmail sessiontools sessionphone sessionvoice sessionview; do\n"
-        'rm -rf "${HOME:?}/.claude/plugins/cache/${r:?}"\n'
-        "done\nclaude plugin list\n"
-    )
+    assert blocks[1] == CLONES_CACHE_BLOCK
     assert len(blocks) == 2
     # Each block sits under the route it is for.
     kit = step_5.index("From the kit's marketplace, all six copies are in one folder")
@@ -638,7 +657,8 @@ def test_step_5_clones_loop_in_a_temp_home_removes_only_the_five_copies(tmp_path
     theirs = (".claude/plugins/cache/sessionkit/sessionkit/0.2.1/.orphaned_at",
               ".claude/plugins/cache/other/other/1.0.0/plugin.json")
     _seed(tmp_path, five + theirs)
-    loop = _blocks(_step(5))[1].replace("claude plugin list\n", "")
+    assert CLONES_CACHE_BLOCK in _blocks(_step(5))
+    loop = CLONES_CACHE_BLOCK.replace("claude plugin list\n", "")
     done = _run(tmp_path, loop)
     assert done.returncode == 0 and done.stderr == "", done.stderr
     assert _files(tmp_path) == set(theirs)
@@ -646,7 +666,7 @@ def test_step_5_clones_loop_in_a_temp_home_removes_only_the_five_copies(tmp_path
 
 def test_step_5_kit_route_is_measured_and_names_what_stayed():
     flat = " ".join(_step(5).split())
-    assert ("**MEASURED** (2030-06-09, Claude Code 2.1.307, the kit's marketplace at 0.2.1, "
+    assert ("**MEASURED** (Claude Code 2.1.307, the kit's marketplace at 0.2.1, "
             "on a temporary home directory and Claude Code config directory)") in flat
     assert "printed `Also uninstalled 6 plugins from this marketplace`" in flat
     assert "**The six copies stayed** in `~/.claude/plugins/cache/sessionkit/`" in flat
@@ -694,10 +714,10 @@ def _step(n: int) -> str:
 def test_the_voice_jobs_check_says_to_wait_for_jobs_still_exiting():
     # Run at once, the check still lists jobs that are exiting; they clear
     # a few seconds later.
-    check = _step(4).split("- **Check:**", 1)[1].split("\n- **", 1)[0]
+    check = _step(4).split("- **Check.**", 1)[1].split("\n- **", 1)[0]
     flat = " ".join(check.split())
     assert "Wait a few seconds before you run it" in flat
-    assert "wait a few seconds and run it again, until it prints nothing" in flat
+    assert "It printed a line? Wait a few seconds and run it again, until it prints nothing" in flat
 
 
 # Program state the voice and mail leave outside the folders step 6 already named.
@@ -878,7 +898,10 @@ def test_part_b_voice_keeps_voicemodes_heard_log_unless_the_reader_drops_voicemo
     ]
     flat = " ".join(item.split())
     assert "VoiceMode writes the same transcript" in flat
-    assert "If you do not use VoiceMode, delete them with the lines below. If you do, keep them" in flat
+    # Each path is its own labelled bullet; the block sits under the one that deletes.
+    before = flat.split(" ".join(shared.splitlines()[0].split()), 1)[0]
+    assert "- You use VoiceMode: keep them. The lines below would delete VoiceMode's own" in before
+    assert before.rstrip().endswith("- No VoiceMode: delete them: ```bash"), before[-80:]
     assert "stay in that transcript, beside VoiceMode's, until you delete it" in flat
 
 
@@ -935,7 +958,10 @@ def test_part_b_accounts_names_the_folder_from_before_the_move_and_warns(tmp_pat
     assert "It leaves the rest of `~/.config` alone" in flat
     for _, args in _rm_commands(item):
         assert '"${HOME:?}/.config"' not in args, args
-    [block] = _blocks(item)
+    # Each folder is its own block, so a reader who keeps one pastes only the other.
+    blocks = _blocks(item)
+    assert [b.strip() for b in blocks] == [f'rm -rf "{ACCOUNTS}"', f'rm -rf "{OLD_ACCOUNTS}"']
+    block = blocks[1]
     kept = (".config/notmuch/sessionkit/config", ".config/other/x")
     _seed(tmp_path, (".config/sessiontools/accounts.json",
                      ".config/sessiontools/token-file-backups/20300609T000000Z.token") + kept)
@@ -993,13 +1019,15 @@ def test_part_b_mail_keeps_the_mouths_box_unless_the_reader_drops_voicemode():
     flat = " ".join(item.split())
     assert "sessionvoice's mouth and VoiceMode's both queue their lines in that one box" in flat
     assert "So the first line deletes every box but that one" in flat
-    assert ("If you do not use VoiceMode, the mouth's box is the kit's alone: delete it with"
-            " the lines below. If you do, keep it") in flat
+    # Each path is its own labelled bullet; the block sits under the one that deletes.
+    assert ("- You use VoiceMode: keep it. VoiceMode's mouth speaks from it, and the lines"
+            " below would delete its queue") in flat
+    assert "- No VoiceMode: the mouth's box is the kit's alone. Delete it: ```bash" in flat
     assert "stay in that box, beside VoiceMode's, until you delete it" in flat
     for name in ("`MOUTH_MAILBOX`", "`VOICEMODE_MOUTH_MAILBOX`", "`MOUTH_DIR`",
                  "`VOICEMODE_MOUTH_DIR`"):
         assert name in flat, name
-    assert "It prints the same if you kept the mouth's box" in flat
+    assert "The `rmdir` prints `Directory not empty`, and the folder stays, if you kept the mouth's box" in flat
 
 
 @pytest.mark.parametrize("shell", ["bash", "zsh"])
@@ -1032,9 +1060,9 @@ def test_part_b_mail_in_a_temp_home_keeps_the_mouths_box_until_the_reader_choose
 # 0.2.0 install, every path the kit's packages write there, plus files the kit
 # never wrote and a file in the cwd for every word section 8 uses (a `#`
 # pasted at zsh's prompt hands its words to the command as paths). A reader
-# who keeps VoiceMode skips each block whose lead says "If you do not use
-# VoiceMode". The task's full proof also seeds a host whose sessionvoice home
-# is ~/.voicemode; this pins its result.
+# who keeps VoiceMode skips each block under a "No VoiceMode:" bullet. The
+# task's full proof also seeds a host whose sessionvoice home is
+# ~/.voicemode; this pins its result.
 E2E_KIT = (
     ".sessionvoice/logs/conversations/heard_2030-12-08.jsonl",
     ".sessionvoice/logs/conversations/heard.lock",
@@ -1095,7 +1123,7 @@ def _e2e_blocks(keep_voicemode: bool) -> list[str]:
     for item in part_b.split("\n- **")[1:]:
         lead = 0
         for m in re.finditer(r"```bash\n(.*?)\n\s*```", item, re.DOTALL):
-            dropping = "If you do not use VoiceMode" in item[lead:m.start()]
+            dropping = "- No VoiceMode:" in item[lead:m.start()]
             lead = m.end()
             if not (keep_voicemode and dropping):
                 blocks.append("\n".join(x.strip() for x in m.group(1).splitlines()) + "\n")

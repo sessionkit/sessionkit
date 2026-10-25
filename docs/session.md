@@ -69,9 +69,11 @@ switch, closing idle seats and saying a seat has settled).
   session ledger --short
   ```
 
-- `session start [AGENT] ...`: launch a session from an agent file, or a
-  plain vendor session with no agent named. `--list-agents` prints the
-  agent names it can resolve.
+- `session start [AGENT] ...`: launch a session from an agent file. With
+  no agent named, it takes the default seat, `claude`, and says so, when
+  no other session holds it and its box is there. While one holds it, or
+  with no box `claude`, it starts a plain vendor session and its one line
+  says why. `--list-agents` prints the agent names it can resolve.
 
   ```sh
   session start --list-agents

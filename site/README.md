@@ -22,8 +22,10 @@ From the repo root, these two lines print nothing:
 
 ```bash
 grep -nE '(href|src)="(https?:)?//' site/*.html
-grep -n '<scr[i]pt' site/*.html   # [i] keeps this file out of a grep of site/
+grep -n '<scr[i]pt' site/*.html
 ```
+
+The `[i]` in the second line keeps this file out of a grep of `site/`.
 
 `make check` runs `tests/test_site.py` with the rest of the suite.
 
@@ -57,7 +59,7 @@ A future part page goes at `site/<part>/index.html`. It links
 
 ## Does the CSP block the stylesheet under file://?
 
-**No. It was measured on 2030-06-09, on macOS 27.0.**
+**No. It was measured on macOS 27.0.**
 
 - **Chrome 155** (`--headless=new --screenshot`, from `file://`): the page
   renders styled, and the sticky banner pixel matches the stylesheet's

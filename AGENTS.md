@@ -8,7 +8,8 @@ Instructions for a coding agent working on this repo. Humans start at
 Session Kit is the meta package of the session family. It installs the five
 family packages as one, and ships a small `sessionkit` command of its own.
 
-- `pyproject.toml` lists the five as dependencies, floored at 0.3.0.
+- `pyproject.toml` lists the five as dependencies, floored at 0.3.0,
+  sessionmail and sessiontools at 0.3.1.
 - `[project.scripts]` re-declares every child command, because `uv tool
   install` links only the commands of the package it is asked for.
 - The package is also a Claude Code plugin: `.claude-plugin/` holds its
@@ -34,15 +35,14 @@ them, read the one for what you are changing before you build it.
 
 `make` lists the targets. You need uv.
 
-```bash
-make install   # uv tool install -e .
-make test      # uv run pytest -q
-make lint      # ruff check, then shellcheck on every tracked shell script
-make format    # ruff format
-make check     # lint, then test: run it before every commit
-make build     # wheel and sdist into dist/
-make scan      # the leak scan; SESSIONKIT_SCAN, else release-scan on the PATH
-```
+- `make install`: an editable install, `uv tool install -e .`
+- `make test`: the tests, `uv run pytest -q`
+- `make lint`: ruff check, then shellcheck on every tracked shell script
+- `make format`: ruff format
+- `make check`: lint, then test. Run it before every commit.
+- `make build`: the wheel and sdist, into the `dist` folder
+- `make scan`: the leak scan, with `SESSIONKIT_SCAN`, else `release-scan`
+  on the PATH
 
 `make release`, `make push` and `make publish` are for the owner. Do not
 run them.
