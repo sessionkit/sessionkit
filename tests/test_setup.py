@@ -1249,13 +1249,18 @@ LEGACY_LINE = (
 OLD_DROP_IN = ".settings/session/session.d/10-operator.json"
 
 
+# `.settings` as a folder: not right after a name's letter, so a module path
+# such as `sessionphone.settings` (the doctor imports it) is not the old root.
+OLD_ROOT_WORD = re.compile(r"(?<![A-Za-z0-9_])\.settings")
+
+
 def settings_hits(root: Path) -> list[tuple[str, str]]:
-    """Every (path, stripped line) under ROOT/src naming `.settings`."""
+    """Every (path, stripped line) under ROOT/src naming the `.settings` folder."""
     return [
         (path.relative_to(root).as_posix(), line.strip())
         for path in sorted((root / "src").rglob("*.py"))
         for line in path.read_text(encoding="utf-8").splitlines()
-        if ".settings" in line
+        if OLD_ROOT_WORD.search(line)
     ]
 
 
@@ -1270,6 +1275,7 @@ def test_the_source_names_the_old_root_only_in_the_stranded_constant() -> None:
         'OLD = Path.home() / ".settings" / "session"',
         'FALLBACK = "~/.settings/session/session.json"',
         "# reads ~/.settings/session first",
+        "p = HOME + '/.settings/session'",
     ],
 )
 def test_the_source_check_fails_on_any_other_use(tmp_path: Path, planted: str) -> None:
@@ -1278,6 +1284,14 @@ def test_the_source_check_fails_on_any_other_use(tmp_path: Path, planted: str) -
     (pkg / "setup.py").write_text(LEGACY_LINE[1] + "\n")
     (pkg / "other.py").write_text(planted + "\n")
     assert settings_hits(tmp_path) != [LEGACY_LINE]
+
+
+def test_the_source_check_passes_a_module_path(tmp_path: Path) -> None:
+    pkg = tmp_path / "src" / "sessionkit"
+    pkg.mkdir(parents=True)
+    (pkg / "setup.py").write_text(LEGACY_LINE[1] + "\n")
+    (pkg / "other.py").write_text('import sessionphone.settings\n_load("sessionphone.settings")\n')
+    assert settings_hits(tmp_path) == [LEGACY_LINE]
 
 
 def test_the_source_check_fails_when_the_constant_is_gone(tmp_path: Path) -> None:

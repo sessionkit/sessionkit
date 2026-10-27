@@ -113,6 +113,14 @@ uninstall removes them ([uninstall][uninstall]).
 ## Folders
 
 - `~/.sessionkit/<package>/settings/`: each package's settings.
+- `~/.sessionkit/<package>/log/`: the logs of sessionmail's launch
+  agents, sessiontools, sessionphone, sessionview and sessionvoice
+  ([logs][logs]).
+- `~/.sessionkit/view/state/`: the live view's state.
+- `~/.sessionkit/phone/state/`: the phone bot's root, with its Delta Chat
+  account and its keys. Before 0.3.2 it was `~/.sessionphone/`. A Mac that
+  has only the old one keeps using it, and nothing moves it by itself
+  ([moving it][phone-root]).
 - `~/.session/`: your sessions and seats.
 - `~/.mail/`: the mail between agents.
 - `~/.sessionvoice/`, `~/.ears/` and `~/.local/state/ears/`: the voice.
@@ -125,17 +133,42 @@ terminal. Each family package keeps its own:
 - **sessionmail** (from 0.2.0): `~/.session/sessions/<session-id>/log/mail/pager.jsonl`,
   one row for each thing the pager told an agent
   (the pager log: [sessionmail's docs/pager-inject-log.md][mail-log]).
-- **sessiontools** (from 0.2.0): `~/Library/Logs/sessiontools/`, with
-  `sound-engine.log` and `pane-state.log`.
-- **sessionphone:** `~/.sessionphone/bot.log`.
-- **sessionview:** `~/.local/state/sessionview/sessionview.log`.
-- **sessionvoice:** the heard log, `heard_YYYY-MM-DD.jsonl`, and the
-  services' logs in `~/Library/Logs/ears/`
+  Its launch agents, when you install them, log to `~/.sessionkit/mail/log/`:
+  a seat agent to `seat-agent.<ADDRESS>.log`
+  ([sessionmail's docs/message-seat.md][mail-seat-log]), and the puller to
+  `puller.log` ([sessionmail's docs/pull.md][mail-pull-log]).
+- **sessiontools:** `~/.sessionkit/tools/log/`, with `sound-engine.log`,
+  `pane-state.log`, `default-model.log` and `reap.log`
+  ([sessiontools' README][tools-logs]).
+- **sessionphone:** each bot's own folder,
+  `~/.sessionkit/phone/log/<agent>/`, with `bot.log` and `bot.launchd.log`
+  ([sessionphone's README][phone-logs]).
+- **sessionview:** `~/.sessionkit/view/log/sessionview.log`
+  ([sessionview's README][view-logs]).
+- **sessionvoice:** the heard log, `heard_YYYY-MM-DD.jsonl`, in the voice's
+  home, and the services' logs in `~/.sessionkit/voice/log/`
   (where each one is: [sessionvoice's docs/logs.md][voice-logs]).
 
-Follow one as it grows with `tail -F`, for example
-`tail -F ~/.sessionphone/bot.log`. Which file to read for a symptom:
-[troubleshooting][troubleshooting].
+Before 0.3.2 these logs were in `~/Library/Logs/` (`sessiontools/`, `ears/`,
+an older log folder from before the kit, and a seat agent's
+`seat-agent.<ADDRESS>.log`), `~/.sessionphone/`
+and `~/.local/state/sessionview/`; the puller's was
+`<pull.state_dir>/log/puller.log`. The pager log has not moved. An upgrade
+leaves the old files where they are, and nothing deletes them. A service
+that an older release installed keeps writing its old log until it is
+installed again:
+
+- **A seat agent:** until it is uninstalled and installed again.
+- **The puller:** until `message setup --pull` renders its plist again.
+
+Follow a log as it grows with `tail -F`. For the phone bot, put its
+agent's name in place of AGENT:
+
+```bash
+tail -F ~/.sessionkit/phone/log/AGENT/bot.log
+```
+
+Which file to read for a symptom: [troubleshooting][troubleshooting].
 
 - **Health:** `sessionkit --version` lists the kit and each family
   package, with its installed version; `not installed` beside a name means
@@ -165,4 +198,10 @@ Follow one as it grows with `tail -F`, for example
 [pkg-view]: https://github.com/sessionkit/sessionview
 [pkg-voice]: https://github.com/sessionkit/sessionvoice
 [mail-log]: https://github.com/sessionkit/sessionmail/blob/HEAD/docs/pager-inject-log.md
+[mail-seat-log]: https://github.com/sessionkit/sessionmail/blob/HEAD/docs/message-seat.md#the-log
+[mail-pull-log]: https://github.com/sessionkit/sessionmail/blob/HEAD/docs/pull.md#the-log
 [voice-logs]: https://github.com/sessionkit/sessionvoice/blob/HEAD/docs/logs.md
+[tools-logs]: https://github.com/sessionkit/sessiontools#logs
+[phone-logs]: https://github.com/sessionkit/sessionphone#logs
+[phone-root]: troubleshooting.md#the-phone-bot-still-uses-the-old-root
+[view-logs]: https://github.com/sessionkit/sessionview#logs

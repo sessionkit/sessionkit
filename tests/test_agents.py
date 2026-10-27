@@ -130,6 +130,7 @@ MAINTAINER_NOTES = (
     "docs/family-release.md",
     "docs/family-settings.md",
     "docs/family-services.md",
+    "docs/family-skills.md",
     "docs/family-tests.md",
     "docs/pre-public-checklist.md",
     "docs/release-numbering.md",

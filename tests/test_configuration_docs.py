@@ -326,7 +326,7 @@ def test_the_old_view_home_scan_sees_a_planted_hit(tmp_path):
     planted.write_text(f"~/{layer}/config.json\nrm -rf \"${{HOME:?}}/{layer}\"\n",
                        encoding="utf-8")
     kept = tmp_path / "docs" / "kept.md"
-    kept.write_text(f"`{layer}` files\n~/.local/state/sessionview/sessionview.log\n",
+    kept.write_text(f"`{layer}` files\n~/.sessionkit/view/log/sessionview.log\n",
                     encoding="utf-8")
     hits = [f"{rel}:{n}" for rel, text in _text_files(tmp_path)
             for n, line in enumerate(text.splitlines(), 1) if OLD_VIEW_HOME.search(line)]

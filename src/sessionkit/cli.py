@@ -5,6 +5,7 @@ from importlib.metadata import PackageNotFoundError, version
 
 import click
 
+from sessionkit import doctor as kit_doctor
 from sessionkit import setup as operator_setup
 
 CTX = {"help_option_names": ["-h", "--help"]}
@@ -154,3 +155,42 @@ def setup(
     for line in outcome.lines:
         click.echo(line, err=outcome.code != 0)
     raise SystemExit(outcome.code)
+
+
+@main.command(context_settings=CTX)
+@click.option(
+    "--no-speech",
+    is_flag=True,
+    help="Leave the speech server and the ears out: their rows do not fail.",
+)
+def doctor(no_speech: bool) -> None:
+    """Check this Mac for what the kit needs, and install nothing.
+
+    One line per thing, found or missing, and under each missing one the
+    command that adds it. The rows the installer checks come from the
+    installer itself: this runs the install.sh the kit ships, with --check.
+    Then three rows of its own: the mail hooks (needed), the phone bot
+    (optional) and the session key (information only).
+
+    It is read-only: it writes no file of its own and starts and stops
+    nothing. The only network it reaches itself is the speech server on
+    127.0.0.1:8890, which it probes, and its brew reads download nothing.
+    The tools it asks keep their own files in your home, and may use their
+    own network: in an empty home, brew, uv and claude make their caches,
+    and claude, asked for its plugins, reaches Anthropic's API over HTTPS.
+    INSTALL.md section 4, in
+    https://github.com/sessionkit/sessionkit, names each file.
+
+    On a Mac without the kit, or where this command will not start, the
+    installer runs the same check:
+
+    \b
+        curl -fsSL https://sessionkit.ai/install.sh | bash -s -- --check
+
+    From a clone of the kit, the same: bash install.sh --check
+
+    Exit 0 nothing the kit needs is missing, 1 something is (each missing
+    row says what to run), 2 usage, 3 this Mac cannot be checked (not macOS,
+    or run as root).
+    """
+    raise SystemExit(kit_doctor.run(no_speech=no_speech, echo=click.echo))

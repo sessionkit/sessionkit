@@ -38,7 +38,7 @@ installed, and walked on a fresh Mac for a session started with `session start <
     (`command not found: uv`, exit 127). Or run:
 
     ```bash
-    source ~/.local/bin/env
+    source ~/.zshrc
     ```
 - Claude Code, Anthropic's installer, about 13 seconds:
 
@@ -580,6 +580,56 @@ claude plugin install "${r:?}@${r:?}"
 
 ## 4. First checks
 
+- **What is still missing.** The kit's check prints one line for each thing
+  the kit needs, found or missing, and under each missing one the command
+  that adds it. It installs nothing and starts nothing, and it writes no
+  file of its own:
+
+  ```bash
+  sessionkit doctor
+  ```
+
+  Exit 0: nothing the kit needs is missing. Exit 1: something is.
+  - Its first rows are the installer's own checks: it runs the `install.sh`
+    the kit ships, with `--check`. The speech server row asks the server on
+    port 8890 itself, as in [troubleshooting](docs/troubleshooting.md#ears-running-but-deaf).
+  - Then three rows of its own. The mail hooks (the step below) fail it
+    while they are off. The phone bot (section 6) is optional, and the
+    session key is information only: neither fails it.
+  - `--no-speech` leaves the speech server and the ears (section 5) out.
+  - The only network it reaches itself is the speech server on port 8890,
+    which it probes, and its `brew` reads download nothing. The tools it
+    asks may use their own network: asked for its plugins, `claude` reaches
+    Anthropic's API over HTTPS.
+  - No kit yet, or `sessionkit` will not start? The installer runs the same
+    check. Its address is not live yet. From a clone of this repository:
+
+    ```bash
+    bash install.sh --check
+    ```
+
+    Once the address is live:
+
+    ```bash
+    curl -fsSL https://sessionkit.ai/install.sh | bash -s -- --check
+    ```
+
+  **MEASURED** on one Mac without the kit (macOS 27, Apple silicon), in an
+  empty home directory with the real tools. The check wrote nothing of its
+  own. The tools it asks keep their own files, and in an empty home they
+  made them:
+  - `brew`: its cache, in `~/Library/Caches/Homebrew`.
+  - `uv`: an empty cache, in `~/.cache/uv`.
+  - `claude`: `~/.claude.json`, and a copy of it in `~/.claude/backups`.
+    Asked for its plugins, it also reads its own sign-in from your login
+    keychain. That is a read: the one keychain command it ran was
+    `security find-generic-password`. Each of its two plugin commands also
+    opened two HTTPS connections to Anthropic's API (`api.anthropic.com`).
+
+  A second run changed nothing. On a Mac that has used these tools, the
+  files are there already. Nothing outside the home directory changed, and
+  `brew` downloaded nothing. **NOT YET** on a Mac with the kit:
+  the `sessionkit` and `ears` rows ran only in the tests, on a stand-in Mac.
 - **The ears' model.** This downloads the voice-activity model from GitHub to
   `~/.cache/ears/silero_vad.onnx`, with no sudo. **MEASURED** (in the release rehearsal).
 
@@ -1378,9 +1428,8 @@ temporary home directory cannot point it at postfix).
     ```
 
     - A call without Homebrew is the workaround case. This guide does not cover it.
-  - **Then the speech server, before you link the phone.** Linking is
-    `sessionphone setup`, in sessionphone's docs. A call hears you through the
-    speech server, so until it is installed, no call can hear you. On a fresh
+  - **Then the speech server, before you link the phone.** A call hears you
+    through the speech server, so until it is installed, no call can hear you. On a fresh
     Mac that linked the phone first, the missing hearing showed only at the
     last step (a field report).
     - Ran section 5's step 2: nothing to run. Its
@@ -1393,7 +1442,13 @@ temporary home directory cannot point it at postfix).
       ears services install --only speech
       ```
 
-    - Then link the phone.
+    - Then link the phone. Linking is sessionphone's, in its docs. The name
+      people see in their chat list goes in place of NAME, and a name with a
+      space needs quotes, like `"Ada Lovelace"`:
+
+      ```bash
+      sessionphone setup --name NAME
+      ```
 
     **MEASURED** as `--dry-run` (sessionvoice 0.3.0 from PyPI, a temporary home
     directory, nothing on the port): `--only speech` would build the server's
@@ -1475,529 +1530,157 @@ temporary home directory cannot point it at postfix).
 
 ## 8. Uninstall
 
-**NOT YET** as a whole: no rehearsal has run an uninstall end to end. Each step
-says what was measured. Part A removes the program and keeps everything you
-made. Part B deletes your data, and only if you choose it. Keep to this order.
-It is the install in reverse: the voice jobs run from the kit's files and the phone
-bot from the plugins', so both go before the plugins and the kit do.
+**NOT YET** as a whole: no rehearsal has run this page end to end. Three blocks, in
+this order. The first two remove the program and keep everything you made. The third
+deletes your data, and only if you choose it. Every line, why it is there, what it
+leaves alone, and what was measured: [the uninstall reference][uninstall-ref].
 
-### A. Remove the program
+### 1. Stop and remove the jobs
 
-**1. Look first.** These only read. The first line shows the plugins, the second the
-phone bot, and the third the launchd jobs that the voice and the phone put down, and
-any sessiontools job you turned on:
+The voice jobs run from the kit's files and the phone bot from the plugins', so they
+go before the plugins and the kit do.
 
-```bash
-claude plugin list
-sessionphone bot status
-launchctl list | grep -E 'dev\.sessionkit\.|sessionvoice|voicemode\.ears|sessionphone|sessiontools'
-```
+- **Quit every `claude` session.** The steps below run in a plain terminal. In a
+  session with the pager's monitor, `/exit` asks one more question, because the
+  monitor is background work: answer `Exit and stop tasks`. **MEASURED** (a fresh
+  macOS 27 VM at 0.2.0).
+- **Look first.** This only reads. It lists the jobs the voice and the phone put
+  down, and any sessiontools job you turned on:
 
-The pattern finds the family's labels, `dev.sessionkit.<package>.<job>`, and
-the older forms a Mac may still hold. **NOT YET** as an uninstall check.
+  ```bash
+  launchctl list | grep -E 'dev\.sessionkit\.|sessionvoice|voicemode\.ears|sessionphone|sessiontools'
+  ```
 
-**2. Quit every `claude` session.** The pager's monitor and any `ears-arm` waiter
-(section 5 step 4) run inside a session and end with it. The steps below run in a
-plain terminal. **NOT YET.** In a session with the pager's monitor, `/exit` asks one
-more question, because the monitor is background work: answer `Exit and stop tasks`.
-**MEASURED** (a fresh macOS 27 VM at 0.2.0: `Background work is running`, then
-`1. Exit and stop tasks`).
-
-**3. The phone (section 6).** Step 1's `sessionphone bot status` shows whether there
-is a bot.
-
-- No phone set up: skip this step.
-- The phone set up: this stops the bot and removes its launchd job. The account
-  stays: it is your data (part B). **NOT YET** as a run. Its `--help` says this
-  (sessionphone 0.2.1).
+- **The phone** (section 6). No phone: skip it. This stops the bot and removes its
+  job. The account stays: it is your data.
 
   ```bash
   sessionphone bot uninstall
   ```
 
-**4. The voice (section 5).** Do this before step 5. The voice jobs run from the
-kit's own sessionvoice package (section 2), and launchd keeps them loaded after its
-files are gone.
-
-- **The ride-along hook. HUMAN (hand edit).** In the `.claude/settings.local.json`
-  that section 5, step 3 edited, one of these. **NOT YET.**
-  - You added other hooks or settings to it: remove the two
-    `ears heard hook || exit 1` entries and leave the rest.
-  - You pasted the whole file in section 5 and have added nothing since: delete the
-    file.
-- **Look first with `--dry-run`.** This names each
-  job it would boot out and each plist it would delete, and changes nothing:
+- **The voice** (section 5). First undo the ride-along hook you added by hand
+  ([the voice][uninstall-voice]). Then look: this names each job it would remove,
+  and changes nothing:
 
   ```bash
   ears services uninstall --dry-run
   ```
 
-  **MEASURED** (sessionvoice 0.2.1 with this release's kit, a temporary
-  home directory, no jobs installed): it named the jobs under all three forms,
-  `speakers` included, printed `dry run: nothing booted out, nothing deleted`, and
-  exited 0. A temporary `HOME` does not make a real run safe: `launchctl` acts on
-  your own user's jobs whatever `HOME` says. `ears services status` only reads too.
-- **The voice jobs.** This is the kit's own `ears`, the one that
-  installed them (section 5 step 2):
+  Then remove them:
 
   ```bash
   ears services uninstall
   ```
 
-  With no `--only` it removes every job it
-  knows. 0.3.0 knows its own labels, `dev.sessionkit.voice.*`, and both old
-  forms it retires: `com.sessionvoice.*`, and the older `com.voicemode.ears-*`
-  that 0.1.0 used (read in its 0.3.0 source); that includes
-  `--only speakers`, if you added it. The
-  speech server's venv and the speakers' home, `~/.local/share/ears/speakers`,
-  stay until part B. **NOT YET** as a run.
-- **Check.** Wait a few seconds before you run it: a job that is still exiting stays in the
-  list for a while after the uninstall. This prints nothing once they are gone:
+- **A sessiontools job you turned on** (not on this path): turn it off now, with
+  [its own line][uninstall-off]. It needs the `session` command that block 2 removes.
+- **Check.** Wait a few seconds, then run the look again. It prints nothing once
+  every job is gone:
 
   ```bash
-  launchctl list | grep -E 'dev\.sessionkit\.voice\.|sessionvoice|voicemode\.ears'
+  launchctl list | grep -E 'dev\.sessionkit\.|sessionvoice|voicemode\.ears|sessionphone|sessiontools'
   ```
 
-  - It printed a line? Wait a few seconds and run it again, until it prints nothing.
-- **A job you rendered by hand** from sessionvoice's `launchd/` templates (not on this
-  path) has a label of its own. **NOT YET.** Its label goes in place of LABEL:
+**NOT YET** as a run, but for `/exit`. The voice's `--dry-run` was **MEASURED** on a
+temporary home directory.
+
+### 2. Remove the plugins and the tool
+
+- **The plugins**, from the kit's marketplace (section 3's first lines). The first
+  line removes its six plugins. The second deletes the copies Claude Code keeps of
+  them, which the first leaves:
 
   ```bash
-  launchctl bootout "gui/$(id -u)/LABEL"
+  claude plugin marketplace remove sessionkit
+  rm -rf "${HOME:?}/.claude/plugins/cache/sessionkit"
   ```
 
-  - Then delete its plist from `~/Library/LaunchAgents/`.
-- **What you brought yourself.** The kit did not install a speech server you
-  brought yourself (VoiceMode's, for example; section 5 step 1), or any
-  postfix setup you made for agent mail
-  ([Mail between agents](#mail-between-agents), section 5). Remove them the way
-  you installed them; undoing postfix needs sudo. The file drop needs no undoing: it
-  is the default, and no setup step wrote a setting for it. If you named postfix in
-  mail's settings file, that file goes with the settings in part B. Mail
-  setup never touched a notmuch config or database of your own, so there is nothing
-  of yours to undo; the profile it wrote goes with the mail in part B. **NOT YET.**
-  - Set `SESSIONMAIL_SENDMAIL` in `~/.zshenv` for an earlier build? Delete that line.
-  - Installed notmuch for mail (section 5)? It is yours. To remove it:
-
-    ```bash
-    brew uninstall notmuch
-    ```
-
-**Did you go off the install path?** Each line below names a command you may have run,
-and how to undo it now, with its own verb. Step 5 removes the `session` command these
-verbs need, and the pane-state job runs that command, so launchd would keep it loaded
-on a missing file. **NOT YET**:
-
-- Ran `session pane-state agent on`? Undo it:
-
-  ```bash
-  session pane-state agent off
-  ```
-
-- Ran `session sound engine on`? Undo it:
-
-  ```bash
-  session sound engine off --purge
-  ```
-
-  Without
-  `--purge` the engine it built stays in `~/.local/share/sessiontools/sound/bin/`.
-  Their logs stay in `~/Library/Logs/sessiontools/`: they are your data, so delete
-  that folder by hand only if you want them gone.
-- Ran `ears services install --apple`? Step 4's uninstall covers it.
-- `session statusline install`: no verb removes it yet. It wrote two files in
-  `~/.sessionkit/tools/settings/`: `statusline.sh` and
-  `claude-code.d/50-statusline.json`. It also left a `.bak-<date>-<time>` copy beside
-  each file it replaced. That copy is the file you had before, so move it back if you
-  want it. Nothing runs these files once step 5 removes `session`. They are settings,
-  so part B's **Settings** item deletes them, with the copies. It leaves
-  `claude-code.json` alone: it is yours.
-- `sessionview-install` linked sessionview's tools into `~/.local/bin`, and
-  `sessionview-app-install` put an app in `~/Applications`. No verb reverses either.
-  This lists the links to delete:
-
-  ```bash
-  find ~/.local/bin -type l -lname '*sessionview*'
-  ```
-
-**5. The plugins and the kit command (sections 3 and 2).** After step 4, with no
-`claude` session running, remove the kit command and the plugins. Neither needs the
-other, so either order works. The plugins' lines depend on how section 3 installed
-them: from the kit's marketplace, or from your own clones. Run the lines for your
-route, and both sets if you used both.
-
-- The kit command:
+  Installed them from your own clones instead: [the clones' lines][uninstall-tool].
+- **The tool.** This removes the `sessionkit` command and every command it brought:
 
   ```bash
   uv tool uninstall sessionkit
   ```
 
-- From the kit's marketplace (section 3's first lines). This removes its six plugins
-  too:
+- **What the programs left.** Program files, none of them your data: the voice model
+  and run state, the speech server, the sidebar's old state, the mail cache, the image
+  reader's cache, and the voice's list of audio devices. The last line removes that
+  list's folder only if it is empty. Paste the lines as they are: they carry no
+  comments, because in zsh a `#` typed at the prompt is not a comment.
 
   ```bash
-  claude plugin marketplace remove sessionkit
+  rm -rf "${HOME:?}/.cache/ears"
+  rm -rf "${HOME:?}/.local/share/ears/speech"
+  rm -rf "${HOME:?}/.local/state/sessionview"
+  rm -rf "${HOME:?}/.local/state/herd"
+  rm -rf "${HOME:?}/.local/state/ears"
+  rm -rf "${HOME:?}/.cache/session-mail"
+  rm -rf "${HOME:?}"/Library/Caches/imgtext-*
+  rm -f "${HOME:?}/.local/state/audio/devices.json"
+  rmdir "${HOME:?}/.local/state/audio"
   ```
 
-- From your own clones (section 3's
-  [From your own clones](#from-your-own-clones-to-work-on-the-plugins-optional)).
-  This removes each of the five marketplaces, and its plugin too:
+  In zsh, the `imgtext-*` line prints `no matches found` when there is none: that is
+  fine.
 
-  ```bash
-  for r in sessionmail sessiontools sessionphone sessionvoice sessionview; do
-    claude plugin marketplace remove "$r"
-  done
-  ```
+The marketplace line and the cache line were **MEASURED** on a temporary home
+directory, and `uv tool uninstall sessionkit` on temporary uv tool directories. The
+leftovers' lines are **NOT YET**.
 
-**The plugins' copies stay.** Removing a marketplace does not delete the copies Claude
-Code made in its plugin cache at install (section 3): from the kit's marketplace, the
-copies its plugins ran from (**The plugins run from a copy**); from your own clones, the
-copies it wrote even though each plugin ran in place, from its clone. Delete them by hand.
+### 3. Your data (opt-in)
 
-From the kit's marketplace, all six copies are in one folder,
-`~/.claude/plugins/cache/sessionkit/`:
+**Only if you want it gone. This cannot be undone.** Blocks 1 and 2 kept all of it.
+Each item below is one kind of data, and its lines are in the reference. Skip an item
+to keep it. **NOT YET**: no walk has run these lines.
 
-```bash
-rm -rf "${HOME:?}/.claude/plugins/cache/sessionkit"
-claude plugin list
-```
+- ⚠️ **Account tokens.** `~/.sessionkit/tools/accounts/` holds the backups
+  `session account` made of your tokens. Delete it, or keep it, on purpose:
+  [Accounts][uninstall-accounts].
+- ⚠️ **VoiceMode shares some of these files**: the mouth's mail box, and the
+  transcript in `~/.voicemode`. Use VoiceMode? Skip the lines marked "No VoiceMode":
+  [Mail][uninstall-mail] and [Voice][uninstall-voice-data].
 
-**MEASURED** (Claude Code 2.1.307, the kit's marketplace at 0.2.1, on a
-temporary home directory and Claude Code config directory): after section 3's two
-lines, `claude plugin marketplace remove sessionkit` exited 0, printed `Also
-uninstalled 6 plugins from this marketplace`, and removed the marketplace's own clone
-in `~/.claude/plugins/marketplaces/`. `claude plugin list` then printed `No plugins
-installed.` **The six copies stayed** in `~/.claude/plugins/cache/sessionkit/`, each
-`<name>/<version>/` folder marked `.orphaned_at`, 28 MB in all. These two lines then
-ran: the `rm` exited 0 and left `~/.claude/plugins/cache/` empty, and `claude plugin
-list` still printed `No plugins installed.`
+Your data, in this order:
 
-From your own clones, each plugin's copy is in a folder of its own,
-`~/.claude/plugins/cache/<r>/`:
+- **Mail:** every agent's box in `~/.mail/agents`, and mail setup's notmuch profile.
+  [Mail][uninstall-mail].
+- **Session records:** `~/.session`, `~/.sessionmail`, and the agent file
+  `sessionkit setup` wrote. [Session records][uninstall-session].
+- **Accounts:** above. [Accounts][uninstall-accounts].
+- **The kit's home, `~/.sessionkit`:** each package's settings, logs and state, the
+  phone's included. It keeps `claude-code.json`, which is yours.
+  [The kit's home][uninstall-home].
+- **Voice:** `~/.sessionvoice`, `~/.ears` and the voices you enrolled.
+  [Voice][uninstall-voice-data].
+- **Phone:** `~/.sessionphone`, the agent's chat account and its keys.
+  [Phone][uninstall-phone].
+- **Your clones** (section 3), only after block 2. [Your clones][uninstall-clones].
 
-```bash
-for r in sessionmail sessiontools sessionphone sessionvoice sessionview; do
-  rm -rf "${HOME:?}/.claude/plugins/cache/${r:?}"
-done
-claude plugin list
-```
+Caches and tools other programs share, each only if nothing else uses it:
+[the lines][uninstall-caches].
 
-**MEASURED** (Claude Code 2.1.301, one plugin, on a temporary home
-directory and Claude Code config directory): `claude plugin marketplace remove`
-uninstalled its plugin too (`Also uninstalled 1 plugin from this marketplace`), and
-`claude plugin list` then printed `No plugins installed.` **The plugin's cached copy
-stayed.** `~/.claude/plugins/cache/<r>/` was still there, marked `.orphaned_at`. This
-loop removes the five copies now. **NOT YET**: the loop has not run.
+- The speech weights, about 2.7 GB, in the shared Hugging Face cache.
+- uv's cache, about 1.4 GB.
+- uv's Python 3.12 (the speech server's, about 72 MB) and 3.14 (the kit's).
+- Homebrew's tmux, ffmpeg, notmuch, and jq if you installed it.
 
-- `claude plugin list` still shows one of them? Remove it by the name the list shows,
-  in place of PLUGIN: `<name>@sessionkit` from the kit's marketplace, with
-  `sessionkit@sessionkit` among them, and `<r>@<r>` from a clone.
+**What stays.** The older logs in `~/Library/Logs`: an uninstall never deletes from
+there. Homebrew, uv and Claude Code, and their folders. Never delete `~/.cache`,
+`~/.local/bin` or `~/.voicemode` whole: other tools keep files there.
+[What stays][uninstall-stays].
 
-  ```bash
-  claude plugin uninstall PLUGIN
-  ```
-
-**MEASURED**
-(uv 0.13.0, this release's kit with the five 0.2.0 packages from PyPI, on
-temporary uv tool directories): `uv tool uninstall
-sessionkit` printed `Uninstalled 14 executables` and removed the kit's tool environment.
-
-**6. What the programs left (PROGRAM: none of it is your data).** No verb removes these
-yet, so they are hand `rm` lines. **NOT YET.** In order, they delete the voice model and
-the keeper's run state, the speech server's venv (which step 4 keeps), the sidebar's
-state under its name and under its old one, the call listeners' run state and logs, the
-cache the `memory` command keeps, and the voice's list of audio devices. The last line
-removes that list's folder only if it is empty.
-
-The lines in this section carry no comments, so paste them as they are. In zsh, the
-Mac's own shell, a `#` typed at the prompt is not a comment: the words after it would
-go to `rm` as more paths to delete.
-
-```bash
-rm -rf "${HOME:?}/.cache/ears"
-rm -rf "${HOME:?}/.local/share/ears/speech"
-rm -rf "${HOME:?}/.local/state/sessionview"
-rm -rf "${HOME:?}/.local/state/herd"
-rm -rf "${HOME:?}/.local/state/ears"
-rm -rf "${HOME:?}/.cache/session-mail"
-rm -f "${HOME:?}/.local/state/audio/devices.json"
-rmdir "${HOME:?}/.local/state/audio"
-```
-
-The voice keeps a list of the Mac's audio devices in `~/.local/state/audio/devices.json`.
-Other tools may read and write that file too, and the folder's name is not the kit's
-own, so these lines delete only that file. The folder goes only if nothing else is in
-it: if `rmdir` says `Directory not empty`, leave it.
-
-`~/.cache/ears/silero_vad.onnx` may be a link to VoiceMode's copy of the model. If it
-is, the first line removes the link, not VoiceMode's file. The kit's settings folders
-also hold program files (schemas and templates), but they sit beside the choices you
-made, so they go with those in part B.
-
-The sidebar keeps its state in `~/.local/state/sessionview`. It moves the folder there from
-`~/.local/state/herd`, its old name, the first time it runs, so the `herd` line finds that
-folder only if the move never ran, or a sidebar started under the old name kept writing there.
-
-**7. What stays.** Homebrew, uv, Claude Code and uv's Python 3.14 (sections 1 and 2) are
-not the kit's, and other tools may use them. So are Claude Code's own folders, such as
-`~/.claude` and `~/.local/state/claude`: leave them. Never delete `~/.local/bin`,
-`~/.cache`, `~/.sessionkit` or `~/.voicemode` whole: other tools keep files there.
-
-- Nothing else needs uv's Python 3.14? Remove it:
-
-  ```bash
-  uv python uninstall 3.14
-  ```
-
-**The speech models stay behind, about 2.7 GB.** The speech server fetched them on its
-first request (section 1) into the Hugging Face cache, which other tools share. The
-kit's server sets no cache variable, so they are in `~/.cache/huggingface/hub` (read in
-sessionvoice's docs/models.md). They are three folders there: the ears' Parakeet,
-`models--mlx-community--parakeet-tdt-0.6b-v3`; the mouth's Kokoro,
-`models--mlx-community--Kokoro-82M-bf16`; and Kokoro's voices, which come from a third
-repository, `models--prince-canuma--Kokoro-82M`. Another tool can use them too:
-VoiceMode's speech server does.
-
-- Another tool uses them: leave them.
-- Nothing else uses them? Remove just those three:
-
-  ```bash
-  rm -rf "${HOME:?}/.cache/huggingface/hub/models--mlx-community--parakeet-tdt-0.6b-v3"
-  rm -rf "${HOME:?}/.cache/huggingface/hub/models--mlx-community--Kokoro-82M-bf16"
-  rm -rf "${HOME:?}/.cache/huggingface/hub/models--prince-canuma--Kokoro-82M"
-  ```
-
-Never delete the cache whole. **NOT YET.**
-
-### B. Delete your data (USER DATA, opt-in)
-
-**Only if you want it gone. This cannot be undone.** Part A kept all of it. Each item
-below deletes one kind of data: skip an item to keep that data, and copy anything you
-want first. No child ships a verb for any of it yet. **NOT YET**: none of these lines
-has run.
-
-- **Mail:** every agent's mailbox, the notmuch index of them, and the mouth's queue of
-  spoken lines. sessionmail keeps the boxes in `~/.mail/agents` unless another folder
-  is named by the `root` setting in `~/.sessionkit/mail/settings/mail.json`, or by the
-  variable `SESSIONMAIL_ROOT` or `SESSION_MAIL_ROOT`. Nothing in the kit sets any of
-  them, so if one is set, you set it, and these lines do not touch that folder. Look
-  in it first, then delete the boxes there by hand. Mail setup's notmuch profile
-  (section 5, step 3) keeps its config in `~/.config/notmuch/sessionkit` (under
-  `$XDG_CONFIG_HOME` when that is set). Your own `~/.notmuch-config` is not touched.
-
-  The mouth's queue is one of those boxes, `~/.mail/agents/mouth`, and VoiceMode uses
-  it too: sessionvoice's mouth and VoiceMode's both queue their lines in that one box,
-  and both keep every line there once it is done. So the first line deletes every box
-  but that one.
-
-  ```bash
-  find "${HOME:?}/.mail/agents" -mindepth 1 -not -path "${HOME:?}/.mail/agents/mouth" -not -path "${HOME:?}/.mail/agents/mouth/*" -delete
-  rm -rf "${HOME:?}/.config/notmuch/sessionkit"
-  rmdir "${HOME:?}/.config/notmuch"
-  ```
-
-  The last line removes `~/.config/notmuch` only if it is empty.
-
-  The mouth's box:
-  - You use VoiceMode: keep it. VoiceMode's mouth speaks from it, and the lines below
-    would delete its queue. The lines sessionvoice's mouth spoke then stay in that box,
-    beside VoiceMode's, until you delete it.
-  - No VoiceMode: the mouth's box is the kit's alone. Delete it:
-
-    ```bash
-    rm -rf "${HOME:?}/.mail/agents/mouth"
-    rmdir "${HOME:?}/.mail/agents"
-    ```
-
-  If your shell sets `MOUTH_MAILBOX` or `VOICEMODE_MOUTH_MAILBOX`, the mouth queues in
-  the folder it names instead. If it sets `MOUTH_DIR` or `VOICEMODE_MOUTH_DIR` to
-  another folder, the mouth queues in a `box` folder inside it. Nothing in the kit sets
-  any of them, so if one is set, you set it, and these lines miss that box: look in it,
-  and delete it by hand only if you do not use VoiceMode.
-
-  The profile's index is `~/.mail/.notmuch`. Delete it only if mail setup made the
-  profile for it. Mail setup's first run said which, on its `notmuch-profile` line:
-  - It said `MANUAL`: the database was in the mail folder before the kit. It is yours,
-    so leave it.
-  - You cannot tell: leave it.
-  - It said `wrote`: mail setup then ran `notmuch new` once on that profile, so the
-    index is the kit's. Delete it, then the mail folder:
-
-    ```bash
-    rm -rf "${HOME:?}/.mail/.notmuch"
-    rmdir "${HOME:?}/.mail"
-    ```
-
-    The `rmdir` prints `Directory not empty`, and the folder stays, if you kept the
-    mouth's box.
-
-- **Session records:** what each session read, its address, its logs, the session
-  list's saved state, and the older seat home. On a host that ran `session` before
-  its agents folder moved, `~/.session/agents` may still hold a link for each agent.
-  These lines leave it, so the `rmdir` says `Directory not empty`: look in it, and
-  delete it by hand if you want it gone.
-
-  ```bash
-  for d in agent seats sessions mail state; do rm -rf "${HOME:?}/.session/${d:?}"; done
-  rmdir "${HOME:?}/.session"
-  rm -rf "${HOME:?}/.sessionmail"
-  ```
-
-- **Accounts:** the `session` tool's account folder, `~/.sessionkit/tools/accounts/`,
-  beside its settings folder. It holds the account registry (`accounts.json`: each
-  account's name, its email and where its token is kept, never the token), the account
-  config (`account-config.json`), the host ledger (`host-ledger.jsonl`), and the backups
-  `session account use` made of each token it replaced (`token-file-backups/` and
-  `keychain-backups/`). While `session account new` sets up a token, a scratch folder sits
-  there too. ⚠️ **The backups are your account tokens.** Part A leaves this folder, and
-  so does the **Settings** item below, so the uninstall leaves these tokens on disk until
-  you run this line. It deletes the saved accounts and every token backup, and it cannot
-  be undone: to keep your accounts, skip it. It does not touch the tokens where you keep
-  them (the registry's sources: a file, `pass` or `passage`), or the Keychain item or
-  token file you sign in from: those are yours. The folder is there only if you used
-  `session account`.
-
-  ```bash
-  rm -rf "${HOME:?}/.sessionkit/tools/accounts"
-  ```
-
-  On a host that used `session account` before the account folder moved, the older
-  account folder, `~/.config/sessiontools/`, may still be there, with the same kinds of
-  files in it. ⚠️ **Its backups are your account tokens too.** The kit never writes
-  there, and nothing else in this section deletes it, so the line below does. Like the
-  line above, it cannot be undone: to keep those accounts, skip it. It leaves the rest
-  of `~/.config` alone.
-
-  ```bash
-  rm -rf "${HOME:?}/.config/sessiontools"
-  ```
-
-- **Settings:** the operator file that `sessionkit setup` wrote (section 2), the mail
-  hooks switch, your voice choices, the seats your voice wakes and the sidebar's config.
-  Each package keeps its settings in `~/.sessionkit/<package>/settings/`, and its state
-  and secrets beside that folder, never in it (the tree specification,
-  `openspec/specs/tree/spec.md`). The voice is the one exception today: the speech keys
-  you may have saved, `stt.key` and `tts.key`, are in `~/.sessionkit/voice/settings/`
-  itself, so this item deletes them with your voice choices. This item removes only the
-  settings. The one folder
-  beside them that the kit knows is the account folder, the item above. The first loop
-  removes the mail, voice and view settings folders. The next two remove only the
-  `session` and `sounds` files in `~/.sessionkit/tools/settings`, the hidden schema
-  copies (`.session.schema.json`, `.sounds.schema.json`) included. The next two lines
-  remove what `session statusline install` wrote there, if you ran it:
-  `statusline.sh`, `claude-code.d/50-statusline.json`, and the `.bak-` copies of the
-  files it replaced. All of these leave `claude-code.json` there alone: `session start`
-  reads it, but nothing in the kit writes it, so anything in it is yours. The `rmdir`
-  lines remove a folder only if it is empty. If one says `Directory not empty`, that
-  folder still holds files the kit did not write, or the account folder you kept: leave
-  them. If one says
-  `No such file or directory`, there was nothing there to remove: voice saves no
-  settings until section 5, the sidebar makes its file only when it first runs, and
-  `claude-code.d` is there only if you ran `session statusline install`.
-
-  ```bash
-  for d in mail voice view; do rm -rf "${HOME:?}/.sessionkit/${d:?}/settings"; done
-  for f in session.json session.d session.template.json session.schema.json .session.schema.json; do rm -rf "${HOME:?}/.sessionkit/tools/settings/${f:?}"; done
-  for f in sounds.json sounds.d sounds.template.json sounds.schema.json .sounds.schema.json; do rm -rf "${HOME:?}/.sessionkit/tools/settings/${f:?}"; done
-  rm -f "${HOME:?}/.sessionkit/tools/settings/statusline.sh" "${HOME:?}/.sessionkit/tools/settings/claude-code.d/50-statusline.json"
-  find "${HOME:?}/.sessionkit/tools/settings" -maxdepth 2 \( -name 'statusline.sh.bak-*' -o -name '50-statusline.json.bak-*' \) -print -delete
-  rmdir "${HOME:?}/.sessionkit/tools/settings/claude-code.d"
-  rmdir "${HOME:?}/.sessionkit/tools/settings"
-  for d in mail voice view tools; do rmdir "${HOME:?}/.sessionkit/${d:?}"; done
-  rmdir "${HOME:?}/.sessionkit"
-  ```
-
-- **Voice:** what the ears heard and the mouth said. That is the transcript of every
-  turn the ears heard (`heard_*.jsonl`), who spoke each turn (`speakers_*.jsonl`), each
-  session's place in that transcript, the voice's pairing token (`talk/token`), and
-  every line the mouth spoke, which it keeps by default. If you turned recording on (it
-  is off by default), it is also the audio the ears kept of each turn and the clips of
-  replies they missed. Then the speakers' home with the voices you enrolled, and the
-  service logs.
-
-  On a fresh install all of it but the last two is in `~/.sessionvoice`, sessionvoice's
-  own folder, so the first line deletes that folder whole. `~/.ears` holds the place
-  `ears-arm` (section 5 step 4) keeps in the transcript.
-
-  ```bash
-  rm -rf "${HOME:?}/.sessionvoice" "${HOME:?}/.ears"
-  rm -rf "${HOME:?}/.local/share/ears" "${HOME:?}/Library/Logs/ears"
-  ```
-
-  If your shell sets `SESSIONVOICE_HOME`, or VoiceMode's `VOICEMODE_BASE_DIR`,
-  sessionvoice keeps these files in the folder it names instead. Nothing in the kit
-  sets either, so if one is set, you set it. If it names `~/.voicemode`, the lines below
-  cover it. If it names another folder, these lines miss it: look in it, and delete
-  there by hand the same files the lines below delete in `~/.voicemode`.
-
-  sessionvoice also uses `~/.voicemode` when that folder already held a transcript the
-  first time it ran: an older sessionvoice wrote one there, or VoiceMode's `converse`
-  did. VoiceMode keeps its own files in `~/.voicemode` too, so never delete it whole.
-  These lines delete only the files there that are sessionvoice's alone: who spoke, the
-  `talk` folder, the missed-reply clips,
-  and the dated folders of kept turn audio (`audio/YYYY-MM-DD`; VoiceMode files its own
-  audio by year, then month). Where a line finds nothing, it deletes nothing. In zsh,
-  the Mac's own shell, a pattern that matches nothing prints `no matches found`: that
-  is fine.
-
-  ```bash
-  rm -f "${HOME:?}"/.voicemode/logs/conversations/speakers_*.jsonl
-  rm -rf "${HOME:?}/.voicemode/talk" "${HOME:?}/.voicemode/state/missed-reply"
-  rm -rf "${HOME:?}"/.voicemode/audio/[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]
-  ```
-
-  The rest of sessionvoice's files there are shared with VoiceMode. VoiceMode writes
-  the same transcript, `heard_*.jsonl` with its lock, `heard.lock`, and keeps its own
-  places in it in `~/.voicemode/state/heard-cursor`. Its mouth uses `~/.voicemode/mouth`
-  too.
-  - You use VoiceMode: keep them. The lines below would delete VoiceMode's own
-    transcript, and the places it kept would then point past the end of it. The turns
-    sessionvoice heard then stay in that transcript, beside VoiceMode's, until you
-    delete it.
-  - No VoiceMode: delete them:
-
-    ```bash
-    rm -f "${HOME:?}"/.voicemode/logs/conversations/heard_*.jsonl
-    rm -f "${HOME:?}/.voicemode/logs/conversations/heard.lock"
-    rm -rf "${HOME:?}/.voicemode/mouth" "${HOME:?}/.voicemode/state/heard-cursor"
-    ```
-
-  If a folder named for your agent was already in your home directory, `~/.<name>`,
-  `ears-arm` kept its place there as `heard.state`, instead of in `~/.ears`. Delete
-  that one file by hand, never the folder: `~/.claude`, for one, is Claude Code's.
-  If your shell sets `EARS_HOME`, `ears-arm` kept its `heard.state` in the folder it
-  names instead. Delete that one file there by hand too.
-
-- **Phone:** the agent's chat account with its keys, the invite, the callers and the
-  bot's logs. Run step 3 first. The account on the public relay is not on this Mac,
-  and nothing here deletes it. On your phone, delete the agent's chat in Delta Chat
-  yourself.
-
-  ```bash
-  rm -rf "${HOME:?}/.sessionphone"
-  ```
-
-- **Your clones** (section 3), only after step 5: a plugin breaks when its clone goes
-  (section 7). Look first for changes of your own. This prints each clone's changed
-  files, and nothing for a clean one:
-
-  ```bash
-  for r in sessionmail sessiontools sessionphone sessionvoice sessionview; do
-    git -C "${HOME:?}/.local/share/sessionkit/src/${r:?}" status --short
-  done
-  ```
-
-  The block below deletes the folder section 3 clones into,
-  `~/.local/share/sessionkit/src`, by its full name:
-
-  ```bash
-  rm -rf "${HOME:?}/.local/share/sessionkit/src"
-  rmdir "${HOME:?}/.local/share/sessionkit"
-  ```
-
-  The last line removes `~/.local/share/sessionkit` only if it is empty.
-  - Cloned somewhere else? These lines miss those clones: delete them there by hand,
-    one at a time.
-
+[uninstall-ref]: docs/uninstall.md
+[uninstall-voice]: docs/uninstall.md#1-stop-and-remove-the-jobs
+[uninstall-off]: docs/uninstall.md#1-stop-and-remove-the-jobs
+[uninstall-tool]: docs/uninstall.md#2-remove-the-plugins-and-the-tool
+[uninstall-accounts]: docs/uninstall.md#accounts
+[uninstall-mail]: docs/uninstall.md#mail
+[uninstall-session]: docs/uninstall.md#session-records
+[uninstall-home]: docs/uninstall.md#the-kits-home
+[uninstall-voice-data]: docs/uninstall.md#voice
+[uninstall-phone]: docs/uninstall.md#phone
+[uninstall-clones]: docs/uninstall.md#your-clones
+[uninstall-caches]: docs/uninstall.md#4-caches-and-tools-other-programs-share-opt-in
+[uninstall-stays]: docs/uninstall.md#5-what-stays
 [lid]: docs/troubleshooting.md#ears-running-but-deaf
 [sv-hosted]: https://github.com/sessionkit/sessionvoice/blob/HEAD/docs/models.md#a-hosted-speech-endpoint-instead

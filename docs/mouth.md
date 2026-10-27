@@ -15,7 +15,7 @@ line names. A sound from `mouth play` plays on its own lane beside them
   when it ends or is dropped.
 - **A seat uses it** like this:
 
-      mouth devices          # the names --device takes
+      mouth devices          # the names --device takes; the current one marked
       mouth say --device "<device>" --hold turn-end "Hello."
 
   `say` prints the line's id (UTT); `mouth amend UTT TEXT`,
@@ -123,6 +123,41 @@ line names. A sound from `mouth play` plays on its own lane beside them
   another one. On a machine with no default output at all, a line that
   reached the last rung gets the same, with the detail "no default output
   device" (`src/mouth/output.py`).
+- **A host that can play nothing is refused before the id.** `mouth say`,
+  `mouth play` and `mouth again` ask PortAudio in the caller's own process
+  before a line is queued (`src/mouth/canplay.py`). If PortAudio is not
+  installed, if it sees no output device at all, or if a line on `default`
+  finds no default output, they exit 1 with one line on stderr and print no
+  id. The line names the cause and the fix: PortAudio's package
+  (`portaudio` on Fedora, `libportaudio2` on Debian and Ubuntu), or, on
+  Linux, the `audio` group, because a login outside it cannot open
+  `/dev/snd`. The Linux line says how to check (`id -nG`, `ls -l /dev/snd`)
+  and names the fix (`sudo usermod -aG audio $USER`, then log in again);
+  mouth runs neither. `null` and `call:<N>` are never asked. A named device that is
+  merely absent while other outputs exist is still queued and gets
+  `said reason=device-absent` at play, as above. `--wait` is not probed: the
+  waiter already hears the player's own refusal, exit 1.
+  If PortAudio is installed but raises `PortAudioError` as it starts or lists
+  its devices, they exit 1 with one line, `mouth: the audio system did not
+  start: <PortAudio's message>`. While it asks, the probe points fd 2 at the
+  null device (and puts it back after), because on Linux ALSA writes
+  `ALSA lib ...` lines straight to fd 2 as PortAudio starts; the one line
+  prints after. The player is never silenced this way.
+- **A room line waits for the user's turn.** A line on a room device (any
+  output that is not `call` or `call:<N>`) that asks no hold is held as
+  `--hold turn-end` is, with the same release and the same safety net: it
+  plays when the user's turn ends, or when the ears have been quiet for
+  `$MOUTH_HOLD_IDLE_S` (8 s), so it never waits forever. Its `saying` row says
+  `hold_from: room`. Unlike a held opener, it is never dropped as `stale`: it
+  waits through the user's next turn too. A line that must interrupt uses
+  `mouth say --now`; `--hold none` (`X-Mouth-When: now` on a mail) plays at
+  once without cutting the line playing. A played file (`mouth play`) and a
+  call line are not changed: a file plays at once, and a call line already
+  waits for the call's turn. It is decided when the player reads the line,
+  where its device is known, so the mail `mouth say` writes is unchanged
+  (`src/mouth/box.py` `_room_hold`). To turn it off, set `"room_hold": false`
+  in mouth.json, or `MOUTH_ROOM_HOLD=off`, which wins over the file; a line's
+  own `--hold` wins over both.
 - **The record:** `saying` is written at the first audio frame and `said`
   at the end (`src/ears/heard.py`, `src/mouth/player.py`). A line that
   never plays gets a `said` alone. `said` says what played, and if the
@@ -269,14 +304,83 @@ More commands (`mouth --help` lists them all):
     mouth play FILE --start S --end S   # a file, never a URL
     mouth status                 # player, queue, what is playing
 
+## Devices: which output, which input, how loud
+
+`mouth devices` lists the output names `--device` takes, one per line,
+then one line per live call. It also says which output is the system's
+current one, how loud it is, and which input is current:
+
+    HP Z27i
+    Mac Studio Speakers    # current output, volume 62%
+    External Headphones
+    call:3                 # live call, sessionvoice+super
+    # current input: MacBook Pro Microphone
+
+- **Notes ride after a TAB** as `# ...`, as a live call's line always has
+  (shown above as spaces). Cut each line at the TAB and you have the
+  names, unchanged.
+- **The current output** is marked with its volume, a whole percent of the
+  device's own volume. A muted output reads `volume 62% (muted)`. A device
+  with no volume control (many HDMI and Bluetooth sinks) gets no volume;
+  the mark stays.
+- **The current input** is the last line. It starts with `#` and has no
+  name before it, because an input is not something `--device` takes.
+- **Unknown is left out, never guessed.** Off macOS, or when CoreAudio does
+  not answer, there is no volume and no input line. The output is still
+  marked if PortAudio names a default (see below); if nothing names one,
+  the list is as it always was.
+- **No output device is an exit 1, never an empty list.** When PortAudio
+  lists no output, `mouth devices` prints one line on stderr naming the
+  cause and the fix (on Linux, often the `audio` group) and exits 1. Any
+  live call lines still print, and `--json` still prints its object, with
+  `"outputs": []`. With no PortAudio library at all it prints one line
+  naming PortAudio and how to install it, and exits 1. If PortAudio raises
+  `PortAudioError` as it starts or lists its devices, it prints
+  `mouth: the audio system did not start: <PortAudio's message>` and
+  exits 1. It asks PortAudio as `mouth say`'s probe does, with fd 2 pointed
+  at the null device, so ALSA's `ALSA lib ...` lines never reach the
+  terminal; its own line prints after fd 2 is back.
+- **A current output not in the list gets no mark.** The list is
+  PortAudio's and the current output is CoreAudio's. When CoreAudio names
+  a device the list does not hold under the same name, the text marks
+  nothing, and `--json` still names it in `current_output`.
+- **`--json`** prints the same facts as one object:
+
+      {"outputs": ["HP Z27i", "Mac Studio Speakers", "External Headphones"],
+       "calls": [{"name": "call:3", "who": "sessionvoice+super"}],
+       "current_output": "Mac Studio Speakers",
+       "current_input": "MacBook Pro Microphone",
+       "output_volume": 0.62,
+       "output_muted": false}
+
+  `output_volume` runs from 0 to 1. Anything unknown is `null`.
+
+**Where the answer comes from.** CoreAudio, asked live each time, by
+ctypes (`src/mouth/coreaudio.py`). There is nothing to install: no
+Homebrew `SwitchAudioSource`, no `osascript`. PortAudio is not used for
+this because it caches the device list and the default when it starts,
+so its default can be stale after a switch. It is used only when
+CoreAudio cannot name the output at all. The volume is the output's
+virtual main volume where the device has one, else its main volume,
+else the mean of channels 1 and 2.
+
+**Why the mouth reports the input too.** The ears have no device verb,
+and `mouth devices` is the kit's one device listing. A seat that wants
+the current output, the current input and the volume makes one call.
+
 ## Play music or a sound
 
 To play music or a sound file for the user, queue it on the mouth, not on a
-separate player:
+separate player. By default a song plays without its vocals: the mouth plays
+the instrumental from the file's [sidecar](https://github.com/sessionkit/sessionvoice/blob/HEAD/docs/sidecar.md), and makes one first
+when the separator is installed. `--no-instrumental` plays the file as it is.
 
     mouth play FILE --device <the user's device>   # prints the utt id
     mouth play FILE --start 30 --end 90            # a section, in seconds
     mouth play FILE --volume 40                    # this file's level, 0-100
+    mouth play FILE --no-instrumental              # as it is, vocals and all
+    mouth play FILE --stem drums,bass              # stems from its sidecar, mixed
+    mouth split --install                          # the separator, once (about 1 GB)
 
 - **It ducks under speech.** A played file plays on its own lane beside the
   spoken lines. Lines mix over it, and it dips while one plays, to
@@ -284,6 +388,88 @@ separate player:
   even under a `mouth duck off` override; `--no-duck` never dips it (it
   still mixes); `--duck-level N` sets its level while ducked. The user's
   voice never cuts it.
+- **It plays without its vocals when it can.** If the file's sidecar holds
+  an instrumental (`mixes/instrumental.*` in `.<file>.d/`, the folder beside
+  it; [sidecar.md](https://github.com/sessionkit/sessionvoice/blob/HEAD/docs/sidecar.md) lists every layout it reads), the mouth plays that in its place, on any device, a call's included.
+  `mouth.music_instrumental` (on by default) turns this off;
+  `--no-instrumental` plays the file as it is for one play, and
+  `--instrumental` plays the instrumental even of a file a split judged to be
+  speech. With no instrumental, the file plays as it is. The `saying` and
+  `said` rows, and `mouth status`'s music row, name the file that played as
+  `file`, the file asked for as `source_file`, and the layer that answered as
+  `instrumental_from`. A mailed play takes an instrumental only from inside the
+  sounds directory, as it takes its file.
+- **A song with no instrumental gets one made first.** When you play 30 s or
+  more of a file of 10 min or less that has no instrumental yet, `mouth play`
+  starts `mouth split FILE` in the background. It prints one line on stderr
+  saying about how long that takes. The play waits in the queue until the
+  instrumental is made, then plays it; spoken lines are not held.
+  `--no-instrumental` plays the file now. A second play of the file during
+  its split waits on the same split.
+  - **While it waits,** later files for the same device wait behind it, so
+    plays keep their order; files for other devices play. `mouth status`
+    lists each running split under `splits` (`file`, `pid`, `started_t`,
+    `eta_s`, `left_s`, `deadline_t`, and the `plays` that wait on it).
+    `mouth retract <utt>` drops a waiting play; the split goes on, and its
+    instrumental serves the next play.
+  - **If the split fails,** stops, or runs past its deadline, the play goes
+    on with the file as it is. Its `said` row's `split` says what happened:
+    `state` (`done`, `failed`, `dead`, `overdue` or `missing`), `eta_s`, and
+    a `detail` when it played as it is. A play waits only while its file's
+    split is really running: a mailed play never waits.
+  - **What never starts a split:** a shorter span (a chime, or a short
+    `--start`/`--end` section), a play on a call device (`call` or
+    `call:<N>`), a file ffmpeg cannot read, a mailed play, and a file whose
+    split already failed (the line repeats the reason). A file over 10 min
+    plays as it is, with a line naming `--instrumental`.
+  - **With no separator installed** the file plays as it is, with a line on
+    stderr naming `mouth split --install`, on every such play. It is never
+    spoken.
+  - **`--instrumental` makes it first** whatever the length, and tries a
+    failed file again. When the file has no instrumental it is refused
+    (exit 2) on a call device, naming `mouth split FILE`; with no separator,
+    naming `mouth split --install`; and for a file ffmpeg gives no duration
+    for, which cannot be split.
+  - **`--wait` waits for the split too,** and its JSON carries
+    `split.eta_s`.
+- **The separator makes the instrumental,** and is installed only when you
+  ask: `mouth split --install` builds its own venv with uv (Demucs and torch,
+  about 1 GB, every package checked against a hash-locked list) and fetches
+  its model (about 84 MB, from a pinned revision, checked against its full
+  SHA-256). It runs on an Apple-silicon Mac on macOS 14 or later, and is
+  refused elsewhere. `--dry-run` prints what it would build and fetch, with
+  the sizes, and does nothing. It lives in `~/.local/share/ears/separator`, or
+  `$MOUTH_SEPARATOR_HOME`, and writes `installed.json` there last, once the
+  venv and the model are both in.
+- **`mouth split FILE...` makes the stems and the instrumental** into the
+  file's sidecar, `.<file>.d/`: `stems/{vocals,drums,bass,other}.flac`,
+  `mixes/instrumental.flac` and `split.json`, the manifest that says what
+  made them and from which bytes. It runs in the foreground, below the
+  audio's priority, one split at a time on the host; a second split of the
+  same file waits for the first and makes nothing. A file whose outputs are
+  current is left as it is; `--force` splits it again. The outputs appear
+  all at once, and a split that fails leaves none. It prints one JSON line
+  per file (`state`: `made`, `present`, `refused` or `failed`) and exits 0
+  when every file is made or already there, 2 when one is refused (no
+  separator, a file ffmpeg cannot read, a folder it cannot write), else 1. A
+  file whose instrumental is far below its mix is recorded as speech, and
+  the setting then plays it as it is. Each split's state is kept in
+  `<mouth dir>/splits/`. The layout and the manifest are a contract for
+  other tools: [sidecar.md](https://github.com/sessionkit/sessionvoice/blob/HEAD/docs/sidecar.md).
+- **`--stem NAME[,NAME]` plays the file's stems instead:** one of
+  `vocals`, `drums`, `bass` and `other`, or a comma list of them, summed in
+  one ffmpeg so they stay in step. A repeated name counts once, and any other
+  name is refused, listing the four. Every stem must be in the sidecar
+  already (`stems/<NAME>.*`, as `mouth split FILE` writes them). A missing
+  one is refused (exit 2), naming the command that makes it: `mouth split
+  FILE`, or `mouth split --install` when no separator is installed. A stem is
+  never made on its own. `--stem` cannot be combined with `--instrumental` or
+  `--no-instrumental`, and it ignores `mouth.music_instrumental`.
+  `--start`, `--end`, `--volume` and the duck work as for any played file.
+  The rows and `mouth status`'s music row carry `stem` (the names), with
+  `file` the first stem and `source_file` the song. The line carries the
+  names, not paths: the player finds the stems when it takes the line, so a
+  mailed play takes stems only from inside the sounds directory.
 - **Its level** is `--volume N`, else `mouth.play_volume`, else
   `mouth.volume`, in the settings cascade.
 - **To stop it,** `mouth retract <utt>` with the id `mouth play` printed.

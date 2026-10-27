@@ -14,6 +14,9 @@ The ruling: a kit install is the whole family, phone calls included.
   and docs call on: `sessionkit setup` asks sessiontools 0.3.1's
   `session agent default`, and INSTALL.md describes sessionmail 0.3.1's
   one-run mail setup.
+- All five are floored at 0.3.2: the family is released together, and an
+  older copy of one package beside the others splits its state between the
+  old and new folders.
 - sessionphone comes WITH its media extra. Calls, the bot and
   `sessionphone web` need it, and the ruling is that calls come with the kit
   rather than as a second install.
@@ -30,11 +33,11 @@ from packaging.requirements import InvalidRequirement, Requirement
 from packaging.utils import canonicalize_name
 
 RULED = (
-    "sessionmail>=0.3.1",
-    "sessiontools>=0.3.1",
-    "sessionphone[media]>=0.3.0",
-    "sessionview>=0.3.0",
-    "sessionvoice[capture]>=0.3.0",
+    "sessionmail>=0.3.2",
+    "sessiontools>=0.3.2",
+    "sessionphone[media]>=0.3.2",
+    "sessionview>=0.3.2",
+    "sessionvoice[capture]>=0.3.2",
 )
 
 # The five family packages, in the ruled order (the plugin manifest's order).

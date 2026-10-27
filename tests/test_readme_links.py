@@ -28,7 +28,7 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
-GUARDED = ("README.md", "docs/components.md", "docs/dependencies.md")
+GUARDED = ("README.md", "docs/components.md", "docs/dependencies.md", "docs/uninstall.md")
 
 FENCE = re.compile(r"^ *(```|~~~).*?^ *\1 *$", re.MULTILINE | re.DOTALL)
 CODE_SPAN = re.compile(r"(`+)(?!`).*?(?<!`)\1(?!`)", re.DOTALL)

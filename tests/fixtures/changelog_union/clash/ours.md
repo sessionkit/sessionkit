@@ -37,7 +37,7 @@ stamps this file.
   mirrored into `.claude-plugin/plugin.json` and `marketplace.json`, and
   `uv.lock` is re-locked to match. The classifier is now
   `Development Status :: 3 - Alpha` (was `1 - Planning`). Every author is
-  `Mike Bailey <mike@sessionkit.ai>`: in pyproject, in plugin.json, and as
+  the one project author, `mike@sessionkit.ai`: in pyproject, in plugin.json, and as
   the marketplace owner and each listed plugin's author. sessionphone's
   entry named a different author before this. `[project.urls]` and plugin.json's
   `homepage` and `repository` point at

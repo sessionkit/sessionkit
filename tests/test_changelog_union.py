@@ -18,7 +18,8 @@ Two kinds of test pin that:
   was rebased and is on no ref a clone fetches. Each fixture is the real
   blob's bytes with only its dates made synthetic (SK-122: the born date
   reads 2030-06-09 and the release heading 2030-12-08, so the born date
-  still comes first). A test
+  still comes first) and, in ``ours``, one line reworded to drop a
+  personal name (SK-237). A test
   pins each fixture to its own blob id, so the replay runs on those bytes
   in any clone, shallow or fresh, and never skips. The attributes are set from outside: an empty
   ``attr.tree`` hides every in-tree ``.gitattributes``, and
@@ -70,7 +71,8 @@ IS_CHECKOUT = (
 
 # pair -> {side: (commit, blob id of the vendored fixture)}. Each side's
 # CHANGELOG.md blob at that commit is vendored as FIXTURES/<pair>/<side>.md,
-# its bytes unchanged but for its dates, made synthetic (SK-122); the blob id
+# its bytes unchanged but for its dates, made synthetic (SK-122), and, in
+# "ours", one line reworded to drop a personal name (SK-237); the blob id
 # pinned here is the fixture's. "clash" is the SK-89 clash.
 PAIRS = {
     "clash": {
@@ -82,7 +84,7 @@ PAIRS = {
         # 4d3f965: master with SK-76 merged.
         "ours": (
             "4d3f9651c77d48dbc1a11d82db7c87f5906f02e3",
-            "f09039993ab11e57a82d0732b6bc8841b8ee179a",
+            "a9f1404a3cb3b8adc0ee612f7c41839f4612d325",
         ),
         # 78b915c: SK-89 before its rebase (it landed rebased, as 4d3973f).
         "theirs": (

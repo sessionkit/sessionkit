@@ -108,7 +108,7 @@ when this page was written; the package's own page is the authority.
 | sessionmail | [sessionmail's docs/settings.md][mail] | **Partly.** Some keys, such as a seat's subscriptions and whether the pager is required, are read from the host, seat and session layers. There is no agent layer yet. |
 | sessiontools | [sessiontools's docs/settings.md][tools] | **Mostly.** The busy sounds and the context band read all five layers. The operator, the session list and the pane state read the template and host layers only. |
 | sessionvoice | [sessionvoice's docs/settings.md][voice] | **Partly.** The mouth reads the agent, seat and session layers for its voice, its volume and how it speaks a line, over its host file. The ears read only their own file, `~/.sessionkit/voice/settings/ears.json`, or the file `EARS_CONF` names. |
-| sessionphone | [sessionphone's docs/settings.md][phone] | **No.** It reads environment variables (`DC_...`) and its own folder, `~/.sessionphone`. |
+| sessionphone | [sessionphone's docs/settings.md][phone] | **No.** It reads environment variables (`DC_...`), what `bot install` keeps in `~/.sessionkit/phone/settings/phone.json`, and the bot's root, `~/.sessionkit/phone/state/`. Before 0.3.2 the root was `~/.sessionphone`: a Mac that has only the old one keeps using it until `sessionphone bot migrate` moves it ([the step][phone-root]). |
 | sessionview | [sessionview's docs/settings.md][view] | **No.** It has a cascade of its own: a template, `~/.sessionkit/view/settings/view.json`, then `.sessionview` files in a store and a project. |
 | sessionkit | [the kit's keys](#the-kits-own-keys) | **No, by design.** The operator is read from the template and host layers only: who the human is belongs to the machine, not to one agent or session. |
 
@@ -139,6 +139,7 @@ setup` writes them.
 [tools]: https://github.com/sessionkit/sessiontools/blob/HEAD/docs/settings.md
 [voice]: https://github.com/sessionkit/sessionvoice/blob/HEAD/docs/settings.md
 [phone]: https://github.com/sessionkit/sessionphone/blob/HEAD/docs/settings.md
+[phone-root]: troubleshooting.md#the-phone-bot-still-uses-the-old-root
 [view]: https://github.com/sessionkit/sessionview/blob/HEAD/docs/settings.md
 [spec-settings]: ../openspec/specs/settings/spec.md
 [spec-tree]: ../openspec/specs/tree/spec.md

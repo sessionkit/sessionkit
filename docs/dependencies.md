@@ -35,12 +35,12 @@ you turn on needs it, or a command still works without it but does less.
 
 The Python packages are the kit's own, and they bring their own:
 
-- [sessionmail][pkg-mail] 0.3.1 or later: `message`, `pager`, `memory`.
-- [sessiontools][pkg-tools] 0.3.1 or later: `session`.
-- [sessionphone][pkg-phone] 0.3.0 or later, with its `media` extra, which
+- [sessionmail][pkg-mail] 0.3.2 or later: `message`, `pager`, `memory`.
+- [sessiontools][pkg-tools] 0.3.2 or later: `session`.
+- [sessionphone][pkg-phone] 0.3.2 or later, with its `media` extra, which
   the bot, the calls and `sessionphone web` need.
-- [sessionview][pkg-view] 0.3.0 or later: `sessionview`.
-- [sessionvoice][pkg-voice] 0.3.0 or later, with its `capture` extra, so the
+- [sessionview][pkg-view] 0.3.2 or later: `sessionview`.
+- [sessionvoice][pkg-voice] 0.3.2 or later, with its `capture` extra, so the
   ears can hear the room: `ears`, `ears-serve`, `mouth`, `talk`.
 - click 8.1 or later, for the `sessionkit` command itself.
 
@@ -151,6 +151,9 @@ claude plugin update sessionkit@sessionkit
 - **The plugin lines** fetch the marketplace again, then the kit's plugin.
   The five family plugins update the same way, by name, for example
   `claude plugin update sessionmail@sessionkit`. Restart Claude Code after.
+- **A tmux server already running** keeps what it had: an upgrade does not
+  change it. The steps for it are done by hand:
+  [steps an upgrade does not run][upgrade-steps].
 
 [readme-requirements]: ../README.md#requirements
 [uv-lock]: ../uv.lock
@@ -159,6 +162,7 @@ claude plugin update sessionkit@sessionkit
 [calls]: #for-calls-on-a-mac
 [brew]: https://brew.sh
 [install-upgrade]: ../INSTALL.md#2-install-the-kit
+[upgrade-steps]: troubleshooting.md#steps-an-upgrade-does-not-run
 [claude-code]: https://code.claude.com/docs/en/overview
 [uv]: https://docs.astral.sh/uv/
 [tmux]: https://github.com/tmux/tmux

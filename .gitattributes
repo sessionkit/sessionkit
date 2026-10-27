@@ -33,9 +33,13 @@
 /docs/family-release.md export-ignore
 /docs/family-settings.md export-ignore
 /docs/family-services.md export-ignore
+/docs/family-skills.md export-ignore
 /docs/family-tests.md export-ignore
 /docs/images/settings-order.svg export-ignore
 /docs/pre-public-checklist.md export-ignore
 /docs/release-numbering.md export-ignore
 # CHANGELOG.md: every branch adds a bullet under [Unreleased]; union keeps both.
 CHANGELOG.md merge=union
+# The dark-launch folder moves to the site's own repo; its deploy notes do not ship in release archives.
+/dark-launch export-ignore
+/dark-launch/** export-ignore

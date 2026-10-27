@@ -12,18 +12,20 @@ woken by mail. Code: `src/ears/`, `keeper/`, `bin/`.
 - **Out:** the heard log,
   `<home>/logs/conversations/heard_YYYY-MM-DD.jsonl` (the home:
   [logs.md](https://github.com/sessionkit/sessionvoice/blob/HEAD/docs/logs.md#sessionvoices-home)), and, where
-  the mail agent runs, a mail to `heard+<device>@<host>` for a finished
-  turn heard in the room. A call's turns go to the log only.
+  the mail agent runs, a mail to `heard+room@<host>` for a finished
+  turn heard in the room, on whatever input device. A call's turns go to the log only.
 - **A seat uses it** in one of three ways:
-  - subscribe to the device's box, e.g. the built-in mic's:
-    `message subscription add heard+macbook`. The pager reads each turn
+  - subscribe to the room's address, which every input device's turns go to:
+    `message subscription add heard+room`. The pager reads each turn
     mail's headers to wake the seat or let the mail ride. By mail, "hey
     NAME" wakes only a seat that `ears wake add NAME` has made a wake seat;
   - arm a waiter on the log, in the background, re-armed on every fire:
     `ears-arm <seat> [talk|alone|room]` (count first with `ears-count <seat>`);
-  - opt into the `ears heard hook` ride-along: after a tool call, it shows
-    the seat a short digest of what the heard log has gained since the
-    seat last looked.
+  - opt into the `ears heard hook` ride-along, the canonical heard hook:
+    after a tool call, it shows the seat a short digest of what the heard
+    log has gained since the seat last looked. A seat that also gets heard
+    mail runs it with `--partials-only`
+    ([The heard hook](#the-heard-hook)).
 
 ## How it works
 
@@ -66,8 +68,13 @@ woken by mail. Code: `src/ears/`, `keeper/`, `bin/`.
   `recogniser-lag` event for the episode. [logs.md](https://github.com/sessionkit/sessionvoice/blob/HEAD/docs/logs.md) gives each
   kind of line with its fields, and every log file the ears and the mouth
   write.
-- **The turn mail** is sent To and From `heard+<device>@<host>` by
-  `keeper/ears-mail.py`, through sessionmail's `message send`
+- **The turn mail** is sent To and From `heard+room@<host>` by
+  `keeper/ears-mail.py`, whatever input device the capture is following
+  (the device is the `Ears-Device` header; `--room`, or `EARS_MAIL_ROOM`,
+  names the room's tag). While `--device-copy` is on (the default), the same
+  send also goes Cc `heard+<device>@<host>`: one message with one
+  Message-ID, so a session subscribed to a device's address keeps hearing
+  that device's turns. It goes through sessionmail's `message send`
   (`$EARS_MAIL_MESSAGE`, else `message` on PATH, else where uv installs
   it: `~/.local/bin/message`, then
   `~/.local/share/uv/tools/sessionmail/bin/message`), never straight to an
@@ -97,11 +104,73 @@ woken by mail. Code: `src/ears/`, `keeper/`, `bin/`.
   postfix instead, set `"sendmail": "/usr/sbin/sendmail"` in that file:
   the launch agents do not see a `SESSIONMAIL_SENDMAIL` set in your
   shell. The turn mail is what pages a subscribed agent: an agent hears
-  a heard turn only once it subscribes to `heard+<device>`. A heard line
+  a heard turn only once it subscribes to `heard+room`. A heard line
   on its own pages nobody; only a reader of the log (a waiter, the
-  hook) sees it. It mails turns heard on the room's mic only. A call's
-  turns (source `call`, or a BlackHole input, the call tap), the mouth's
-  echo and empty turns are skipped.
+  hook) sees it. `--to device` mails the room's turns to `heard+room`;
+  a Delta call's turns go to the call's own box (the next item). Turns heard
+  on a BlackHole input (the call tap), the mouth's echo and empty turns are
+  skipped.
+- **The call-box mail** (`--to device`, `--calls on`, the default): each
+  FINISHED `turn` of a Delta call (source `call`, device `call:N`) is
+  mailed To `calls+<bot>-<N>@<host>`, the box the mouth reads. It is one
+  send per turn, and the turn never goes to any `heard+` address, To or
+  Cc, so a call
+  turn marks no room line answered. The box carries both directions: the
+  caller's turns come in from this mailer, and a seat's replies go To the
+  same box, where the mouth says them into `call:N`. Only the caller's
+  `turn` rows are mailed; the mouth's `said` rows are not, because the
+  line's own mail is already in the box.
+  - **The bot** is learned from the call's own leg. The mailer sends
+    `{"probe": true}` to each `call-ears.sock` (1 s each) and reads back
+    `{"agent", "profile", "calls": [N...]}`. The bot is `agent`, or
+    `<agent>-<profile>` when `profile` is set, so `calls+ivy-public-17` is
+    bot `ivy-public`, call 17. It probes the first time it sees a
+    `call:N` in any row (a partial is written while the call is live),
+    again at each capture's `listen-started` (a call id is the bot's
+    message id, so another bot's later call can reuse one), and again for
+    a turn whose call it does not know. It keeps `{N: bot}` after hang-up,
+    so the last turn still finds its box, and saves the newest 256 in
+    `--state` as `call_bots`, so a restart knows them too. When two legs
+    list the same N, the first wins (the legs are sorted, unless
+    `$EARS_CALL_SOCKS` names them: then in its order). A turn whose bot no
+    leg names is skipped (`call-bot`) and the mailer goes on.
+  - **Where the legs are:** `$EARS_CALL_SOCKS` (colon-separated; old name
+    `VOICEMODE_CALL_EARS_SOCKS`), else `call-ears.sock` in sessionphone's
+    root, in `$DC_ROOT` when it is set, and in each `~/.<agent>/delta-chat`,
+    each `[/<profile>]/call-ears.sock`. sessionphone's root is
+    `$SESSIONPHONE_ROOT` when it is set, and then only that. Otherwise it is
+    both `~/.sessionkit/phone/state` (the new root) and `~/.sessionphone`
+    (the old one). While the old root is a symlink to the new one, a socket
+    under it is counted once. So a Delta bot kept in sessionphone's root
+    (`<root>[/<profile>]`) gets call-box mail too, as well as one under
+    `~/.<agent>/delta-chat`. The mouth looks for `call-mouth.sock` in the
+    same places, so the two halves of a call pair up. The
+    one leg left out is sessionphone web's, `<sessionphone root>/web/`: its
+    server mails its own web turns, and its probe would name an agent that
+    collides with a Delta bot's box. A Delta profile named `web` in
+    sessionphone's root has that path and is skipped as a web leg.
+  - **The mail:** To `calls+<bot>-<N>`, From `ears` (`--calls-from LOCAL`),
+    display name `Ears`, unsigned, with exactly four headers: `Ears-Kind:
+    turn`, `Ears-Seq` (the row's `seq`, when it is a whole number),
+    `Call-Id: <N>` and `Call-Bot: <bot>`. There is no `Ears-Rule`, so a
+    call-box mail wakes no rule; the other `Ears-*` headers of a device mail
+    are not sent. The subject is `<speaker>: ` when the row has a speaker,
+    then the text, cut to 56 characters and made safe, or `a turn` when
+    nothing is left. The body is the whole heard row as one JSON line.
+  - **Not mailed:** a turn that is wholly the mouth's own line heard back
+    (the echo), and an empty turn. `--calls off` skips every call turn
+    again, as before this release (`skip: call`). `--to seats` is
+    unchanged: it still mails a call turn to the seats it is for (rule
+    `call`) and probes no leg, whatever `--calls` says.
+  - **The cursor** is the mailer's one `--state` offsets: device mail and
+    call-box mail move together, and a restart reopens yesterday's log, so a
+    turn just before midnight is not lost. A fresh state starts at the end
+    of the log and replays nothing. A crash in mid-chunk can send that
+    chunk's turns again; `Ears-Seq` names each one.
+  - **If a hand-made job already mails call turns** to `calls+<bot>-<N>`, it
+    and this mailer will both send, so retire one in the same step; two
+    writers put every turn in the box twice. A script of that kind may also
+    mail the echo turns this one drops.
 - **Say again:** a turn that is wholly one say-again phrase asks for the
   last line again, with no model turn (`again_target` in
   `keeper/ears-mail.py`). The keeper splits the user's words with its own
@@ -179,7 +248,10 @@ woken by mail. Code: `src/ears/`, `keeper/`, `bin/`.
   finished, it ends the capture itself. It writes every thread's stack to
   stderr and a `capture-wedged` row to the heard log, which it skips when
   another writer holds `heard.lock`. It SIGKILLs the capture's streaming
-  child, then exits 3. So a wedged capture ends itself before the
+  child, then exits 3. The exit is 3 even when that kill frees the call
+  the capture was stuck in and the capture then finishes: a capture that
+  ends while the watchdog is ending it waits for that exit. So a wedged
+  capture ends itself before the
   keeper's TERM and its 300 s kill, which stay as the second line. The
   watchdog runs only in a capture launched from the command line. A
   program that calls `capture()` itself gets none, unless it passes one.
@@ -200,7 +272,8 @@ woken by mail. Code: `src/ears/`, `keeper/`, `bin/`.
 
 Set up on a Mac:
 
-    ears install                         # fetch the Silero VAD model
+    ears install                         # fetch the Silero VAD model (optional:
+                                         # services install fetches it too)
     ears services install --agent NAME   # speech server, mouth, keeper and
                                          # mail agents; NAME becomes a wake seat
 
@@ -208,6 +281,36 @@ With neither `--agent NAME` nor `--no-agent`, and no seat in the wake file,
 install refuses (exit 2, nothing written): the mail would wake nobody.
 `--no-agent` installs anyway, with that warning; a wake file that already
 names a seat is not refused.
+
+Install checks every prerequisite it can check without building or fetching
+before it writes anything. When several are missing (the wake seat, a shipped
+file, the speakers or speech server prerequisites), it lists them all in one
+run, each with its fix, and exits 2 with nothing written. A missing Silero VAD
+model is not one of them: once nothing else is missing, install fetches it
+itself, by the pin `ears install` uses ([models](https://github.com/sessionkit/sessionvoice/blob/HEAD/docs/models.md#silero-vad)), and
+says the version, the source and the destination. A refused run fetches
+nothing and names the model as not fetched yet. A failed fetch or a checksum
+mismatch is refused (exit 2), and no file is left behind. `--dry-run` says
+what it would fetch and fetches nothing.
+
+A launch agent that fails to load (launchctl's bootstrap answers an error)
+makes install exit 2, after it has tried every other service, so one run
+shows every failure. Its row says `FAILED:` and launchctl's reason, and one
+block on stderr names each service that did not load, the install log and
+`ears services status` as the next step. The `proof` line is not printed
+then. Every real run appends what it printed, and launchctl's answers, each
+timestamped, to the install log, `install.log` in the log folder, `~/.sessionkit/voice/log/`
+([logs](https://github.com/sessionkit/sessionvoice/blob/HEAD/docs/logs.md#the-log-files)), and prints that path as its `log` row. A
+dry run writes no log.
+
+A phone-only Mac (for example one that runs a Delta bot, with no agent
+seat to wake) installs with `--no-agent`: nobody is woken when you speak,
+and the keeper's notices go to the log. `--agent NAME` is for a Mac where
+an agent seat should be woken when you speak. Before it writes anything,
+install says how big the speech models are (about 2.9 GB, fetched once,
+after the speech server loads) and that the speech server runs as a login
+service; `--dry-run` prints the same line, and `--no-prefetch` leaves the
+download to the first call.
 
 The speech server is the mlx-audio server on `127.0.0.1:8890`. Install
 uses one that is already running and says it is mlx-audio, and starts
@@ -217,11 +320,60 @@ replaces another process on `:8890`. `--dry-run` says which it would do.
 A legacy mail or mouth job (`dev.voicemode.ears-mail`,
 `dev.voicemode.mouth-mail`, `com.failmode.mouth-mail`) is replaced: it is
 booted out and its plist is moved aside, never deleted.
-The README's Requirements give every case.
+[The speech server](https://github.com/sessionkit/sessionvoice/blob/HEAD/docs/speech-server.md) gives every case.
 
 The proof of an install: say "hey NAME", and NAME wakes and answers. A
 heard line alone proves only the capture. The README's Install section
 says how to opt a seat into the hook.
+
+## The heard hook
+
+`ears heard hook` is the canonical heard hook: the one command this project
+documents and tests for a seat to ride along on the heard log. A seat opts
+in by running it on `PostToolUse` and `PostToolBatch`, as
+`ears heard hook || exit 1` (the README's Install section has the snippet).
+`ears heard hook --help` prints its usage.
+
+- **What it shows.** After each tool call, what the heard log gained since
+  this seat last looked: each finished turn, the partials of a turn still
+  being spoken (joined, as a preview), the shown events (wake word, end
+  word, barge-in, device change, call start and end) and other seats' said
+  lines. Quiet events (heartbeat, start, stop, voice edges) and the seat's
+  own speech move its cursor and show nothing. A seat with no cursor yet
+  starts at the end of the log.
+- **Partials-only.** A seat that gets heard mail (it subscribes to
+  `heard+room`) already gets each finished turn by mail. Run the hook
+  with `--partials-only` there, as `ears heard hook --partials-only || exit 1`:
+  it then drops every finished turn, with the partials that turn covers,
+  and carries only the partial preview, the shown events and the said
+  lines. The cursor still moves past what it dropped, so no later run shows
+  it. The waiter (`ears-arm`) never reads this setting.
+
+Partials-only is read from the first layer that is set:
+
+| Layer | How | Values |
+|---|---|---|
+| CLI | `--partials-only` / `--no-partials-only` | the last one given wins |
+| environment | `EARS_HEARD_PARTIALS_ONLY` | on: `1`, `on`, `true`, `yes`; off: `0`, `off`, `false`, `no` |
+| ears.json | `"heard_partials_only"` | `true` or `false` |
+| default | | off |
+
+- The environment value is matched in any case, trimmed. Unset or empty is
+  not set, so ears.json decides. Any other value is the default, off. The
+  hook never fails on a value.
+- ears.json is `$EARS_CONF` when it is set and not empty, else
+  `~/.sessionkit/voice/settings/ears.json`. A value that is not `true` or
+  `false` is off. No file, a file that cannot be read, or one that is not a
+  JSON object is not set. It is read on every run, with no restart.
+
+The hook's other settings:
+
+- `EARS_HEARD_HOOK=off` (or `0`, `false`, `no`) silences it without editing
+  the settings file.
+- `EARS_HEARD_BUDGET` is the token budget for one run (default 400), and
+  `EARS_HEARD_MAX_LINES` caps the lines; `--budget` and `--max-lines` win
+  over them. Past the budget the last line says how many more are waiting,
+  and the next run shows them.
 
 ## Recording
 
@@ -373,8 +525,9 @@ it ends.
 | `beat` | no heartbeat from the capture for 120 s (`EARS_BEAT_STALE`) | `ears: DEAF, no heartbeat since HH:MM on DEVICE EOM` | `room: beat: since HH:MM` |
 | `zeros` | 4 heartbeats in a row with `peak` 0 (`EARS_ZERO_BEATS`) | `ears: DEAF, mic gives only zeros on DEVICE at HH:MM EOM` | `room: zeros: 4 beats of peak 0` |
 | `cover` | 20 of the side-car's mic rows in a row with 0% of the line covered (`EARS_SPEAKERS_DEAF_LINES`) | `ears: speakers DEAF, 0% of N lines on DEVICE EOM` | `speakers: cover: N` |
+| `speech` | 6 of the side-car's covered mic turns in a row where the capture heard 2 or more words and the side-car found no speech (`EARS_SPEAKERS_SILENT_TURNS`) | `ears: speakers DEAF, no speech in N turns on DEVICE EOM` | `speakers: speech: N` |
 | room recovery | its last cause no longer holds | `ears: hearing again on DEVICE at HH:MM EOM` | `ears-hearing`: `room: hearing again, was CAUSE for DURATION` |
-| speakers recovery | a mic row with some of its line covered | `ears: speakers hearing again at HH:MM EOM` | `ears-hearing`: `speakers: hearing again, was cover for DURATION` |
+| speakers recovery | `cover`: a mic row with some of its line covered; `speech`: a mic row where the side-car named who spoke | `ears: speakers hearing again at HH:MM EOM` | `ears-hearing`: `speakers: hearing again, was CAUSE for DURATION` |
 
 - `CODE` is the HTTP status in the capture's error, or `?` when it has
   none. `DEVICE` is cut to 20 characters, and to 15 in the `zeros` mail.
@@ -421,6 +574,15 @@ it ends.
   are then a consequence, not a second fault. A row from a mic that gives
   only zeros is covered and does not count. A speakers episode that opened
   before such a mute stays open, silently, until a covered row arrives.
+- **`speech`** is the stream that is covered and still hears nobody. Its row's
+  `why` starts `words in the line, no speech found`. Only a `turn` counts,
+  with 2 or more words and no `mouth_utt`, so a quiet room (no words) never
+  counts. The side-car reopens its stream at 3 such turns, and the keeper
+  reports at 6, which is what the reopen did not cure. A 0% row and a covered
+  row that is no evidence either way (zeros, a partial, one word) leave the
+  run as it is, so `cover` and `speech` cannot hide each other. A row where
+  the side-car named who spoke ends it. It is muted as `cover` is. The
+  device is cut to 14 characters in its mail.
 - The heard log gets one `ears-deaf` event as an episode opens, one for
   each new cause during it, and one `ears-hearing` as it ends
   ([logs.md](https://github.com/sessionkit/sessionvoice/blob/HEAD/docs/logs.md)). The keeper log has a `DEAF (CHANNEL): CAUSE` line
@@ -428,7 +590,7 @@ it ends.
 
 ## Old environment names
 
-Ten of the ears' settings had VoiceMode's `VOICEMODE_` prefix. They now have
+Thirteen of the ears' settings had VoiceMode's `VOICEMODE_` prefix. They now have
 names of their own. The old names are **deprecated aliases**: still
 read, with no warning, and to be removed by a later release.
 
@@ -444,6 +606,9 @@ read, with no warning, and to be removed by a later release.
 | `EARS_LAG_WARN_S` | `VOICEMODE_EARS_LAG_WARN_S` |
 | `EARS_HEARD_EVENT` | `VOICEMODE_HEARD_EVENT` |
 | `EARS_HEARD_CALLER` | `VOICEMODE_HEARD_CALLER` |
+| `EARS_HEARD_HOOK` | `VOICEMODE_HEARD_HOOK` |
+| `EARS_HEARD_BUDGET` | `VOICEMODE_HEARD_BUDGET` |
+| `EARS_HEARD_MAX_LINES` | `VOICEMODE_HEARD_MAX_LINES` |
 
 - The new name wins when both are set.
 - A name set to the empty string counts as set. An empty new name is not
@@ -452,10 +617,9 @@ read, with no warning, and to be removed by a later release.
   They are not `EARS_STT_URL` and `EARS_STT_MODEL`, which `ears services
   install` reads.
 - These keep their `VOICEMODE_` names, because VoiceMode reads them too or
-  owns them: `VOICEMODE_AGENT`, `VOICEMODE_HEARD_HOOK`,
-  `VOICEMODE_HEARD_BUDGET`, `VOICEMODE_HEARD_MAX_LINES`,
-  and `VOICEMODE_SESSION_ID`, and the voice-clone settings the mouth reads
-  from VoiceMode's config.
+  owns them: `VOICEMODE_AGENT` and `VOICEMODE_SESSION_ID`, and the
+  voice-clone settings the mouth reads from VoiceMode's config.
+- `EARS_HEARD_PARTIALS_ONLY` is new, and has no old name.
 - `VOICEMODE_BASE_DIR` is the old name of `SESSIONVOICE_HOME`, and it is
   still read after it ([logs.md](https://github.com/sessionkit/sessionvoice/blob/HEAD/docs/logs.md#sessionvoices-home)).
 
@@ -485,6 +649,6 @@ too (`VOICEMODE_MOUTH_<X>` is now `MOUTH_<X>`): see
 - [The README's Components](https://github.com/sessionkit/sessionvoice/blob/HEAD/README.md#components): capture, keeper,
   sounds, turn mail, waiter and calls, in depth.
 - [The README's Install](https://github.com/sessionkit/sessionvoice/blob/HEAD/README.md#install): the launch agents, and
-  the heard hook for one seat.
+  the heard hook for one seat ([The heard hook](#the-heard-hook)).
 
 <!-- Imported from sessionvoice's docs/ears.md. Edit it there, then run: python3 scripts/command_docs.py import -->

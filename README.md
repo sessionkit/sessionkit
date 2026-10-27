@@ -46,11 +46,10 @@ You need:
     curl -LsSf https://astral.sh/uv/install.sh | sh
     ```
 
-  - Then open a new terminal. Until you do, `uv` is not on your PATH. Or
-    run:
+  - Then open a new terminal, so `uv` is on your PATH. Or run:
 
     ```bash
-    source ~/.local/bin/env
+    source ~/.zshrc
     ```
 
 - For a call on a Mac: [Homebrew][brew], then ffmpeg from it. A call needs
@@ -64,6 +63,9 @@ You need:
     brew install ffmpeg
     ```
 
+  - Homebrew lists what ffmpeg needs, then asks
+    `Do you want to proceed with the installation? [y/n]`. Press `y`. It
+    goes on at once, with no Return.
   - Then the speech server, then link the phone: the phone bullets below.
   - A call without Homebrew is the workaround case. This guide does not
     cover it.
@@ -82,8 +84,13 @@ kit's plugin and the five family plugins it depends on.
 - **Keep `--python 3.14`.** Without it, uv takes the Python it finds: 3.15,
   where a voice library has no build yet and the install fails, or the
   Command Line Tools' 3.11. The kit is tested on 3.14.
-- **Upgrade with `uv tool upgrade sessionkit`.** It keeps the Python the
-  install chose.
+- To upgrade:
+
+  ```bash
+  uv tool upgrade sessionkit
+  ```
+
+  It keeps the Python the install chose.
 - To reinstall, give the pin again:
 
   ```bash
@@ -102,8 +109,7 @@ kit's plugin and the five family plugins it depends on.
   bot signs its mail to your Claude follows your mail carrier:
   [bot mail signing][phone-signing].
 - **The speech server comes before the phone.** A call hears you through
-  it, so it is installed before you link your phone. Linking is
-  `sessionphone setup`, in [sessionphone][pkg-phone]'s docs.
+  it, so it is installed before you link your phone.
   - No phone: nothing to run now. [Hearing and speaking][hearing]
     installs the speech server with the rest of the voice.
   - A phone: first Homebrew, then ffmpeg, as the call item under "You
@@ -113,6 +119,7 @@ kit's plugin and the five family plugins it depends on.
     brew install ffmpeg
     ```
 
+  - At Homebrew's `[y/n]`, press `y`.
   - Then install the speech server. It builds the server and fetches its
     weights, about 2.9 GB.
 
@@ -120,7 +127,22 @@ kit's plugin and the five family plugins it depends on.
     ears services install --only speech
     ```
 
-  - Then link the phone.
+  - Then link the phone. This makes its account on a public relay and
+    prints the invite link. The name people see in their chat list goes in
+    place of NAME:
+
+    ```bash
+    sessionphone setup --name NAME
+    ```
+
+    A name with a space in it needs quotes, or the shell splits it in two
+    and setup refuses the second word:
+
+    ```bash
+    sessionphone setup --name "Ada Lovelace"
+    ```
+
+  - The rest of linking is in [sessionphone][pkg-phone]'s docs.
 
 - **Then quit Claude Code and start it again**, every window of it, before
   you run anything else.
@@ -129,8 +151,19 @@ A plugin installed from the shell loads only when Claude Code starts, so a
 session that was already open has no plugin commands on its PATH, and no
 plugin hooks.
 
-The three lines leave the ears without the model they listen with. Fetch it
-once:
+Then set up mail. This makes the box `claude`, which your first session
+needs to hear mail and calls:
+
+```bash
+sessionkit setup
+```
+
+- **On a fresh Mac it exits 4, and that is expected.** It leaves two
+  notmuch steps for later: [the manual install][setup] shows its last
+  lines.
+
+The three install lines leave the ears without the model they listen
+with. Fetch it once:
 
 ```bash
 ears install
@@ -174,21 +207,41 @@ starts them ([hearing and speaking][hearing]), refuses with
 Step by step, with every step that needs you marked: [the manual
 install][install].
 
+To see what this Mac is still missing, run the kit's check. It installs
+nothing. It prints one line for each thing the kit needs, and under each
+missing one, the command that adds it:
+
+```bash
+sessionkit doctor
+```
+
+It exits 0 when nothing the kit needs is missing, and 1 when something is.
+The phone bot and the session key are shown, but they never fail it.
+
+- No kit yet, or `sessionkit` will not start? The installer runs the same
+  check. Its address is not live yet. From a clone of this repository,
+  run `bash install.sh --check`. Once the address is live:
+
+  ```bash
+  curl -fsSL https://sessionkit.ai/install.sh | bash -s -- --check
+  ```
+
 ## Quick start
 
 ```bash
 sessionkit --version
 ```
 
-It lists the kit and each family package, with its version:
+It lists the kit and each family package, with its version. Each `X.Y.Z`
+is the version you installed:
 
 ```text
-sessionkit, version 0.3.0
-  sessionmail   0.3.0
-  sessiontools  0.3.0
-  sessionphone  0.3.0
-  sessionview   0.3.0
-  sessionvoice  0.3.0
+sessionkit, version X.Y.Z
+  sessionmail   X.Y.Z
+  sessiontools  X.Y.Z
+  sessionphone  X.Y.Z
+  sessionview   X.Y.Z
+  sessionvoice  X.Y.Z
 ```
 
 Start Claude in a project folder, not in your home folder, where a new
@@ -219,9 +272,9 @@ session start
 
 - **Never a bare `claude`.** Mail to your agent's box, your phone's
   included, reaches only a session started as that agent.
-- **`sessionkit setup` makes the box `claude` first:** [first
-  checks][checks]. Without the box, the first session starts plain too,
-  and its line names the repair:
+- **Without the box `claude`, the first session starts plain too.** The
+  mail setup under Installation makes the box ([first checks][checks]).
+  The line names the repair:
 
   ```text
   session start: starting plain: box claude is missing, so this session will NOT hear Delta messages or calls; repair: message setup --box claude
@@ -302,6 +355,7 @@ Session Kit installs these together:
   `session start <name>`. A plain `claude` session does not hear calls you
   make to it yet.
 - [sessionview][pkg-view]: a tmux sidebar of your projects and your agents.
+  `sessionview` (said "session view").
 
 ## Components
 
@@ -334,7 +388,7 @@ The rules for changing the kit: [AGENTS.md][agents].
 
 ## Status
 
-Alpha, 0.3.1. Tested on macOS 27 on Apple silicon; Linux and Windows are
+Alpha, 0.3.2. Tested on macOS 27 on Apple silicon; Linux and Windows are
 untested. What you may still hit: [known gaps][gaps].
 
 Licence: [AGPL-3.0][licence].
@@ -343,6 +397,7 @@ Licence: [AGPL-3.0][licence].
 [brew]: https://brew.sh
 [install]: INSTALL.md
 [prereqs]: INSTALL.md#1-prerequisites-human
+[setup]: INSTALL.md#2-install-the-kit
 [checks]: INSTALL.md#4-first-checks
 [hearing]: INSTALL.md#5-hearing-and-speaking-it-hears-me-and-speaks
 [mail]: INSTALL.md#mail-between-agents

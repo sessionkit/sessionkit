@@ -18,6 +18,7 @@ switch, closing idle seats and saying a seat has settled).
 - `ledger`: every file a session read and every command it ran, with the
   tokens each put in the window
 - `start`: launch a session from an agent file; see [session start][start]
+- `agent`: the default seat's name, for scripts
 - `settings`: a session's settings, each key with the file that set it
 - `account`: which Claude account this Mac is on, and the switch; see
   [switching accounts][account]
@@ -29,6 +30,9 @@ switch, closing idle seats and saying a seat has settled).
   sessiontools; see [the status line][status-line]
 - `pane-state`: each seat's BUSY / FREE / UNKNOWN on its tmux pane; see
   [the pane signal][pane-state]
+- `default-model`: pin the default every NEW claude starts on, opt-in by
+  the `model.default` setting; unset, it does nothing; see
+  [the default model][default-model]
 - `reap`: every seat idle past a limit, CLOSE or KEEP and why; see
   [closing idle seats][reap]
 - `park`: say this seat has settled, or read that back; see
@@ -70,13 +74,25 @@ switch, closing idle seats and saying a seat has settled).
   ```
 
 - `session start [AGENT] ...`: launch a session from an agent file. With
-  no agent named, it takes the default seat, `claude`, and says so, when
-  no other session holds it and its box is there. While one holds it, or
-  with no box `claude`, it starts a plain vendor session and its one line
-  says why. `--list-agents` prints the agent names it can resolve.
+  no agent named, it takes [the default seat][seat] when no live session
+  holds it, and starts plain when one does; `session start -` is always
+  plain. `--list-agents` prints the
+  agent names it can resolve, one per line. The default seat's built-in
+  agent, named for the vendor, is always among them: its line reads
+  `claude<TAB>built in` unless a file of that name in the agents folder
+  shadows it.
 
   ```sh
   session start --list-agents
+  ```
+
+- `session agent default`: prints the default seat's name, the vendor's
+  own word (`claude` today), and a newline, and nothing else: nothing on
+  stderr, exit 0. It reads no host state, so it is safe in a shell
+  substitution, for a tool that cannot import sessiontools.
+
+  ```sh
+  session agent default
   ```
 
 - `session settings [SID] [TOOL] [--agent NAME] [--seat NAME] [--json]`:
@@ -126,6 +142,18 @@ switch, closing idle seats and saying a seat has settled).
   session pane-state show
   ```
 
+- `session default-model [show [--json] | list [--json] | enforce
+  [--dry-run] | watch [--interval S] | unit launchd|systemd]`: `show` (the
+  default) reads only, and says whether `enforce` would change
+  settings.json's `"model"`. `list` names the models a pin may use; Fable
+  is listed and never pinned. `watch` enforces in the foreground on every
+  change; `unit` prints a launchd agent or systemd units that do it, and
+  installs nothing ([the default model][default-model]).
+
+  ```sh
+  session default-model show
+  ```
+
 - `session reap [--idle DURATION] [--json] [--yes] [SHORT ...]`: the
   default limit is 1h. A dry run unless `--yes`; CLOSE only when the
   seat's task is done.
@@ -164,6 +192,131 @@ switch, closing idle seats and saying a seat has settled).
 Since 2030-06-09 sessiontools owns `session`: it took the command over
 when the session repo was retired. The verbs are ported onto the
 library, not copied, and `tests/test_cli.py` pins it.
+
+## The default seat
+
+A bare `session start` takes this host's default seat: the one session
+named for the vendor, `claude` today. That session hears Delta messages
+and calls through box `claude`. Only one live session on a host holds
+it.
+
+- **Free:** the start takes it and says so on stderr:
+
+  ```text
+  session start: this session is claude, the default seat on this host (box claude)
+  ```
+
+- **Held:** a second bare start runs plain, as a bare start always did,
+  and prints one line naming the holder. It will not hear Delta; the
+  holder does.
+- **Cannot hear:** the start runs plain and its one line says why. A
+  bare start never takes the seat when it could not hear:
+  - box `claude` is missing, and the line names the repair;
+  - not macOS: the default seat is macOS-only for now, because sessionmail
+    cannot yet read Linux start times;
+  - the box or the holder could not be checked.
+- The repair for a missing box:
+
+  ```sh
+  message setup --box claude
+  ```
+
+- **The escape hatch:** `session start -` is always plain. It checks
+  nothing, claims nothing and prints no line. Resuming a session that was
+  born as the seat through `-` prints one line: it resumes plain and does
+  not hear Delta.
+- **The seat's name** is the vendor's own word. Scripts and tools that
+  cannot import sessiontools read it here:
+
+  ```sh
+  session agent default
+  ```
+
+- **Only the holder hears.** Claude Code names a session's agent in
+  `CLAUDE_CODE_AGENT`, and sessionmail delivers box `claude` to every
+  live session whose agent is `claude`. `session start` unsets that
+  variable for every launch, and keeps it out of a tmux server it
+  creates; a launch that names an agent gets it back from `--agent`. So
+  a plain session started from the seat's own shell or tmux does not
+  hear the seat's mail.
+- **A tmux server born inside the seat before this fix** still holds
+  `CLAUDE_CODE_AGENT=claude` in its global environment and hands it to
+  every pane it makes. A `session start` in such a pane drops it, but a
+  raw `claude` typed there still inherits it and hears box `claude`.
+  Fixing it is an operator step on a live server, and an upgrade does
+  not do it. Check the server, then either restart it or remove the
+  variable:
+
+  ```sh
+  tmux show-environment -g CLAUDE_CODE_AGENT
+  tmux set-environment -g -u CLAUDE_CODE_AGENT
+  ```
+
+- **If a `claude`-type subagent misbehaves** inside a default-seat
+  session, start the session plain with `session start -`. What such a
+  subagent receives in a seat session is not measured yet.
+
+### Naming it: `session start claude`
+
+A launch that names the seat word goes through the same check, fresh or
+with `--resume ID` or `--continue`:
+
+- **Free:** it takes the seat. It does so even when the box is missing
+  or the host is not macOS, and then its line says it holds the seat but
+  cannot hear yet, and why. So no second holder appears once the box
+  exists.
+- **Held:** it is refused, exit 3, naming the holder, even when the box
+  is missing. This holds for a holder still starting up and for a start
+  typed in the holder's own pane.
+  - `--allow-second-holder` starts beside the holder, says so, and takes
+    nothing.
+  - A spawner that names the session with claude's `-n` starts plain
+    with the held line, instead of the refusal.
+- **Holder not checkable:** it launches as named, takes nothing, and says
+  it may be a second holder.
+- To take back a session born as the seat while the seat is free:
+
+  ```sh
+  session start claude --resume SESSION_ID
+  ```
+
+### Shadowing the built-in
+
+The package ships the seat's agent file: one `description:` line and no
+body, so the session is plain Claude Code under the seat's name. A file
+of that name in your agents folder (`claude.md` or `claude/claude.md`)
+shadows it. The smallest one:
+
+```markdown
+---
+description: My default seat.
+---
+```
+
+- **Its body** is appended to Claude Code's own system prompt, never
+  put in place of it, and never on the command line.
+- **`description:`** is accepted and not carried: the seat always shows
+  the shipped description, which steers the model away from a `claude`
+  subagent.
+- **`name:`**, when present, must be `claude`.
+- **`settings:`** applies, as for any agent. It is where the seat's model
+  goes:
+
+  ```yaml
+  settings:
+    claude-code:
+      model: sonnet
+  ```
+
+- **`start:`, `environment:` and `claude:`** apply as for any agent.
+  `start: keyed: true` makes the seat keyed.
+- **Any other key** (`model:`, `tools:`, `skills:`, `voice:` and the
+  like) is refused, naming it.
+- **Claude Code's own `~/.claude/agents/claude.md` does not shadow the
+  seat.** Only the sessions agents folder does.
+
+More: the claim, every line word for word, tmux and the dry run are in
+[starting a session][seat-launcher].
 
 ## `session list`
 
@@ -246,9 +399,12 @@ library, not copied, and `tests/test_cli.py` pins it.
 [operator]: https://github.com/sessionkit/sessiontools/blob/HEAD/docs/operator-privileged-seats.md
 [status-line]: https://github.com/sessionkit/sessiontools/blob/HEAD/docs/status-line-script.md
 [pane-state]: https://github.com/sessionkit/sessiontools/blob/HEAD/docs/pane-state-signal.md
+[default-model]: https://github.com/sessionkit/sessiontools/blob/HEAD/docs/default-model.md
 [cache]: https://github.com/sessionkit/sessiontools/blob/HEAD/docs/list-snapshot-cache.md
 [park]: https://github.com/sessionkit/sessiontools/blob/HEAD/docs/session-park.md
 [reap]: https://github.com/sessionkit/sessiontools/blob/HEAD/docs/session-reap.md
 [completion]: https://github.com/sessionkit/sessiontools/blob/HEAD/docs/shell-completion.md
+[seat]: #the-default-seat
+[seat-launcher]: https://github.com/sessionkit/sessiontools/blob/HEAD/docs/session-start-launcher.md#the-default-seat-one-per-host
 
 <!-- Imported from sessiontools's docs/session.md. Edit it there, then run: python3 scripts/command_docs.py import -->

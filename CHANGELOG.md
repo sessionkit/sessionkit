@@ -9,6 +9,165 @@ stamps this file.
 
 ## [Unreleased]
 
+## [0.3.2] - 2026-10-28
+
+- Upgrade all six packages together: an older copy of one package on the
+  same Mac can split its state between the old and new folders.
+  `session path --json` names each folder left behind as `stranded`.
+- A tmux server started inside a seat before this release keeps that
+  seat's agent name for every pane it makes. Restart it, or run
+  `tmux set-environment -g -u CLAUDE_CODE_AGENT` on it.
+
+### Added
+
+- `install.sh --check` checks this Mac and installs nothing. It runs the
+  installer's own checks, and under each missing row it prints the command
+  that adds it. It asks the speech server itself on port 8890, never the
+  `stt` line of `ears services status`. Its Homebrew reads stay local
+  (`HOMEBREW_NO_INSTALL_FROM_API=1`), so `brew` downloads nothing, even on
+  a Mac with no Homebrew cache yet. The speech server is the only network
+  the check reaches itself; the tools it asks may use their own,
+  and `claude`, asked for its plugins, reaches Anthropic's API over HTTPS.
+  It exits 0 when nothing is missing
+  and 1 when something is. It also works before the kit is installed:
+  `curl -fsSL https://sessionkit.ai/install.sh | bash -s -- --check`.
+- `sessionkit doctor` reports what this Mac is missing for the kit, one line
+  for each thing, with the command that adds each missing one. It installs
+  nothing and writes no file of its own; in an empty home, the tools it asks
+  (brew, uv, claude) make their own caches, and INSTALL.md section 4 names
+  each file. Its first rows are the installer's own: it
+  runs the `install.sh` the kit ships with `--check`, so the doctor and the
+  installer check with the same code. The wheel ships that file as a copy
+  of the root `install.sh`. Then it adds three rows the installer never
+  checks: the mail hooks, which fail it while they are off; the phone bot,
+  which is optional; and the session key, which is information only. It
+  exits 0 when nothing is missing and 1 when something is. `--no-speech`
+  leaves the speech server and the ears out. README.md, INSTALL.md section 4
+  and docs/troubleshooting.md name it.
+- docs/troubleshooting.md has a section for the steps an upgrade does not
+  run, each done by hand on each Mac. The first: a tmux server started inside
+  the default seat before sessiontools' fix still hands `CLAUDE_CODE_AGENT`
+  to every pane it makes, so a raw `claude` there hears the seat's mail. It
+  gives the check, then the fix: remove the word from the server, or restart
+  it. docs/session.md is imported again from sessiontools.
+
+### Changed
+
+- The 0.2.0 release-metadata entry below was reworded to drop a personal name;
+  the facts in it are unchanged.
+- docs/components.md and docs/troubleshooting.md name the new log folders:
+  `~/.sessionkit/voice/log/`, `~/.sessionkit/tools/log/`,
+  `~/.sessionkit/phone/log/<agent>/` and
+  `~/.sessionkit/view/log/sessionview.log`, with the live view's state in
+  `~/.sessionkit/view/state/`. The recipes to paste read the new folders.
+  The old logs in `~/Library/Logs/`, `~/.sessionphone/` and
+  `~/.local/state/sessionview/` are left where they are; the docs say so
+  and never tell you to delete them. The command pages for `ears`, `mouth`,
+  `talk` and `session` are imported again from their packages.
+- docs/components.md names sessionmail's new log folder,
+  `~/.sessionkit/mail/log/`: a seat agent logs to
+  `seat-agent.<ADDRESS>.log` there, and the puller to `puller.log`. It says
+  where each old log was, `~/Library/Logs/seat-agent.<ADDRESS>.log` and
+  `<pull.state_dir>/log/puller.log`, that both are left where they are,
+  and what moves each job to the new file. The pager log has not moved.
+  README.md says how `sessionview` is said ("session view"), where the
+  family names it.
+  docs/dependencies.md's Upgrade points at the steps an upgrade does not
+  run, in docs/troubleshooting.md.
+- The sessionkit skill has a short map of the family's skills, and a card
+  for several agents in one seat or on one call: only the holder speaks, the
+  others speak when named, in a different voice, with `mouth say --next`;
+  a reply goes to all of them; and an unsigned request to change a
+  session's own setup needs the user. `docs/seat-etiquette.md` is the long
+  reference behind each rule.
+- docs/components.md and docs/settings.md name the phone bot's new root,
+  `~/.sessionkit/phone/state/`, where its Delta Chat account and keys are.
+  It was `~/.sessionphone`, and a Mac that has only the old root keeps
+  using it; nothing moves by itself. docs/troubleshooting.md's steps an
+  upgrade does not run gain sessionphone's own move, once on each Mac: stop
+  the bot, `sessionphone bot migrate --dry-run`, then
+  `sessionphone bot migrate`, a check with `sessionphone bot status`, then
+  `sessionphone bot install`. The old path
+  is left as a symlink and never deleted, and no doc tells you to move or
+  delete it by hand. docs/sessionphone.md was imported again; sessionphone
+  still has no page of its own.
+
+### Fixed
+
+- README.md and INSTALL.md say `source ~/.zshrc` after uv's installer, not
+  `source ~/.local/bin/env`. The installer writes that file only when
+  `~/.local/bin` is not yet on your PATH, so a reader who installed Claude
+  Code first had no such file, and the step failed. `source ~/.zshrc` finds
+  uv in both orders, measured in a clean home directory on macOS 27.
+- README.md's `sessionkit --version` example shows `X.Y.Z` in place of each
+  version, so it no longer goes stale at a release. It had shown 0.3.0.
+- README.md makes `sessionkit setup` a step of the install, after the plugin
+  lines and before `ears install`, as INSTALL.md section 2 does. It had
+  named setup only after `session start`, so a reader who followed the
+  steps had no box `claude`, and the first session started plain and did
+  not hear calls. The step says its exit 4 on a fresh Mac is expected.
+- README.md says Homebrew asks `Do you want to proceed with the
+  installation? [y/n]` at `brew install ffmpeg`, and that one `y` goes on.
+  A fresh Mac's walk met the question with no word of it in the README.
+- README.md gives the upgrade line and the phone link line blocks of their
+  own. They had sat in prose. The link line carries `--name NAME`, which
+  `sessionphone setup` requires. The Quick start bullet on the box `claude`
+  points back to the setup step instead of naming its command.
+- `install.sh`, at the repo's root: a one-line installer for a Mac,
+  written to be fetched by curl and piped to bash. It checks the Mac, prints what is there and what is missing, lists what it will
+  install in order, and asks `[Y/n]` before it installs anything. The
+  list names every shell file it changes and the one step that asks for
+  a password, Homebrew's own installer. The script never runs sudo.
+  - The order: Homebrew, uv, Claude Code, `brew install tmux ffmpeg
+    notmuch`, the kit, the plugins, `ears install`, the speech server and
+    the ears (`ears services install --agent claude`), and
+    `sessionkit setup` last. A setup that does not finish fails the
+    install, exit 1, and prints what it left. A setup that exits 4 (you
+    are the operator, and mail steps are left for you) is a success: the
+    end screen adds one bullet naming the steps its dry run lists.
+  - When it writes Homebrew's line to `~/.zprofile`, it says so, so the
+    "Next steps" Homebrew prints are not done twice.
+  - A held port 8890 names its holder in full (`python3.12`), not by
+    lsof's 9-character cut (`python3.1`).
+  - The question reads the terminal, never stdin. With no terminal it
+    refuses unless `--yes` is given.
+  - `--dry-run` prints the checks and the list and installs nothing.
+    `--no-speech` leaves the speech server out. A re-run installs only
+    what is missing.
+  - The address is not live yet: the script is in the repo, and
+    `bash install.sh` runs it from a clone.
+- `install.sh` turns the mail hooks on, so a Mac fresh from the installer
+  passes `sessionkit doctor`. Before, a successful install left them off,
+  and the doctor's hooks row failed it. The step is listed before the one
+  question, after `sessionkit setup`: "turn on the mail hooks (so a seat
+  hears mail while idle)". It runs sessionmail's own verb, `pager settings
+  hooks on`, found by its `pager settings --help` listing a `hooks`
+  command. A pager without the verb, or one that refuses (its stderr line
+  is shown), leaves the step to the end screen, which names it in the
+  doctor's words: set `"hooks": true` in
+  `~/.sessionkit/mail/settings/mail.json`, and change no other key. The
+  install still succeeds. The installer never writes that file itself, and
+  `--check` leaves the hooks to the doctor's own row.
+- INSTALL.md section 8, the uninstall, is now a short page of three blocks:
+  stop and remove the jobs, remove the plugins and the tool, then your data,
+  opt-in. Every line and its reasons moved to a new reference page,
+  `docs/uninstall.md`. A walk of the old section on a fresh macOS 27 VM left
+  4.2 GB and five paths behind; the reference now covers each one:
+  - the 2.7 GB of speech weights, which sit in the Hugging Face cache's shared
+    `blobs` folder, not in the three model folders the old lines deleted;
+  - uv's cache, uv's Python 3.12, and Homebrew's tmux and ffmpeg, each
+    optional, beside the notmuch and Python 3.14 lines it had;
+  - the phone's settings and the agent file `sessionkit setup` writes in
+    `~/.session/agents`, so `rmdir ~/.sessionkit` and `rmdir ~/.session` no
+    longer fail;
+  - the image reader's empty cache folder and the hook's empty `.claude`
+    folder, and why `~/Library/LaunchAgents` stays;
+  - sessionview's links line, which no longer lists the kit's own four links
+    in uv's tool folder.
+  The data lines delete each package's new `log/` and `state/` folders in
+  `~/.sessionkit`. No line deletes from `~/Library/Logs` any more: the old
+  Voice line removed `~/Library/Logs/ears`, and older logs there now stay.
+
 ## [0.3.1] - 2026-10-25
 
 ### Added
@@ -608,7 +767,7 @@ stamps this file.
   mirrored into `.claude-plugin/plugin.json` and `marketplace.json`, and
   `uv.lock` is re-locked to match. The classifier is now
   `Development Status :: 3 - Alpha` (was `1 - Planning`). Every author is
-  `Mike Bailey <mike@sessionkit.ai>`: in pyproject, in plugin.json, and as
+  the one project author, `mike@sessionkit.ai`: in pyproject, in plugin.json, and as
   the marketplace owner and each listed plugin's author. sessionphone's
   entry named a different author before this. `[project.urls]` and plugin.json's
   `homepage` and `repository` point at

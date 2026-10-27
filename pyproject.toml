@@ -1,6 +1,6 @@
 [project]
 name = "sessionkit"
-version = "0.3.1"
+version = "0.3.2"
 description = "Session Kit gives your Claude Code sessions voice, mail, a phone line and a tmux sidebar, in one install."
 readme = "README.md"
 license = "AGPL-3.0-or-later"
@@ -18,6 +18,9 @@ requires-python = ">=3.11,<3.15"
 # and docs call on: `sessionkit setup` asks sessiontools 0.3.1's
 # `session agent default`, and INSTALL.md describes sessionmail 0.3.1's
 # one-run mail setup.
+# All five are floored at 0.3.2: the family is released together, and an older
+# copy of one package beside the others splits its state between the old
+# and new folders.
 # sessionphone with its media extra: the bot, calls and `sessionphone web` need it.
 # sessionvoice with its capture extra, so the ears can hear the room.
 # This is the RULED list, kept in tests/_ruled_deps.py with the ruling;
@@ -25,11 +28,11 @@ requires-python = ">=3.11,<3.15"
 # uv.lock drift from it.
 dependencies = [
     "click>=8.1",
-    "sessionmail>=0.3.1",
-    "sessiontools>=0.3.1",
-    "sessionphone[media]>=0.3.0",
-    "sessionview>=0.3.0",
-    "sessionvoice[capture]>=0.3.0",
+    "sessionmail>=0.3.2",
+    "sessiontools>=0.3.2",
+    "sessionphone[media]>=0.3.2",
+    "sessionview>=0.3.2",
+    "sessionvoice[capture]>=0.3.2",
 ]
 
 [project.urls]
@@ -80,4 +83,4 @@ dev = [
 ]
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
+testpaths = ["tests", "dark-launch/tests"]

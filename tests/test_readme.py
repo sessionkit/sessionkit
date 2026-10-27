@@ -169,8 +169,13 @@ def test_the_hooks_step_turns_the_hooks_on_in_any_mail_json(tmp_path, before):
 # `source $HOME/.local/bin/env`". A reader who pastes the README in order,
 # in the terminal they ran the installer in, must be told that BEFORE the
 # first `uv` line, or that line exits 127.
+# SK-227: but the installer writes `~/.local/bin/env` only when
+# `~/.local/bin` is NOT already on PATH. The README's Claude Code step puts
+# it there first, so in the README's order the file does not exist and
+# `source ~/.local/bin/env` fails. MEASURED in clean zsh homes, uv 0.13.5:
+# `source ~/.zshrc` finds uv in both orders, Claude Code first or uv first.
 UV_INSTALLER = "https://astral.sh/uv/install.sh"
-UV_ENV = "source ~/.local/bin/env"
+UV_ENV = "source ~/.zshrc"
 
 
 def test_installation_says_new_terminal_between_uv_installer_and_first_uv():
@@ -251,13 +256,31 @@ def test_readme_requirements_put_each_follow_up_in_its_own_bullet():
     # "Setup notes". Measured in a scratch HOME (SK-205); Anthropic's lines.
     assert req.index(CLAUDE_INSTALLER) < req.index(CLAUDE_PATH_FIX[0]) < req.index(CLAUDE_PATH_FIX[1])
     assert CLAUDE_PATH_FIX[0] in _block_lines(req[req.index(CLAUDE_INSTALLER):])[0]
-    follow_up = "  - Then open a new terminal. Until you do, `uv` is not on your PATH. Or\n    run:\n"
+    follow_up = "  - Then open a new terminal, so `uv` is on your PATH. Or run:\n"
     assert req.index(UV_INSTALL_LINE) < req.index(follow_up)
     # SK-205 fix-001 review: `source ...` is a command, so it sits in a block
     # of its own, never inline in the follow-up's sentence.
     assert _bash_blocks(req[req.index(follow_up):])[0].strip() == UV_ENV
     assert f"`{UV_ENV}`" not in req
     assert f"`{UV_INSTALL_LINE}`" not in README
+
+
+# SK-227: a `source` step names only a file the reader is sure to have. uv's
+# installer writes `~/.local/bin/env` only when `~/.local/bin` is not yet on
+# PATH, so on a Mac where Claude Code came first the file is missing and the
+# step fails "no such file or directory". `~/.zshrc` is there in both orders:
+# the Claude Code PATH lines append to it, and uv's installer writes it.
+SOURCED_OK = {"~/.zshrc"}
+
+
+@pytest.mark.parametrize("name", ["README.md", "INSTALL.md"])
+def test_every_source_step_names_a_file_both_install_orders_leave(name):
+    doc = (ROOT / name).read_text(encoding="utf-8")
+    sourced = [line.split()[1] for block in _bash_blocks(doc) for line in block.splitlines()
+               if line.split()[:1] in (["source"], ["."])]
+    assert sourced, name
+    assert set(sourced) <= SOURCED_OK, (name, sourced)
+    assert "local/bin/env" not in doc, name
 
 
 def test_install_section_1_puts_each_command_in_a_block_and_each_follow_up_in_a_bullet():
@@ -436,7 +459,7 @@ def test_installation_gives_ears_install_after_the_plugin_lines():
     # sessionvoice's `ears services install` refuses without it.
     install = _section("Installation")
     blocks = _top_blocks(install)
-    assert blocks[1] == "ears install\n", blocks
+    assert blocks[2] == "ears install\n", blocks
     flat = " ".join(install.split())
     assert flat.index(PLUGIN_LINES[1]) < flat.index("ears install") < flat.index("mail hooks start off")
     assert "`~/.cache/ears/silero_vad.onnx`" in flat
@@ -562,9 +585,23 @@ def test_quick_start_sends_the_stranger_to_session_start_and_says_why():
     quick = " ".join(_section("Quick start").split())
     assert ("- **Never a bare `claude`.** Mail to your agent's box, your phone's included, "
             "reaches only a session started as that agent.") in quick
-    assert "- **`sessionkit setup` makes the box `claude` first:** [first checks][checks]." in quick
+    assert ("- **Without the box `claude`, the first session starts plain too.** The mail setup "
+            "under Installation makes the box ([first checks][checks]).") in quick
     assert SEAT_NO_BOX in _text_blocks(_section("Quick start"))
     assert quick.index("session start") < quick.index("from your agent inside a Claude Code session")
+
+
+def _prose(text: str) -> str:
+    """The text with every fenced block taken out: what a reader reads, not pastes."""
+    return re.sub(r"^ *```.*?^ *```", "", text, flags=re.MULTILINE | re.DOTALL)
+
+
+def test_quick_start_names_sessionkit_setup_only_in_installation_s_block():
+    # SK-221 K3 (fresh-3, row 8): the Quick start bullet named `sessionkit
+    # setup` in its prose. The step is Installation's own block; the bullet
+    # points back to it and names no command.
+    assert "sessionkit setup" not in _prose(_section("Quick start"))
+    assert "sessionkit setup" in [b.strip() for b in _top_blocks(_section("Installation"))]
 
 
 def test_quick_start_runs_no_command_inside_prose():
@@ -665,16 +702,21 @@ def test_the_readme_no_longer_says_the_plugin_install_fails(claim):
     assert claim.lower() not in " ".join(README.split()).lower(), claim
 
 
-def test_quick_start_shows_the_measured_version_lines():
+def test_quick_start_shows_the_version_lines_shape_with_no_version_pinned(monkeypatch):
+    # SK-227: the block showed 0.3.0 in the 0.3.1 README. It keeps the shape
+    # `sessionkit --version` prints (cli.version_lines), the kit then each
+    # family package, with `X.Y.Z` in place of every version, so it cannot go
+    # stale at the next release.
     quick = _section("Quick start")
     [text] = re.findall(r"^```text\n(.*?)^```", quick, re.MULTILINE | re.DOTALL)
-    assert text.splitlines()[0] == "sessionkit, version 0.3.0"
-    # The kit's floors: every family package at 0.3.0 (tests/_ruled_deps.py),
-    # as a fresh install prints.
-    measured = {"sessionmail": "0.3.0", "sessiontools": "0.3.0", "sessionphone": "0.3.0",
-                "sessionview": "0.3.0", "sessionvoice": "0.3.0"}
-    assert [line.split() for line in text.splitlines()[1:]] == [
-        [name, measured[name]] for name in cli.FAMILY]
+    lines = text.splitlines()
+    assert lines[0] == "sessionkit, version X.Y.Z"
+    assert [line.split() for line in lines[1:]] == [[name, "X.Y.Z"] for name in cli.FAMILY]
+    # Byte for byte what the CLI prints, with every installed version X.Y.Z.
+    monkeypatch.setattr(cli, "installed_version", lambda _dist: "X.Y.Z")
+    assert lines == cli.version_lines()
+    assert not re.search(r"\b\d+\.\d+\.\d+\b", text), text
+    assert "Each `X.Y.Z` is the version you installed" in " ".join(quick.split())
 
 
 def test_status_names_the_version_pyproject_ships():
@@ -740,6 +782,7 @@ def test_no_doc_says_the_repos_are_not_public():
 # (The README's clone-era copies of these steps are gone: at 0.2.0 it installs
 # and removes the kit's own marketplace instead.)
 INSTALL_DOC = (ROOT / "INSTALL.md").read_text(encoding="utf-8")
+UNINSTALL_DOC = (ROOT / "docs" / "uninstall.md").read_text(encoding="utf-8")
 
 
 # SK-100 made the notes plugin opt-in for the kit (SK-46); SK-107 takes it
@@ -772,7 +815,7 @@ def test_the_docs_no_longer_offer_the_optional_sixth_plugin():
     install = _section("Installation")
     assert f"marketplace remove {_DROPPED}" not in install
     assert "This removes each of the five marketplaces, and its plugin too" in (
-        " ".join(_install_section(8).split()))
+        " ".join(UNINSTALL_DOC.split()))
 
 
 # A release archive (`git archive`, the GitHub tarball) has no .git, so it has
@@ -1348,7 +1391,7 @@ def test_install_doc_names_the_voice_labels_dev_sessionkit():
     assert "`dev.sessionkit.voice.ears-<name>`" in hearing
     for label in (*VOICE_LABELS, "dev.sessionkit.voice.ears-speakers"):
         assert f"`{label}`" in hearing
-    assert "`dev.sessionkit.voice.*`" in _install_section(8)
+    assert "`dev.sessionkit.voice.*`" in UNINSTALL_DOC
 
 
 def test_install_doc_names_the_old_label_forms_only_as_history():
@@ -1366,13 +1409,17 @@ def test_install_doc_names_the_old_label_forms_only_as_history():
 
 def test_install_doc_launchctl_greps_find_the_dev_sessionkit_labels():
     # SK-137: the look and the check find today's labels and the old forms.
-    uninstall = _install_section(8)
-    greps = re.findall(r"^ *launchctl list \| grep -E '([^']+)'$", uninstall, re.MULTILINE)
-    assert len(greps) == 2, greps
-    look, check = greps
+    # SK-215: section 8 looks, and checks, with the one pattern for every job;
+    # the reference adds the voice step's own check.
+    short = re.findall(r"^ *launchctl list \| grep -E '([^']+)'$", _install_section(8), re.MULTILINE)
+    ref = re.findall(r"^ *launchctl list \| grep -E '([^']+)'$", UNINSTALL_DOC, re.MULTILINE)
+    assert len(short) == 2 and short[0] == short[1], short
+    assert len(ref) == 2, ref
+    look, check = ref
+    assert look == short[0]
     assert look.startswith("dev\\.sessionkit\\.|")
     assert check.startswith("dev\\.sessionkit\\.voice\\.|")
-    for pattern in greps:
+    for pattern in ref:
         assert "sessionvoice" in pattern
         assert "voicemode\\.ears" in pattern
 
@@ -1890,7 +1937,10 @@ def test_every_mail_pointer_uses_the_anchor():
             doc, re.IGNORECASE,
         )
     assert f"\n[mail]: INSTALL.md{MAIL_ANCHOR}\n" in README
-    assert INSTALL_DOC.count(f"({MAIL_ANCHOR})") >= 4
+    assert INSTALL_DOC.count(f"({MAIL_ANCHOR})") >= 3
+    # SK-215: the uninstall's pointer moved to its reference page, as a link.
+    assert f"\n[mail-setup]: ../INSTALL.md{MAIL_ANCHOR}\n" in UNINSTALL_DOC
+    assert "[Mail between agents][mail-setup]" in UNINSTALL_DOC
 
 
 # SK-68: the pager monitor is on by default since SM-726. It ships in the root
@@ -1974,6 +2024,8 @@ SHIPPED_PROSE = (
     "docs/troubleshooting.md",
     "docs/configuration.md",
     "docs/settings.md",
+    "docs/seat-etiquette.md",
+    "docs/uninstall.md",
     "site/README.md",
     "site/index.html",
 )
@@ -2415,12 +2467,12 @@ def test_docs_session_says_a_bare_start_takes_the_default_seat():
     # The default seat (sessiontools' bare `session start`): with no agent
     # named it takes `claude` when it is free and its box is there, and starts
     # plain otherwise, saying why. Measured at the seat's build (SK-206 do-004,
-    # findings/do-004-measured.md); "plain with no agent named" is gone.
+    # findings/do-004-measured.md); "plain with no agent named" is gone. The
+    # sentence is sessiontools' own, as imported from its merged master.
     doc = _flat((ROOT / "docs" / "session.md").read_text(encoding="utf-8"))
     assert ("- `session start [AGENT] ...`: launch a session from an agent file. With no agent "
-            "named, it takes the default seat, `claude`, and says so, when no other session "
-            "holds it and its box is there. While one holds it, or with no box `claude`, it "
-            "starts a plain vendor session and its one line says why.") in doc
+            "named, it takes [the default seat][seat] when no live session holds it, and "
+            "starts plain when one does; `session start -` is always plain.") in doc
     assert "plain vendor session with no agent named" not in doc
 
 
@@ -2451,7 +2503,14 @@ REINSTALL_LINE = "uv tool install --python 3.14 --reinstall sessionkit"
 
 def test_readme_gives_a_safe_upgrade_and_reinstall_and_why():
     flat = " ".join(_section("Installation").split())
-    assert f"**Upgrade with `{UPGRADE_LINE}`.** It keeps the Python the install chose." in flat
+    # SK-221 K2 (fresh-3, row 8): the upgrade line sat in a bullet's prose.
+    # It is a labelled bullet with its own block now, as the reinstall is.
+    install = _section("Installation")
+    assert UPGRADE_LINE in [b.strip() for b in _bash_blocks(install)]
+    assert UPGRADE_LINE not in _prose(install)
+    assert "- To upgrade:" in install
+    assert install.index("- To upgrade:") < install.index(UPGRADE_LINE)
+    assert "It keeps the Python the install chose." in flat
     assert REINSTALL_LINE in [b.strip() for b in _bash_blocks(_section("Installation"))]
     assert "Without it, uv drops the pin from its record" in flat
 
@@ -2500,6 +2559,36 @@ def test_readme_restart_is_its_own_step_before_ears_install():
     assert flat.index(PLUGIN_LINES[1]) < flat.index(RESTART) < flat.index("```bash ears install")
 
 
+# SK-227 fix-002: a fresh Mac's first call failed when the README named
+# `sessionkit setup` only as a Quick start bullet, after `session start`.
+# Without setup there is no box `claude`, and the first session starts plain.
+# So setup is a step of its own: after the plugin lines, before `ears install`
+# and before any `session start`, the order INSTALL.md section 2 gives. Its
+# exit 4 on a fresh Mac is expected, in INSTALL's own words.
+SETUP_EXIT_4 = "On a fresh Mac it exits 4, and that is expected."
+
+
+def test_readme_makes_sessionkit_setup_a_step_before_ears_install_and_session_start():
+    install = _section("Installation")
+    blocks = _top_blocks(install)
+    assert blocks[:3] == [f"{UV_LINE}\n{PLUGIN_LINES[0]}\n{PLUGIN_LINES[1]}\n",
+                          "sessionkit setup\n", "ears install\n"], blocks
+    flat = " ".join(install.split())
+    setup = flat.index("```bash sessionkit setup ```")
+    assert flat.index(PLUGIN_LINES[1]) < flat.index(RESTART) < setup
+    assert setup < flat.index("```bash ears install")
+    # One line on why, and the exit 4 read as expected, as INSTALL says it.
+    assert "This makes the box `claude`, which your first session needs" in flat
+    assert f"- **{SETUP_EXIT_4}**" in flat
+    assert f"**{SETUP_EXIT_4}**" in " ".join(_install_section(2).split())
+    assert re.search(r"^\[setup\]: INSTALL\.md#2-install-the-kit$", README, re.MULTILINE)
+    assert "## 2. Install the kit" in INSTALL_DOC
+    # Before any block that runs `session start`, anywhere in the README.
+    step = README.index("```bash\nsessionkit setup\n```")
+    assert not [b for b in _bash_blocks(README[:step]) if "session start" in b]
+    assert [b for b in _bash_blocks(README[step:]) if "session start" in b]
+
+
 def test_install_restart_is_its_own_step_before_section_4():
     plugins = _install_section(3)
     flat = " ".join(plugins.split())
@@ -2522,23 +2611,28 @@ def test_settings_local_json_location_is_said_once_and_pointed_to():
     # root is the home directory.
     assert "Otherwise, or when that root is your home directory, it is in the launch directory itself" in flat
     assert "that section 5, step 3 edits (it says where that file is)" in flat
-    assert "In the `.claude/settings.local.json` that section 5, step 3 edited, one of these" in flat
+    assert "In the `.claude/settings.local.json` that section 5, step 3 edited, one of these" in (
+        " ".join(UNINSTALL_DOC.split()))
 
 
 # The speech server's models stay in the shared Hugging Face cache; section 8
-# says so, where, and how to remove only the three folders the kit's server fetched:
-# sessionvoice's SPEECH_WEIGHTS names Parakeet, Kokoro, and Kokoro's voices, which
-# come from a third repository.
+# names them, and its reference says where and how to remove only what the
+# kit's server fetched: sessionvoice's SPEECH_WEIGHTS names Parakeet, Kokoro,
+# and Kokoro's voices, which come from a third repository. SK-215: the cache's
+# shared-blob layout keeps the bytes outside those folders, so the lines
+# follow the links (tests/test_install_uninstall.py runs them).
 def test_uninstall_says_the_speech_models_stay_and_where():
-    uninstall = _install_section(8)
-    flat = " ".join(uninstall.split())
-    assert "**The speech models stay behind, about 2.7 GB.**" in flat
+    assert "The speech weights, about 2.7 GB, in the shared Hugging Face cache." in (
+        " ".join(_install_section(8).split()))
+    flat = " ".join(UNINSTALL_DOC.split())
+    assert "### The speech weights, about 2.7 GB" in UNINSTALL_DOC
     assert "so they are in `~/.cache/huggingface/hub`" in flat
     for repo in ("mlx-community--parakeet-tdt-0.6b-v3", "mlx-community--Kokoro-82M-bf16",
                  "prince-canuma--Kokoro-82M"):
-        assert f'rm -rf "${{HOME:?}}/.cache/huggingface/hub/models--{repo}"' in uninstall
+        assert f"`models--{repo}`" in flat, repo
+    assert 'rm -rf "${hub:?}/models--${m:?}"' in UNINSTALL_DOC
     # The condition is a labelled bullet, not a clause in front of the block.
-    assert "- Nothing else uses them? Remove just those three:" in flat
+    assert "- Nothing else uses them? These lines follow each link" in flat
     assert "- Another tool uses them: leave them." in flat
     assert "If no other tool uses them" not in flat
     assert "Never delete the cache whole." in flat
@@ -2618,3 +2712,156 @@ def test_the_kit_skill_body_agrees_and_its_description_stays_on_the_kit():
     # would compete with the ears skill for the same asks.
     for word in ("mouth", "ears", "converse", "VoiceMode", "speak", "listen"):
         assert word not in front, word
+
+
+# SK-221 N3 (fresh-3): Homebrew 7.0.10 asks before `brew install ffmpeg`, and
+# the README did not say so. The prompt is Homebrew's Library/Homebrew/ask.rb
+# at 7.0.10: `ohai "Do you want to proceed with the #{action}? [y/n]"`, read
+# with `$stdin.getch`, so one `y` key goes on with no Return. It asks only on a
+# TTY, and only when the plan has dependencies, as ffmpeg's does on a fresh Mac.
+# The fresh-3 walk captured it verbatim (SK-112 logs/steps/4.log).
+BREW_FFMPEG = "brew install ffmpeg"
+BREW_ASK = "`Do you want to proceed with the installation? [y/n]`"
+
+
+def test_every_brew_install_ffmpeg_is_followed_by_homebrew_s_y_n():
+    install = _section("Installation")
+    blocks = [m.end() for m in re.finditer(r"^ *```bash\n *brew install ffmpeg\n *```\n", install,
+                                           re.MULTILINE)]
+    assert len(blocks) == 2, "the call item and the phone bullet each install ffmpeg"
+    for end in blocks:
+        after = " ".join(install[end:end + 200].split())
+        assert after.startswith("- "), after
+        first_bullet = after.split(" - ")[0]
+        assert "[y/n]`" in first_bullet and "press `y`" in first_bullet.lower(), first_bullet
+        assert "press Return" not in first_bullet, "getch: one key, no Return"
+    flat = " ".join(install.split())
+    assert f"Homebrew lists what ffmpeg needs, then asks {BREW_ASK}. Press `y`." in flat
+    assert "with no Return" in flat
+
+
+# SK-221 K2 (fresh-3, row 8): `sessionphone setup` sat in the prose of the
+# speech-server bullet. It is the link step's own block now. Measured from
+# PyPI sessionphone 0.3.1 in a scratch HOME (`sessionphone setup --help`):
+# `--name TEXT  the name people see in their chat list  [required]`, so the
+# block carries `--name NAME`, and the sentence before it says what goes there.
+PHONE_SETUP_LINE = "sessionphone setup --name NAME"
+
+
+def test_the_phone_link_step_is_its_own_block_after_the_speech_server():
+    install = _section("Installation")
+    blocks = [b.strip() for b in _bash_blocks(install)]
+    assert PHONE_SETUP_LINE in blocks
+    assert blocks.index("ears services install --only speech") < blocks.index(PHONE_SETUP_LINE)
+    assert "sessionphone setup" not in _prose(install)
+    flat = " ".join(install.split())
+    assert ("- Then link the phone. This makes its account on a public relay and prints the "
+            "invite link. The name people see in their chat list goes in place of NAME:") in flat
+    assert "- The rest of linking is in [sessionphone][pkg-phone]'s docs." in flat
+
+
+# --- sessionkit doctor --------------------------------------------------------
+# Each place a reader looks for it names `sessionkit doctor`, in a block, and the
+# installer's own --check for a Mac without the kit. The one-line form is the
+# doctor's own constant, so the docs and `sessionkit doctor --help` agree.
+
+
+def _doctor_one_liner() -> str:
+    from sessionkit import doctor as kit_doctor
+
+    return kit_doctor.CHECK_ONE_LINER
+
+
+def test_readme_installation_gives_the_doctor_and_the_check_for_a_mac_without_the_kit():
+    install = _section("Installation")
+    after = install[install.index("\n\nStep by step"):]
+    assert ["sessionkit doctor"] in [b.strip().splitlines() for b in _bash_blocks(after)]
+    assert _doctor_one_liner() in _block_lines(after)
+    assert "`bash install.sh --check`" in after
+    assert "Its address is not live yet." in after
+
+
+def test_install_section_4_leads_with_the_doctor_and_names_its_rows():
+    first = _install_section(4)
+    assert first.index("sessionkit doctor") < first.index("ears install")
+    blocks = [b.strip() for b in _bash_blocks(first)]
+    assert blocks[:3] == ["sessionkit doctor", "bash install.sh --check", _doctor_one_liner()]
+    flat = " ".join(first.split())
+    assert "The mail hooks (the step below) fail it while they are off." in flat
+    assert "neither fails it" in flat
+    # A scratch-HOME run on a build host: the tools the check asks
+    # write their own files in an empty home, and the docs name each one.
+    assert "it writes no file of its own:" in flat
+    assert "writes no file and starts nothing" not in flat
+    assert "**MEASURED** on one Mac without the kit" in flat
+    for made in ("`~/Library/Caches/Homebrew`", "`~/.cache/uv`", "`~/.claude.json`", "`~/.claude/backups`"):
+        assert made in flat
+    # do-003: the check's brew read stays local, so nothing is downloaded.
+    # verify-002: claude's plugin reads open HTTPS to Anthropic's API, so
+    # the check's own network is scoped and claude's is named, not denied.
+    assert "It installs nothing, starts nothing and downloads nothing" not in flat
+    assert "The only network it reaches itself is the speech server on port 8890, which it probes" in flat
+    # Not one call: the port check (nc -z) and the probe (curl) both reach :8890.
+    assert "one network call" not in flat
+    assert "its `brew` reads download nothing" in flat
+    assert "asked for its plugins, `claude` reaches Anthropic's API over HTTPS" in flat
+    assert "two HTTPS connections to Anthropic's API (`api.anthropic.com`)" in flat
+    assert "`brew` downloaded nothing" in flat
+    # `claude plugin list` reads Claude Code's sign-in from the login keychain
+    # (measured: `security find-generic-password -w`): named, as a read.
+    assert "reads its own sign-in from your login keychain. That is a read" in flat
+    assert "package list" not in flat
+
+
+def test_troubleshooting_starts_with_the_doctor():
+    top = TROUBLESHOOTING[: TROUBLESHOOTING.index("## The files to tail")]
+    assert [b.strip() for b in _bash_blocks(top)] == ["sessionkit doctor"]
+    assert "`bash install.sh --check`" in top
+    assert _doctor_one_liner() in " ".join(top.split())
+    assert "[first checks][first-checks]" in top
+    assert "[first-checks]: ../INSTALL.md#4-first-checks" in TROUBLESHOOTING
+
+
+# --- sessionview: one word as a command; how it is said, once ---------------------
+
+SAID_VIEW = '`sessionview` (said "session view")'
+
+
+def _kits_own_docs() -> dict[str, str]:
+    """README, INSTALL, the skill and docs/*.md, less the pages imported from a package."""
+    paths = [ROOT / "README.md", ROOT / "INSTALL.md", ROOT / "skills" / "sessionkit" / "SKILL.md"]
+    paths += sorted((ROOT / "docs").glob("*.md"))
+    out = {}
+    for path in paths:
+        text = path.read_text(encoding="utf-8")
+        if "<!-- Imported from " in text or text.startswith("<!-- No page yet"):
+            continue
+        out[str(path.relative_to(ROOT))] = text
+    return out
+
+
+def test_the_readme_says_how_sessionview_is_said_where_the_family_names_it():
+    family = README[README.index("\n## The family\n") :]
+    family = family[: family.index("\n## ", 1)]
+    bullet = next(b for b in family.split("\n- ") if b.startswith("[sessionview]"))
+    assert SAID_VIEW in " ".join(bullet.split()), bullet
+
+
+def test_how_sessionview_is_said_is_written_once_in_the_kit():
+    hits = [name for name, text in _kits_own_docs().items()
+            for _ in range(" ".join(text.split()).count('(said "session view")'))]
+    assert hits == ["README.md"], hits
+
+
+def test_no_kit_doc_writes_sessionview_as_two_words():
+    two_words = re.compile(r"`session view\b|\bsession-view\b")
+    hits = [f"{name}: {m.group(0)}" for name, text in _kits_own_docs().items()
+            for m in two_words.finditer(text)]
+    assert hits == [], hits
+
+
+def test_the_imported_pages_are_left_out_of_the_naming_scan():
+    names = _kits_own_docs()
+    assert "docs/sessionview.md" not in names
+    assert "docs/pager.md" not in names
+    assert "docs/components.md" in names

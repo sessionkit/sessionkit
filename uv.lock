@@ -1350,7 +1350,7 @@ wheels = [
 
 [[package]]
 name = "sessionkit"
-version = "0.3.1"
+version = "0.3.2"
 source = { editable = "." }
 dependencies = [
     { name = "click" },
@@ -1370,11 +1370,11 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "click", specifier = ">=8.1" },
-    { name = "sessionmail", specifier = ">=0.3.1" },
-    { name = "sessionphone", extras = ["media"], specifier = ">=0.3.0" },
-    { name = "sessiontools", specifier = ">=0.3.1" },
-    { name = "sessionview", specifier = ">=0.3.0" },
-    { name = "sessionvoice", extras = ["capture"], specifier = ">=0.3.0" },
+    { name = "sessionmail", specifier = ">=0.3.2" },
+    { name = "sessionphone", extras = ["media"], specifier = ">=0.3.2" },
+    { name = "sessiontools", specifier = ">=0.3.2" },
+    { name = "sessionview", specifier = ">=0.3.2" },
+    { name = "sessionvoice", extras = ["capture"], specifier = ">=0.3.2" },
 ]
 
 [package.metadata.requires-dev]
@@ -1385,7 +1385,7 @@ dev = [
 
 [[package]]
 name = "sessionmail"
-version = "0.3.1"
+version = "0.3.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "click" },
@@ -1395,14 +1395,14 @@ dependencies = [
     { name = "pymdown-extensions" },
     { name = "sessiontools" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/90/52/cbe2597800743c750aa567bcfa4fb5c37802078897da104e6d1b2178ca33/sessionmail-0.3.1.tar.gz", hash = "sha256:63e4711dd616c539f2dda8d6a3a44e6a00f4c7c7dd5118b73f6dce9b19e05324", size = 679872, upload-time = "2026-10-25T06:54:07.416Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/96/d9/6533398b6873c7e8781cea9e0d84383283f1e68dd2cf68a664005827f5b1/sessionmail-0.3.2.tar.gz", hash = "sha256:2781dcdcd2313ffe05d272e18e78d3aa26a9d656ae0b744ee9768f007e34b9d2", size = 691407 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/67/f6/870be2b97341341ae1827fe35de7f8259c2eaca46b64c3c3618efea602fe/sessionmail-0.3.1-py3-none-any.whl", hash = "sha256:e1c1e39d4ddb06452877572bb7ccd32a44c31f3ab3e789a755b081f81380b0f0", size = 722113, upload-time = "2026-10-25T06:53:55.931Z" },
+    { url = "https://files.pythonhosted.org/packages/be/80/5c5bc55607faa7d7c31119f656b9f329c1b7a1b339185cd21cb2a5b26bd1/sessionmail-0.3.2-py3-none-any.whl", hash = "sha256:726b00793a3450548bafdeba99af504135fed5937348c802a922484fa9a81f70", size = 733137 },
 ]
 
 [[package]]
 name = "sessionphone"
-version = "0.3.1"
+version = "0.3.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "click" },
@@ -1410,9 +1410,9 @@ dependencies = [
     { name = "deltachat-rpc-server" },
     { name = "segno" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/9d/ba/51bbeb0ea0ca85b9e6a19387e1f5fead8aa2e6c981100d5a8f36c7bdcfaf/sessionphone-0.3.1.tar.gz", hash = "sha256:556dfe4d1fa8ac000d27d5afb9d40cafd73bb638a9cf6a9a456582a411f55cc6", size = 445338, upload-time = "2026-10-25T06:54:10.283Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/a1/79/d5382ea8cbb838b6d89527ff0d45b3245fe8443e031d952cff1e8cf4b182/sessionphone-0.3.2.tar.gz", hash = "sha256:5f96ce3471bf2ac6209666b549944cadad019aef19df99c276a6f0282990563d", size = 464358 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/e2/e7/09c2e29db1038a4e43797cb4413d50301881dbd5f841c579082c8607a9b7/sessionphone-0.3.1-py3-none-any.whl", hash = "sha256:6193c81df3179941df3ce607e7f55715908ca550d276a91cc99c1825bb4f8569", size = 428930, upload-time = "2026-10-25T06:53:57.741Z" },
+    { url = "https://files.pythonhosted.org/packages/f8/e5/8e8df33d81727d3fdf7008b147db430f563c7227cc3e217d2b6a8a7df848/sessionphone-0.3.2-py3-none-any.whl", hash = "sha256:b2a72b6aad3e0f55425deed0e323f0eda89bc8d20557dd4fe1ceae883faa0ff8", size = 446552 },
 ]
 
 [package.optional-dependencies]
@@ -1428,29 +1428,29 @@ media = [
 
 [[package]]
 name = "sessiontools"
-version = "0.3.1"
+version = "0.3.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "jsonschema" },
     { name = "pyyaml" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/39/0e/eff46b3085bc9cccc1f8be94ca04144d4e7e6065836f505163f9626f7822/sessiontools-0.3.1.tar.gz", hash = "sha256:aaf8afdaf341cf11661b2ce496dddc9624c0c5c79fcf2dfa6aa9394c22d0abf2", size = 451748, upload-time = "2026-10-25T06:54:11.751Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/bd/a8/78b200b515d9d340ae488ca2aecceb1befef16bfae81a058f46999e02fc1/sessiontools-0.3.2.tar.gz", hash = "sha256:12921eb898a9e718b1b243200f143ba2591ed1e58aa985092717465557083a71", size = 491628 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/ed/58/e11763f3d34c99810b31c0322e998e324a972390f02467f1596ac89b9bb1/sessiontools-0.3.1-py3-none-any.whl", hash = "sha256:e5c90169dd5a65a65aee93b86940bda5035efdad0f449d574ba73563daf9a2a5", size = 503332, upload-time = "2026-10-25T06:53:59.433Z" },
+    { url = "https://files.pythonhosted.org/packages/c4/a5/db8bbb951e3d3486ba6c3555c6aebcb3914eaea4cfaac2896649f503829c/sessiontools-0.3.2-py3-none-any.whl", hash = "sha256:c68a1746e429689dbb8169ab9102d2b6f1abc627791aae013e9079398012e8e6", size = 546870 },
 ]
 
 [[package]]
 name = "sessionview"
-version = "0.3.1"
+version = "0.3.2"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/d8/39/ee3ae52484a7d077fd4e505d6321a94f3342ab018f132163420f75362278/sessionview-0.3.1.tar.gz", hash = "sha256:3b76738105e3eb4c20e7183201699dd9e71426ee2c2329f58aa9fad9d6ef5dba", size = 2217342, upload-time = "2026-10-25T06:54:13.522Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/26/05/d4dffadfaa8401501e67269a492d285e474fa83cf5118c332a65e85305be/sessionview-0.3.2.tar.gz", hash = "sha256:fdde365b1750a784c28f02fd3835780a0dd9db5a2d5e76d552d982f21f7ceceb", size = 2239942 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/91/20/8b7e22598c81b17b0d4b8388208c2da125297bdc5574a4ba49ad67be3ea3/sessionview-0.3.1-py3-none-any.whl", hash = "sha256:2033f29b9d34d9c74226833b9cc613d12fad51299a0aae5c01e65fbe5e753258", size = 2230067, upload-time = "2026-10-25T06:54:03.143Z" },
+    { url = "https://files.pythonhosted.org/packages/21/9b/c36a6e7e15a53482dfb10e04209739be050c37bc78606ae92e97ce1a78f3/sessionview-0.3.2-py3-none-any.whl", hash = "sha256:f387d0c4ed2d6fab1801920eba889351f2ef47e1402449b82cfb538419201c9f", size = 2241475 },
 ]
 
 [[package]]
 name = "sessionvoice"
-version = "0.3.1"
+version = "0.3.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "httpx" },
@@ -1459,9 +1459,9 @@ dependencies = [
     { name = "pyyaml" },
     { name = "sounddevice" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/60/25/f1f2e000fca3c1457edb32a986befd226321b62c48617e168ed0ecdd52e8/sessionvoice-0.3.1.tar.gz", hash = "sha256:c19c5c10e019287248a31932af9b70a04704897f3809151a550caa127d08d486", size = 1264696, upload-time = "2026-10-25T06:54:15.168Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/46/95/ffcb1c0331c334228697fac15af28cca2e22c33ac9b40c3ef79673ebcf59/sessionvoice-0.3.2.tar.gz", hash = "sha256:d41a21502277d148a8ecaf62e9b15c1275ac23882681f2c6697d2822af71b981", size = 1397394 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/10/15/6a35ebebe07ad07883ea860889fa4900daadf82b571d9c0e1b0472ee7074/sessionvoice-0.3.1-py3-none-any.whl", hash = "sha256:13285569d6ab412acfb0ee10ce6725010dcd7fbbdda5814c9f211557306ab201", size = 721846, upload-time = "2026-10-25T06:54:05.499Z" },
+    { url = "https://files.pythonhosted.org/packages/4a/4b/6f78ba5607f3b7cbb7a8bb245e611a59adf0063c85e636455c1385e6c87d/sessionvoice-0.3.2-py3-none-any.whl", hash = "sha256:5a1d2e2c0a0fdd355c09bd489f8cc3bae7a16be2859e67423681e6b88cfc6241", size = 804829 },
 ]
 
 [package.optional-dependencies]

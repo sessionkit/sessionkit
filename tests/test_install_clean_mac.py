@@ -117,7 +117,8 @@ def test_section_3_kit_route_still_runs_from_a_copy():
 
 
 def test_section_8_says_a_clones_copy_was_not_what_ran():
-    s8 = _flat(_section(8))
+    # SK-215: the plugins' detail is in section 8's reference page.
+    s8 = _flat((ROOT / "docs" / "uninstall.md").read_text(encoding="utf-8"))
     assert "the copies it wrote even though each plugin ran in place, from its clone" in s8
     assert "the cached copies its plugins ran from" not in s8
 

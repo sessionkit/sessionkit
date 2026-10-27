@@ -86,8 +86,9 @@ def test_pyproject_carries_the_ruled_list() -> None:
 
 
 @pytest.fixture(scope="module")
-def wheel_metadata(tmp_path_factory: pytest.TempPathFactory) -> str:
-    """METADATA of a wheel built from this tree, as `make build` builds it."""
+def built_wheel(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """A wheel built from this tree, as `make build` builds it: built once,
+    for this gate and for the doctor's one-source check below."""
     uv = shutil.which("uv")
     if uv is None:
         pytest.fail(
@@ -108,9 +109,26 @@ def wheel_metadata(tmp_path_factory: pytest.TempPathFactory) -> str:
         )
     wheels = sorted(out.glob("*.whl"))
     assert len(wheels) == 1, f"expected one wheel, built {[w.name for w in wheels]}"
-    with zipfile.ZipFile(wheels[0]) as zf:
+    return wheels[0]
+
+
+@pytest.fixture(scope="module")
+def wheel_metadata(built_wheel: Path) -> str:
+    """METADATA of the wheel built from this tree."""
+    with zipfile.ZipFile(built_wheel) as zf:
         (name,) = [n for n in zf.namelist() if n.endswith(".dist-info/METADATA")]
         return zf.read(name).decode("utf-8")
+
+
+def test_built_wheel_ships_the_root_install_sh_byte_for_byte(built_wheel: Path) -> None:
+    # `sessionkit doctor` runs the install.sh its package ships. In the tree it
+    # is a symlink to the root install.sh; the build must turn it into the same
+    # bytes, so the doctor and the installer can never run different checks.
+    with zipfile.ZipFile(built_wheel) as zf:
+        info = zf.getinfo("sessionkit/install.sh")
+        shipped = zf.read(info)
+    assert shipped == (ROOT / "install.sh").read_bytes()
+    assert (info.external_attr >> 16) & 0o170000 != 0o120000, "the wheel holds a link, not the file"
 
 
 def test_built_wheel_requires_dist_carries_the_ruled_list(wheel_metadata: str) -> None:
