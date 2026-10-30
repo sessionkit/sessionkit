@@ -27,8 +27,8 @@
         "email": "mike@sessionkit.ai"
       },
       "source": {
-        "source": "github",
-        "repo": "sessionkit/sessionmail"
+        "source": "url",
+        "url": "https://github.com/sessionkit/sessionmail.git"
       },
       "category": "productivity"
     },
@@ -40,8 +40,8 @@
         "email": "mike@sessionkit.ai"
       },
       "source": {
-        "source": "github",
-        "repo": "sessionkit/sessiontools"
+        "source": "url",
+        "url": "https://github.com/sessionkit/sessiontools.git"
       },
       "category": "productivity"
     },
@@ -53,8 +53,8 @@
         "email": "mike@sessionkit.ai"
       },
       "source": {
-        "source": "github",
-        "repo": "sessionkit/sessionphone"
+        "source": "url",
+        "url": "https://github.com/sessionkit/sessionphone.git"
       },
       "category": "productivity"
     },
@@ -66,8 +66,8 @@
         "email": "mike@sessionkit.ai"
       },
       "source": {
-        "source": "github",
-        "repo": "sessionkit/sessionview"
+        "source": "url",
+        "url": "https://github.com/sessionkit/sessionview.git"
       },
       "category": "productivity"
     },
@@ -79,8 +79,8 @@
         "email": "mike@sessionkit.ai"
       },
       "source": {
-        "source": "github",
-        "repo": "sessionkit/sessionvoice"
+        "source": "url",
+        "url": "https://github.com/sessionkit/sessionvoice.git"
       },
       "category": "productivity"
     }

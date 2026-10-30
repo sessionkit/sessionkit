@@ -140,8 +140,44 @@ def test_marketplace_lists_kit_plus_the_five_and_no_voicemode() -> None:
 def test_family_sources_follow_d1() -> None:
     entries = {p["name"]: p for p in _json("marketplace.json")["plugins"]}
     for child in FAMILY:
-        # Pending D1: github.com/sessionkit/<name>.
-        assert entries[child]["source"] == {"source": "github", "repo": f"sessionkit/{child}"}
+        # D1: github.com/sessionkit/<name>, written as an https git url so the
+        # clone is HTTPS by its form (a "github" source prefers SSH).
+        assert entries[child]["source"] == {
+            "source": "url",
+            "url": f"https://github.com/sessionkit/{child}.git",
+        }
+
+
+def _sources(node: object):
+    """Every "source" value anywhere in the marketplace, nested ones included."""
+    if isinstance(node, dict):
+        for key, value in node.items():
+            if key == "source":
+                yield value
+            yield from _sources(value)
+    elif isinstance(node, list):
+        for item in node:
+            yield from _sources(item)
+
+
+# A "github" source clones over SSH whenever `ssh -T git@github.com`
+# answers, and an update or an in-session /plugin install never falls back to
+# HTTPS, so a user with no working GitHub SSH key could not get the family.
+def test_every_remote_marketplace_source_is_an_https_url() -> None:
+    market = _json("marketplace.json")
+    remote = [p["source"] for p in market["plugins"] if p["source"] != "./"]
+    assert remote, "the family must be listed with remote sources"
+    for source in remote:
+        assert isinstance(source, dict) and source["source"] == "url", source
+        assert source["url"].startswith("https://"), source
+
+
+def test_no_marketplace_source_is_github_typed_or_ssh() -> None:
+    market = _json("marketplace.json")
+    for source in _sources(market):
+        if isinstance(source, dict):
+            assert source.get("source") != "github", source
+        assert "git@" not in json.dumps(source), source
 
 
 def test_every_dependency_is_listed_in_the_same_marketplace() -> None:
