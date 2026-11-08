@@ -177,32 +177,28 @@ starts them ([hearing and speaking][hearing]), refuses with
 `silero MISSING`. The Swift helper is built later, when those services start.
 
 - **The mail hooks start off.** They tell an agent about new mail between
-  its tool calls. To turn them on, set `"hooks": true` in
-  `~/.sessionkit/mail/settings/mail.json`. The plugin writes that file,
-  with the hooks off, the first time a Claude Code session runs a tool,
-  and it holds other settings too, so change only that key. Never write
-  the file over: that deletes the other keys. This works whether the file
-  is there yet or not, and whether it has a `hooks` key or not:
+  its tool calls. Turn them on with sessionmail's own command:
 
   ```bash
-  f=~/.sessionkit/mail/settings/mail.json
-  if [ -f "$f" ]; then
-    perl -0777 -pi -e '
-      if (/"hooks"\s*:/) { s/"hooks"\s*:\s*false/"hooks": true/ }
-      elsif (/\A\s*\{\s*\}\s*\z/) { s/\{\s*\}/{"hooks": true}/ }
-      else { s/\{(\s*)/"{$1" . q("hooks": true,) . ($1 || " ")/e }
-    ' "$f"
-  else
-    mkdir -p ~/.sessionkit/mail/settings
-    echo '{"version": 1, "hooks": true, "sendmail": "drop"}' > "$f"
-  fi
+  pager settings hooks on
   ```
 
-  A `"hooks": false` becomes `true`. A file with no `hooks` key gets
-  `"hooks": true` as its first key, and its other keys stay as they were.
-  If the file is not there yet, this writes what the plugin would have
-  written, with the hooks on. The plugin never replaces a file that is
-  already there.
+  - It sets only `"hooks": true` in
+    `~/.sessionkit/mail/settings/mail.json`, and keeps every other key in
+    that file. With no file yet, it makes one, with the hooks on.
+  - Each session's next hook reads it. A second run writes nothing.
+  - To turn them off again:
+
+    ```bash
+    pager settings hooks off
+    ```
+
+  - To see which they are, run it bare. It changes nothing, and exits 0
+    for on, 3 for off:
+
+    ```bash
+    pager settings hooks
+    ```
 
 Step by step, with every step that needs you marked: [the manual
 install][install].
@@ -232,8 +228,8 @@ The phone bot and the session key are shown, but they never fail it.
 sessionkit --version
 ```
 
-It lists the kit and each family package, with its version. Each `X.Y.Z`
-is the version you installed:
+It lists the kit, each family package and settled, the Settings app, each
+with its version. Each `X.Y.Z` is the version you installed:
 
 ```text
 sessionkit, version X.Y.Z
@@ -242,6 +238,7 @@ sessionkit, version X.Y.Z
   sessionphone  X.Y.Z
   sessionview   X.Y.Z
   sessionvoice  X.Y.Z
+  settled       X.Y.Z
 ```
 
 Start Claude in a project folder, not in your home folder, where a new
@@ -308,6 +305,11 @@ mouth say "the build is green"
   `mouth devices` lists the others, and `--device DEVICE` picks one.
 - **To hear you**, the ears need a speech-to-text server: [hearing and
   speaking][hearing].
+- **See the conversation in a browser.** Talk shows what the ears heard,
+  what the mouth said, and which seats heard it. Start it with
+  `ears services install --only talk`, then run `talk pair` in a terminal
+  on the same Mac and open the link it prints. Each browser pairs once
+  ([Talk][talk]).
 - **Your agent talks with the kit's mouth and ears.** sessionvoice's ears
   skill sets the default:
 
@@ -357,10 +359,14 @@ Session Kit installs these together:
 - [sessionview][pkg-view]: a tmux sidebar of your projects and your agents.
   `sessionview` (said "session view").
 
+It also installs settled, the Settings app: `settled`. It is not one of the
+five: it has its own version, and no Claude Code plugin.
+
 ## Components
 
 The commands, services and folders the install adds, and where each
-package logs: [components][components].
+package logs: [components][components]. To see the services and restart
+one: [sessionkit service][service].
 
 ## Configuration
 
@@ -388,7 +394,7 @@ The rules for changing the kit: [AGENTS.md][agents].
 
 ## Status
 
-Alpha, 0.3.2. Tested on macOS 27 on Apple silicon; Linux and Windows are
+Alpha, 0.3.3. Tested on macOS 27 on Apple silicon; Linux and Windows are
 untested. What you may still hit: [known gaps][gaps].
 
 Licence: [AGPL-3.0][licence].
@@ -404,10 +410,12 @@ Licence: [AGPL-3.0][licence].
 [uninstall]: INSTALL.md#8-uninstall
 [gaps]: INSTALL.md#7-known-gaps-you-will-hit
 [components]: docs/components.md
+[service]: docs/service.md
 [dependencies]: docs/dependencies.md
 [logs]: docs/components.md#logs
 [configuration]: docs/configuration.md
 [settings]: docs/settings.md
+[talk]: docs/talk.md
 [troubleshooting]: docs/troubleshooting.md
 [agents]: AGENTS.md
 [licence]: LICENSE

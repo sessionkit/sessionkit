@@ -1,6 +1,6 @@
 [project]
 name = "sessionkit"
-version = "0.3.2"
+version = "0.3.3"
 description = "Session Kit gives your Claude Code sessions voice, mail, a phone line and a tmux sidebar, in one install."
 readme = "README.md"
 license = "AGPL-3.0-or-later"
@@ -14,25 +14,35 @@ requires-python = ">=3.11,<3.15"
 # with the family's 0.3.0, so it needs every family package at 0.3.0 or
 # later, and PyPI's 0.0.1 name placeholders and the 0.1.0 alphas must never
 # satisfy these.
-# sessiontools and sessionmail are floored at 0.3.1, for what the kit's code
-# and docs call on: `sessionkit setup` asks sessiontools 0.3.1's
-# `session agent default`, and INSTALL.md describes sessionmail 0.3.1's
-# one-run mail setup.
-# All five are floored at 0.3.2: the family is released together, and an older
+# Within the 0.3.3 floor below, `sessionkit setup` asks sessiontools for
+# `session agent default`, and INSTALL.md describes sessionmail's one-run
+# mail setup. Setup also asks sessiontools for the agents folder with
+# `session path agent --config --json`.
+# That verb ships in sessiontools 0.3.3, the floor below; with a sessiontools
+# that lacks it, setup writes no agent file and says so.
+# All five are floored at 0.3.3: the family is released together, and an older
 # copy of one package beside the others splits its state between the old
 # and new folders.
 # sessionphone with its media extra: the bot, calls and `sessionphone web` need it.
 # sessionvoice with its capture extra, so the ears can hear the room.
+# settled, the Settings app, is required too: a hard dependency, never an
+# optional extra. It is not a family package: it has its own version line,
+# floored at 0.1.0 so PyPI's 0.0.1 name placeholder can never satisfy it, and
+# its kit extra brings the kit's tool registry and jsonschema, without which
+# it shows none of the kit's tools.
+# That extra asks for sessiontools 0.3.3, which the sessiontools line below
+# now floors.
 # This is the RULED list, kept in tests/_ruled_deps.py with the ruling;
 # tests/test_dependency_gate.py fails when these lines, the built wheel or
 # uv.lock drift from it.
 dependencies = [
     "click>=8.1",
-    "sessionmail>=0.3.2",
-    "sessiontools>=0.3.2",
-    "sessionphone[media]>=0.3.2",
-    "sessionview>=0.3.2",
-    "sessionvoice[capture]>=0.3.2",
+    "sessionmail>=0.3.3",
+    "sessiontools>=0.3.3",
+    "sessionphone[media]>=0.3.3",
+    "sessionview>=0.3.3",
+    "sessionvoice[capture]>=0.3.3",
+    "settled[kit]>=0.1.0",
 ]
 
 [project.urls]
@@ -47,6 +57,8 @@ Repository = "https://github.com/sessionkit/sessionkit"
 # at each child's HEAD whenever a child adds, renames or drops a command.
 # Measured from each child's 0.3.0 wheel (entry_points.txt), by wheel sha256:
 # mail 8e4d9476, tools 8d089699, phone ac402a39, view 3942f119, voice ebc1b65c.
+# settled: from the settings repo's pyproject at 1487963 and its 0.1.0
+# wheel, sha256 d796d326 (re-measure from the staged 0.1.0 wheel, by sha256).
 # sessionview's four commands share one target: `sessionview:main` reads the
 # name it was run as and runs that command.
 # The kit itself still ships no `session` of its own: `session` below is
@@ -71,6 +83,8 @@ ears = "ears.cli:main"
 ears-serve = "ears.serve:main"
 mouth = "mouth.__main__:main"
 talk = "talk.cli:main"
+# settled
+settled = "settled.cli:main"
 
 [build-system]
 requires = ["uv_build>=0.11.9,<0.12.0"]

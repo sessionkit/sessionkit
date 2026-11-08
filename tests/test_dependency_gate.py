@@ -26,7 +26,7 @@ from email.parser import Parser
 from pathlib import Path
 
 import pytest
-from _ruled_deps import FAMILY, RULED, drift
+from _ruled_deps import APPS, FAMILY, FAMILY_RULED, RULED, drift
 from packaging.requirements import Requirement
 from packaging.utils import canonicalize_name
 from packaging.version import Version
@@ -223,7 +223,8 @@ def _replace(old: str, new: str | None) -> list[str]:
 
 # Each canary is built from the RULED string itself, never a copy of it, so a
 # floor bump in tests/_ruled_deps.py cannot leave a canary planting nothing.
-MAIL, TOOLS, PHONE, VIEW, VOICE = RULED
+MAIL, TOOLS, PHONE, VIEW, VOICE = FAMILY_RULED
+(SETTLED,) = APPS
 
 CANARIES = {
     "media dropped": (
@@ -251,6 +252,16 @@ CANARIES = {
         _replace(VIEW, f"{VIEW}; sys_platform == 'darwin'"),
         "sessionview carries a marker",
     ),
+    # settled is ruled apart from the family (APPS), and held just as hard.
+    "settled kit dropped": (
+        _replace(SETTLED, SETTLED.replace("[kit]", "")),
+        "settled dropped the [kit] extra",
+    ),
+    "settled floor at 0.0.1": (
+        _replace(SETTLED, "settled[kit]>=0.0.1"),
+        "settled is not floored as ruled: found '>=0.0.1'",
+    ),
+    "settled removed": (_replace(SETTLED, None), "settled is missing"),
 }
 
 
@@ -262,8 +273,12 @@ def test_ruled_list_names_the_five_children() -> None:
         "sessionview",
         "sessionvoice",
     ]
+    # settled is ruled too, after the family and apart from it (APPS).
+    assert [Requirement(spec).name for spec in RULED] == [*FAMILY, "settled"]
     assert drift(RULED, "ruled") == []
-    # Anything outside the family is not the ruled list's business.
+    # The 0.0.1 name placeholder on PyPI can never satisfy settled's floor.
+    assert not Requirement(SETTLED).specifier.contains("0.0.1")
+    # Anything outside the ruled list is not its business.
     assert drift(["click>=8.1", *RULED], "ruled") == []
 
 

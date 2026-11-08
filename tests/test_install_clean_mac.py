@@ -11,7 +11,6 @@ the anchor a reader can check.
 """
 from __future__ import annotations
 
-import json
 import re
 from pathlib import Path
 
@@ -125,37 +124,46 @@ def test_section_8_says_a_clones_copy_was_not_what_ran():
 
 # --- Section 4: the hooks file, the folder-trust prompt --------------------
 
-def _hooks_json_block(s4: str) -> dict:
-    blocks = re.findall(r"```json\n(.*?)```", s4, re.DOTALL)
-    hooks = [json.loads(b) for b in blocks if '"hooks"' in b and '"sendmail"' in b]
-    assert len(hooks) == 1, hooks
-    return hooks[0]
+def _bash_lines(text: str) -> list[str]:
+    return [b.strip() for b in re.findall(r"```bash\n(.*?)```", text, re.DOTALL)]
 
 
 def test_section_4_no_longer_says_the_first_run_tells_you():
     assert "the first run tells you so" not in INSTALL
 
 
-def test_section_4_gives_the_hooks_file_whole():
+def test_section_4_turns_the_hooks_on_with_sessionmails_verb():
     s4 = _section(4)
     flat = _flat(s4)
-    assert "**Turn the mail hooks on. HUMAN (edit a file).**" in flat
-    assert "The hooks stay off until you set `\"hooks\": true` in `~/.sessionkit/mail/settings/mail.json`." in flat
-    # Each path is its own labelled bullet.
-    assert "- No file yet: make it with exactly this content:" in flat
-    assert "- The file is there: change only" in flat
+    assert "**Turn the mail hooks on. HUMAN (one command).**" in flat
+    assert "The hooks stay off until you turn them on." in flat
     assert "Nothing on your screen says so" in flat
     assert "it tells your agent, not you" in flat
-    assert _hooks_json_block(s4) == {"version": 1, "hooks": True, "sendmail": "drop"}
-    assert "change only `\"hooks\": false` to `\"hooks\": true`, and keep its other keys" in flat
+    step = s4[s4.index("**Turn the mail hooks on."):s4.index("**Claude Code asks whether you trust")]
+    # On, then off, then the bare read: each its own block, none a hand edit.
+    assert _bash_lines(step) == [
+        "pager settings hooks on", "pager settings hooks off", "pager settings hooks"]
+    assert "```json" not in step
+    assert "- To turn them off again:" in _flat(step)
+    assert "exits 0 for on, 3 for off" in _flat(step)
+    assert "It sets only `\"hooks\": true` in that file, and keeps every other key and byte." in _flat(step)
 
 
-def test_section_4_hooks_file_matches_the_readme():
-    # INSTALL and the README write the same file when it is not there yet.
-    assert '{"version": 1, "hooks": true, "sendmail": "drop"}' in README
-    assert '{"version": 1, "hooks": true, "sendmail": "drop"}' in _section(4)
+def test_section_4_hooks_step_matches_the_readme():
+    # INSTALL and the README give the same command, and INSTALL names the
+    # README's step by its heading, the one the doctor's hint points at.
     assert "**The mail hooks start off.**" in README
-    assert "The README's step **The mail hooks start off**" in _flat(_section(4))
+    assert "The README's step **The mail hooks start off** is this same command" in _flat(_section(4))
+    readme_note = README[README.index("**The mail hooks start off.**"):README.index("Step by step")]
+    s4 = _section(4)
+    step = s4[s4.index("**Turn the mail hooks on."):s4.index("**Claude Code asks whether you trust")]
+    assert _bash_lines(readme_note) == _bash_lines(step)
+
+
+def test_section_4_measured_the_verb_on_the_release_the_kit_installs():
+    flat = _flat(_section(4))
+    assert "**MEASURED** (sessionmail 0.3.2 from PyPI, the release the kit installs" in flat
+    assert "With no file, bare `pager settings hooks` said off, exit 3." in flat
 
 
 def test_section_4_measured_what_the_first_run_writes():

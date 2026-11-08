@@ -28,20 +28,25 @@ you turn on needs it, or a command still works without it but does less.
 | macOS | Everything. Tested on macOS 27 on Apple silicon. | Your Mac. | Software Update. |
 | [Claude Code][claude-code] | The kit's plugin and the five family plugins; the sessions the kit runs in. | Its installer. | Claude Code's own update. |
 | [uv][uv] | `uv tool install sessionkit`; `ears services install`, which builds the speech server with it; `session ledger`, which counts tokens through it. | The uv installer, or `brew install uv`. | `uv self update`, or `brew upgrade uv` for a Homebrew copy. |
-| Python 3.14 | The kit and the five packages run on it. 3.11 to 3.14 install; 3.14 is the one tested. | `uv tool install --python 3.14` fetches it. | It stays with the kit: `uv tool upgrade sessionkit` keeps it. |
+| Python 3.14 | The kit, the five packages and settled run on it. 3.11 to 3.14 install; 3.14 is the one tested. | `uv tool install --python 3.14` fetches it. | It stays with the kit: `uv tool upgrade sessionkit` keeps it. |
 | Apple's Command Line Tools | `git`, for `claude plugin marketplace add` and `claude plugin install`, which clone the plugins. `swiftc`, which builds the ears' device watcher, the sound engine (`session sound engine`) and the phone's reader for text in pictures. | `xcode-select --install`, or Homebrew's installer, which brings them. | Software Update. |
 | jq | `message send` to a seat's name: without it, that seat's pager is never woken. The mail still lands in the box it is addressed to, but the seat's session box gets no copy. | macOS 27 ships `/usr/bin/jq`. If `command -v jq` prints nothing, `brew install jq`. | Software Update, or `brew upgrade jq`. |
 | The Python packages | Every command on your PATH. | `uv tool install sessionkit` brings them from PyPI. | `uv tool upgrade sessionkit`. |
 
-The Python packages are the kit's own, and they bring their own:
+The Python packages are the kit's own and settled, and they bring their own:
 
-- [sessionmail][pkg-mail] 0.3.2 or later: `message`, `pager`, `memory`.
-- [sessiontools][pkg-tools] 0.3.2 or later: `session`.
-- [sessionphone][pkg-phone] 0.3.2 or later, with its `media` extra, which
+- [sessionmail][pkg-mail] 0.3.3 or later: `message`, `pager`, `memory`.
+- [sessiontools][pkg-tools] 0.3.3 or later: `session`.
+- [sessionphone][pkg-phone] 0.3.3 or later, with its `media` extra, which
   the bot, the calls and `sessionphone web` need.
-- [sessionview][pkg-view] 0.3.2 or later: `sessionview`.
-- [sessionvoice][pkg-voice] 0.3.2 or later, with its `capture` extra, so the
+- [sessionview][pkg-view] 0.3.3 or later: `sessionview`.
+- [sessionvoice][pkg-voice] 0.3.3 or later, with its `capture` extra, so the
   ears can hear the room: `ears`, `ears-serve`, `mouth`, `talk`.
+- [settled][pkg-settled] 0.1.0 or later, with its `kit` extra: `settled`, the
+  Settings app, where you see and change the kit's settings from a web
+  page. The `kit` extra is what lets it list the kit's own tools and check
+  their settings files. settled is not a family package: it has its own
+  version, and no Claude Code plugin.
 - click 8.1 or later, for the `sessionkit` command itself.
 
 ## Optional
@@ -174,3 +179,4 @@ claude plugin update sessionkit@sessionkit
 [pkg-phone]: https://github.com/sessionkit/sessionphone
 [pkg-view]: https://github.com/sessionkit/sessionview
 [pkg-voice]: https://github.com/sessionkit/sessionvoice
+[pkg-settled]: https://pypi.org/project/settled/

@@ -17,8 +17,9 @@ there, what it leaves alone, and what was measured.
 - **[4. Caches and tools other programs share][caches] (opt-in):** the speech
   weights, uv's cache and Pythons, and Homebrew's tmux, ffmpeg and notmuch.
   Each one only if nothing else uses it.
-- **[5. What stays][stays]:** the old logs in `~/Library/Logs`, which an
-  uninstall never deletes, and the folders that are not the kit's.
+- **[5. What stays][stays]:** the old logs in `~/Library/Logs` and the old
+  folders each package used before its state moved, which an uninstall never
+  deletes, and the folders that are not the kit's.
 
 **NOT YET** as a whole: no rehearsal has run this page end to end. A walk of the
 longer section 8 that came before it, on a fresh macOS 27 VM, ran every line and
@@ -109,8 +110,8 @@ files are gone.
   that 0.1.0 used (read in its 0.3.0 source); that includes
   `--only speakers`, if you added it. It unlinks the plists only: it deletes no
   log. The
-  speech server's venv and the speakers' home, `~/.local/share/ears/speakers`,
-  stay until step 6 and [Voice][voice]. **NOT YET** as a run.
+  speech server's venv and the speakers' venv stay until step 6. **NOT YET** as a
+  run.
 - **Check.** Wait a few seconds before you run it: a job that is still exiting stays in the
   list for a while after the uninstall. This prints nothing once they are gone:
 
@@ -153,11 +154,15 @@ loaded on a missing file. **NOT YET**:
 - Ran `session sound engine on`? Undo it:
 
   ```bash
-  session sound engine off --purge
+  session sound engine off
   ```
 
-  Without
-  `--purge` the engine it built stays in `~/.local/share/sessiontools/sound/bin/`.
+  The engine it built stays in the folder `session path sound` names. On a fresh Mac
+  that is `~/.sessionkit/tools/state/sound/bin/`, which
+  [Session records][session-records] deletes. On a Mac that built it before that
+  folder moved, it is in `~/.local/share/sessiontools/sound/bin/`, an old folder, and
+  it stays ([What stays][stays]). `--purge` would delete it there too, so this line
+  leaves it out.
 - Loaded the default model's agent, `dev.sessionkit.tools.default-model`? It has no
   off verb. These boot it out and delete its plist (read in sessiontools' README):
 
@@ -291,38 +296,37 @@ removes those links.
   of this line, without its `-not -lname` part, printed uv's four.
 
 **6. What the programs left (PROGRAM: none of it is your data).** No verb removes these
-yet, so they are hand `rm` lines. **NOT YET.** In order, they delete the voice model and
-the keeper's run state, the speech server's venv (which step 4 keeps), the sidebar's
-old state folder under its name and under its older one, the call listeners' run state,
-the cache the `memory` command keeps, the image reader's empty cache folder, and the
-voice's list of audio devices. The last line removes that list's folder only if it is
-empty.
+yet, so they are hand `rm` lines. **NOT YET.** In order, they delete what the voice keeps
+in its cache folder (its models, the keeper's run state and its helper programs), the
+speech server's venv (which step 4 keeps), the speakers' venv, the music separator, the
+cache the `memory` command keeps, and the image reader's empty cache folder. Each
+`rmdir` line removes a folder only if it is empty.
 
 ```bash
-rm -rf "${HOME:?}/.cache/ears"
+find "${HOME:?}/.cache/ears" -mindepth 1 -not -name 'ears-mail.state.json*' -delete
+rmdir "${HOME:?}/.cache/ears"
 rm -rf "${HOME:?}/.local/share/ears/speech"
-rm -rf "${HOME:?}/.local/state/sessionview"
-rm -rf "${HOME:?}/.local/state/herd"
-rm -rf "${HOME:?}/.local/state/ears"
+rm -rf "${HOME:?}/.local/share/ears/speakers/venv"
+rm -rf "${HOME:?}/.local/share/ears/separator"
+rmdir "${HOME:?}/.local/share/ears/speakers"
+rmdir "${HOME:?}/.local/share/ears"
 rm -rf "${HOME:?}/.cache/session-mail"
 rm -rf "${HOME:?}"/Library/Caches/imgtext-*
-rm -f "${HOME:?}/.local/state/audio/devices.json"
-rmdir "${HOME:?}/.local/state/audio"
 ```
-
-The voice keeps a list of the Mac's audio devices in `~/.local/state/audio/devices.json`.
-Other tools may read and write that file too, and the folder's name is not the kit's
-own, so these lines delete only that file. The folder goes only if nothing else is in
-it: if `rmdir` says `Directory not empty`, leave it.
 
 `~/.cache/ears/silero_vad.onnx` may be a link to VoiceMode's copy of the model. If it
 is, the first line removes the link, not VoiceMode's file.
 
-The sidebar keeps its state in the kit's home now, `~/.sessionkit/view/state`, which
-goes with [the kit's home][home]. Its older folder, `~/.local/state/sessionview`, is
-there only on a Mac that ran an earlier release: an upgrade left it in place, with the
-old log in it. The `herd` line finds that folder's older name, only if a move from it
-never ran.
+**The voice's old places stay.** Two of these folders can also hold the voice's state
+from before it moved into [its state folder][voice], and the lines leave it there: the
+turn mail's place in the transcript, `~/.cache/ears/ears-mail.state.json`, and the
+voices you enrolled, in `~/.local/share/ears/speakers`. If an `rmdir` says
+`Directory not empty`, that folder holds one of them: leave it. If one says
+`No such file or directory`, there was nothing there: the speakers' venv and the
+separator are there only if you installed them. The other old places these lines once
+deleted stay too: the call listeners' run state in `~/.local/state/ears`, the voice's
+list of audio devices in `~/.local/state/audio/devices.json`, and the sidebar's old
+state and log in `~/.local/state/sessionview` ([What stays][stays]).
 
 The phone bot reads the text on an image you send it with the Mac's own Vision, from
 a small program it builds, `imgtext-<hash>`. macOS makes a cache folder named for that
@@ -335,32 +339,48 @@ that is fine.
 **Only if you want it gone. This cannot be undone.** Steps 1 to 6 kept all of it. Each
 item below deletes one kind of data: skip an item to keep that data, and copy anything
 you want first. No child ships a verb for any of it yet. **NOT YET**: none of these
-lines has run end to end on a fresh Mac. Run the items in this order: Accounts comes
-before the kit's home, so that item's `rmdir` lines can empty the folder.
+lines has run end to end on a fresh Mac. Run the items in this order: Session records
+and Accounts come before the kit's home, so that item's `rmdir` lines can empty the
+folder.
 
 ### Mail
 
 Every agent's mailbox, the notmuch index of them, and the mouth's queue of
-spoken lines. sessionmail keeps the boxes in `~/.mail/agents` unless another folder
-is named by the `root` setting in `~/.sessionkit/mail/settings/mail.json`, or by the
-variable `SESSIONMAIL_ROOT` or `SESSION_MAIL_ROOT`. Nothing in the kit sets any of
-them, so if one is set, you set it, and these lines do not touch that folder. Look
-in it first, then delete the boxes there by hand. Mail setup's notmuch profile
-(section 5, step 3) keeps its config in `~/.config/notmuch/sessionkit` (under
-`$XDG_CONFIG_HOME` when that is set). Your own `~/.notmuch-config` is not touched.
+spoken lines. Where they are is sessionmail's to say: while it is installed (0.3.3 or
+later), `message path --root` prints the mail root and `message path --boxes` the
+folder of boxes in it. Section 2 removed it, and the lines on this page delete on no
+name you set, only under your home by their own names, so these name the tree
+sessionmail makes by default: `~/.sessionkit/mail`, its boxes in `stores/`. If your
+shell sets `SESSIONMAIL_ROOT`, or a `root` line in
+`~/.sessionkit/mail/settings/mail.json` names another folder, the mail is there
+instead. Nothing in the kit sets either, so if one is set, you set it, and these lines
+do not touch that folder: look in it first, then delete the boxes there by hand.
+(`SESSION_MAIL_ROOT` and `MAIL_ROOT`, the old names, are read by nothing.)
 
-The mouth's queue is one of those boxes, `~/.mail/agents/mouth`, and VoiceMode uses
-it too: sessionvoice's mouth and VoiceMode's both queue their lines in that one box,
+**The old mail tree stays.** A Mac that had mail before sessionmail 0.3.3 keeps it in
+`~/.mail`, by `"root": "~/.mail"` in that file or by a symlink from
+`~/.sessionkit/mail` to it. `~/.mail` is an old folder, and an uninstall never deletes
+one ([What stays][stays]). It still holds what it held: `agents/`, every agent's box
+from then, the mouth's among them; `.notmuch`, their notmuch index; and on a Mac where
+postfix delivers, sessionmail's own `.postfix` and `.state`. The old notmuch profile,
+`~/.config/notmuch/sessionkit/config`, stays too: sessionmail's notmuch settings from
+before 0.3.3, with that tree as their database.
+
+Mail setup's notmuch profile (section 5, step 3) is
+`~/.sessionkit/mail/settings/notmuch/sessionkit/config` (`message path
+--notmuch-config`), under the kit's settings, so it goes with [the kit's home][home].
+Your own `~/.notmuch-config` is not touched.
+
+The mouth's queue is one of those boxes, `mouth` (`message path mouth`), and
+VoiceMode uses it too: sessionvoice's mouth and VoiceMode's both queue their lines in that one box,
 and both keep every line there once it is done. So the first line deletes every box
 but that one.
 
 ```bash
-find "${HOME:?}/.mail/agents" -mindepth 1 -not -path "${HOME:?}/.mail/agents/mouth" -not -path "${HOME:?}/.mail/agents/mouth/*" -delete
-rm -rf "${HOME:?}/.config/notmuch/sessionkit"
-rmdir "${HOME:?}/.config/notmuch"
+find "${HOME:?}/.sessionkit/mail/stores" -mindepth 1 -not -path "${HOME:?}/.sessionkit/mail/stores/mouth" -not -path "${HOME:?}/.sessionkit/mail/stores/mouth/*" -delete
 ```
 
-The last line removes `~/.config/notmuch` only if it is empty.
+On a Mac with only the old tree, it says `No such file or directory`.
 
 The mouth's box:
 
@@ -370,8 +390,8 @@ The mouth's box:
 - No VoiceMode: the mouth's box is the kit's alone. Delete it:
 
   ```bash
-  rm -rf "${HOME:?}/.mail/agents/mouth"
-  rmdir "${HOME:?}/.mail/agents"
+  rm -rf "${HOME:?}/.sessionkit/mail/stores/mouth"
+  rmdir "${HOME:?}/.sessionkit/mail/stores"
   ```
 
 If your shell sets `MOUTH_MAILBOX` or `VOICEMODE_MOUTH_MAILBOX`, the mouth queues in
@@ -380,44 +400,68 @@ another folder, the mouth queues in a `box` folder inside it. Nothing in the kit
 any of them, so if one is set, you set it, and these lines miss that box: look in it,
 and delete it by hand only if you do not use VoiceMode.
 
-The profile's index is `~/.mail/.notmuch`. Delete it only if mail setup made the
-profile for it. Mail setup's first run said which, on its `notmuch-profile` line:
+The profile's index is `.notmuch` in the mail root. Delete it only if mail setup
+made the profile for it. Mail setup's first run said which, on its `notmuch-profile` line:
 
 - It said `MANUAL`: the database was in the mail folder before the kit. It is yours,
   so leave it.
 - You cannot tell: leave it.
+- `~/.sessionkit/mail` is a symlink to `~/.mail`: leave it. The index behind the link
+  is the old tree's, and it stays.
 - It said `wrote`: mail setup then ran `notmuch new` once on that profile, so the
-  index is the kit's. Delete it, then the mail folder:
+  index is the kit's. Delete it:
 
   ```bash
-  rm -rf "${HOME:?}/.mail/.notmuch"
-  rmdir "${HOME:?}/.mail"
+  rm -rf "${HOME:?}/.sessionkit/mail/.notmuch"
   ```
 
-  The `rmdir` prints `Directory not empty`, and the folder stays, if you kept the
-  mouth's box.
+  The mail root, `~/.sessionkit/mail`, then goes with [the kit's home][home], which
+  removes it once its `settings/` folder is gone. Its `rmdir` prints
+  `Directory not empty`, and the folder stays, if you kept the mouth's box.
+  sessionmail's own `.postfix` and `.state`, beside the boxes on a Mac where postfix
+  delivers (section 1), stay: leave them.
 
 ### Session records
 
 What each session read, its address, its logs (mail's among them), the session
-list's saved state, the older seat home, and the agents folder.
+list's saved state, each agent's home, and the agents folder.
 
+The `session` tool keeps these in its state folder, `~/.sessionkit/tools/state`.
+`session path --json` names each folder in it: `sessions`, `seats`, `agent` (the
+agents folder, `agent/config`, and each agent's home), `backups` and `sound` (the
+busy sound's engine). The session list's saved state sits in the state folder itself.
 `sessionkit setup` (section 2) wrote one agent file, `NAME.md` for the agent you named
-(`claude.md` by default), in the agents folder `session start` reads. On a fresh Mac
-that folder is `~/.session/agents`. The second line deletes the agent files there,
-the one setup wrote and any you wrote yourself, so copy any you want first. On a host
-that ran `session` before its agents folder moved, `~/.session/agents` may also still
-hold a link for each agent. That line leaves the links, so the next `rmdir` says
-`Directory not empty`: look in it, and delete it by hand if you want it gone. On a host
-with no `~/.session/agents`, the second and third lines print
-`No such file or directory`: that is fine.
+(`claude.md` by default), in the agents folder `session start` reads: the one
+`session path agent --config` names. On a fresh Mac that folder is
+`~/.sessionkit/tools/state/agent/config`. The line deletes the whole state folder, the
+agent files in `agent/config` with it, so copy any you want first. Everything in it is
+the `session` tool's, so [the kit's home][home] can then remove `tools` and
+`~/.sessionkit`.
 
 ```bash
-for d in agent seats sessions mail state; do rm -rf "${HOME:?}/.session/${d:?}"; done
-find "${HOME:?}/.session/agents" -maxdepth 1 -type f -name '*.md' -delete
-rmdir "${HOME:?}/.session/agents"
-rmdir "${HOME:?}/.session"
-rm -rf "${HOME:?}/.sessionmail"
+rm -rf "${HOME:?}/.sessionkit/tools/state"
+```
+
+**The old folders stay.** An uninstall never deletes an old folder, so this page
+leaves each of these alone. On a Mac that had them before the state moved, the
+programs kept using them, and they still hold what they held:
+
+- **`~/.session`:** the `session` tool's records on a Mac that ran it before its
+  state moved: the sessions, seats, agent files and backups, the session list's
+  state (or, once `session path migrate` ran, a link where `~/.session/state` was),
+  and the older agents folder, `~/.session/agents`, where an earlier sessionkit wrote
+  its agent file.
+- **`~/.local/share/sessiontools/sound`:** the busy sound's engine, on a Mac that
+  built it before that folder moved, or the link `session path migrate` left there.
+- **`~/.sessionmail`:** mail's own folder before its state moved into
+  `~/.sessionkit/mail/state`. On a Mac that had it, it holds each seat's settings and
+  the seats' signing keys (`seat-keys`), the mail rules and the puller's state.
+
+To see which of them this Mac has (each one it does not have prints
+`No such file or directory`):
+
+```bash
+ls -d "${HOME:?}/.session" "${HOME:?}/.local/share/sessiontools" "${HOME:?}/.sessionmail"
 ```
 
 ### Accounts
@@ -440,16 +484,11 @@ token file you sign in from: those are yours. The folder is there only if you us
 rm -rf "${HOME:?}/.sessionkit/tools/accounts"
 ```
 
-On a host that used `session account` before the account folder moved, the older
-account folder, `~/.config/sessiontools/`, may still be there, with the same kinds of
-files in it. **Its backups are your account tokens too.** The kit never writes
-there, and nothing else on this page deletes it, so the line below does. Like the
-line above, it cannot be undone: to keep those accounts, skip it. It leaves the rest
-of `~/.config` alone.
-
-```bash
-rm -rf "${HOME:?}/.config/sessiontools"
-```
+**The old account folder stays.** On a host that used `session account` before the
+account folder moved, the older account folder, `~/.config/sessiontools/`, may still be
+there, with the same kinds of files in it. **Its backups are your account tokens
+too.** The `session` tool never reads or writes it now, and an uninstall never deletes
+an old folder, so this page leaves it alone, with the rest of `~/.config`.
 
 ### The kit's home
 
@@ -458,10 +497,11 @@ rm -rf "${HOME:?}/.config/sessiontools"
 specification, `openspec/specs/tree/spec.md`). This item deletes those three folders
 for mail, voice, the sidebar (`view`) and the phone. That is the operator file that
 `sessionkit setup` wrote (section 2), the mail hooks switch, your voice choices, the
-seats your voice wakes, the sidebar's config and state, the phone's `phone.json`, and
-every package's logs. The voice keeps the speech keys you may have saved, `stt.key` and
-`tts.key`, in `~/.sessionkit/voice/settings/` itself, so this item deletes them with
-your voice choices.
+seats your voice wakes, the voice's state ([Voice][voice]),
+the sidebar's config and state, the phone's `phone.json`, its chat account and keys
+([Phone][phone]), and every package's logs. The voice keeps the speech keys you may
+have saved, `stt.key` and `tts.key`, in `~/.sessionkit/voice/settings/` itself, so
+this item deletes them with your voice choices.
 
 The `session` tool's folder, `tools`, is not deleted whole. The account folder beside
 its settings is the item above. Its settings folder holds a file the kit never writes,
@@ -474,8 +514,16 @@ remove what `session statusline install` wrote there, if you ran it:
 files it replaced. All of these leave `claude-code.json` there alone.
 
 The `rmdir` lines remove a folder only if it is empty. If one says
-`Directory not empty`, that folder still holds files the kit did not write, or the
-account folder you kept: leave them. If one says `No such file or directory`, there
+`Directory not empty`, that folder still holds files the kit did not write, the
+account folder you kept, or the `session` tool's state folder if you skipped
+[Session records][session-records]: leave them. For `mail` it can also be sessionmail's
+own `.postfix` and `.state`, which the Mail item above leaves in the root: leave them,
+and the folder with them. On a Mac that keeps its mail at `~/.mail` by a symlink
+(`~/.sessionkit/mail -> ~/.mail`), that `rmdir` says `Not a directory`: the link is
+yours, and `~/.mail` behind it is the old tree the Mail item leaves, so remove the
+link alone, with `rm "${HOME:?}/.sessionkit/mail"` (no `-r`, no trailing slash), or
+keep it.
+If one says `No such file or directory`, there
 was nothing there to remove: voice saves no settings until section 5, the phone none
 until section 6, and `claude-code.d` is there only if you ran
 `session statusline install`.
@@ -503,75 +551,68 @@ turn the ears heard (`heard_*.jsonl`), who spoke each turn (`speakers_*.jsonl`),
 session's place in that transcript, the voice's pairing token (`talk/token`), and
 every line the mouth spoke, which it keeps by default. If you turned recording on (it
 is off by default), it is also the audio the ears kept of each turn and the clips of
-replies they missed. Then the speakers' home with the voices you enrolled. The
-services' logs are in `~/.sessionkit/voice/log/`, and go with [the kit's home][home].
+replies they missed. Then the voices you enrolled. The services' logs are in
+`~/.sessionkit/voice/log/`, and go with [the kit's home][home].
 
-On a fresh install all of it but the speakers' home is in `~/.sessionvoice`,
-sessionvoice's own folder, so the first line deletes that folder whole. `~/.ears`
-holds the place `ears-arm` (section 5 step 4) keeps in the transcript. The second line
-deletes the speakers' home, in `~/.local/share/ears`.
+On a fresh Mac all of it is in the voice's state folder, `~/.sessionkit/voice/state`
+(`ears home state-dir` prints it): the transcript, the mouth's folder, the pairing
+token, the voices you enrolled (`speakers`), and the place `ears-arm` (section 5 step
+4) keeps in the transcript for a seat with no home of its own (`seats`). That folder
+is the voice's `state`, so [the kit's home][home] deletes it, with your voice choices
+and its logs. This item has no line of its own.
+
+**The old places stay.** A Mac whose voice kept its state before the move keeps using
+it there, until `ears home migrate` moves it ([the step][voice-move]). An uninstall
+never deletes an old place, so this page leaves each of these alone:
+
+- **`~/.sessionvoice`:** the voice's own folder before the move, with everything
+  above in it.
+- **`~/.voicemode`:** the transcript and the voice's other files, on a Mac where an
+  older sessionvoice, or VoiceMode's `converse`, wrote the transcript there first.
+  VoiceMode keeps its own files there too.
+- **`~/.ears`:** the place `ears-arm` kept in the transcript for the seats with no
+  home of their own, on a Mac that had it. Nothing moves it.
+- **The old places of the voice's state items:** the call listeners' run state in
+  `~/.local/state/ears`, the list of audio devices in
+  `~/.local/state/audio/devices.json`, the voices you enrolled in
+  `~/.local/share/ears/speakers`, and the turn mail's place in
+  `~/.cache/ears/ears-mail.state.json`.
+- **After `ears home migrate`:** each old place is a link to its new place, and the
+  original sits beside it as `<path>.pre-sessionkit`. Both stay.
+
+To see whether this Mac still uses an old place: a second `state` row in this check
+names each one.
 
 ```bash
-rm -rf "${HOME:?}/.sessionvoice" "${HOME:?}/.ears"
-rm -rf "${HOME:?}/.local/share/ears"
+ears services status
 ```
 
 If your shell sets `SESSIONVOICE_HOME`, or VoiceMode's `VOICEMODE_BASE_DIR`,
 sessionvoice keeps these files in the folder it names instead. Nothing in the kit
-sets either, so if one is set, you set it. If it names `~/.voicemode`, the lines below
-cover it. If it names another folder, these lines miss it: look in it, and delete
-there by hand the same files the lines below delete in `~/.voicemode`.
-
-sessionvoice also uses `~/.voicemode` when that folder already held a transcript the
-first time it ran: an older sessionvoice wrote one there, or VoiceMode's `converse`
-did. VoiceMode keeps its own files in `~/.voicemode` too, so never delete it whole.
-These lines delete only the files there that are sessionvoice's alone: who spoke, the
-`talk` folder, the missed-reply clips,
-and the dated folders of kept turn audio (`audio/YYYY-MM-DD`; VoiceMode files its own
-audio by year, then month). Where a line finds nothing, it deletes nothing. In zsh,
-the Mac's own shell, a pattern that matches nothing prints `no matches found`: that
-is fine.
-
-```bash
-rm -f "${HOME:?}"/.voicemode/logs/conversations/speakers_*.jsonl
-rm -rf "${HOME:?}/.voicemode/talk" "${HOME:?}/.voicemode/state/missed-reply"
-rm -rf "${HOME:?}"/.voicemode/audio/[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]
-```
-
-The rest of sessionvoice's files there are shared with VoiceMode. VoiceMode writes
-the same transcript, `heard_*.jsonl` with its lock, `heard.lock`, and keeps its own
-places in it in `~/.voicemode/state/heard-cursor`. Its mouth uses `~/.voicemode/mouth`
-too.
-
-- You use VoiceMode: keep them. The lines below would delete VoiceMode's own
-  transcript, and the places it kept would then point past the end of it. The turns
-  sessionvoice heard then stay in that transcript, beside VoiceMode's, until you
-  delete it.
-- No VoiceMode: delete them:
-
-  ```bash
-  rm -f "${HOME:?}"/.voicemode/logs/conversations/heard_*.jsonl
-  rm -f "${HOME:?}/.voicemode/logs/conversations/heard.lock"
-  rm -rf "${HOME:?}/.voicemode/mouth" "${HOME:?}/.voicemode/state/heard-cursor"
-  ```
+sets either, so if one is set, you set it, and this page does not touch that folder.
 
 If a folder named for your agent was already in your home directory, `~/.<name>`,
-`ears-arm` kept its place there as `heard.state`, instead of in `~/.ears`. Delete
-that one file by hand, never the folder: `~/.claude`, for one, is Claude Code's.
-If your shell sets `EARS_HOME`, `ears-arm` kept its `heard.state` in the folder it
-names instead. Delete that one file there by hand too.
+`ears-arm` kept its place there as `heard.state`. Delete that one file by hand, never
+the folder: `~/.claude`, for one, is Claude Code's. If your shell sets `EARS_HOME`,
+`ears-arm` kept its `heard.state` in the folder it names instead. Delete that one file
+there by hand too.
 
 ### Phone
 
 The agent's chat account with its keys, the invite, the callers, and the bot's own
-files. Run step 3 first. The bot's logs are in `~/.sessionkit/phone/log/`, and go with
-[the kit's home][home]; an earlier release kept them in `~/.sessionphone`, so this line
-deletes those too. The account on the public relay is not on this Mac, and nothing
-here deletes it. On your phone, delete the agent's chat in Delta Chat yourself.
+files. Run step 3 first. On a fresh Mac they are in the phone's state folder,
+`~/.sessionkit/phone/state`. The bot's logs are in `~/.sessionkit/phone/log/`. Both go
+with [the kit's home][home]: this item has no line of its own. The account on the
+public relay is not on this Mac, and nothing here deletes it. On your phone, delete the
+agent's chat in Delta Chat yourself.
 
-```bash
-rm -rf "${HOME:?}/.sessionphone"
-```
+**The old root stays.** Before 0.3.2 the phone's root was `~/.sessionphone`. A Mac
+that has only the old one keeps using it, until `sessionphone bot migrate` moves it
+and leaves the old path as a link to the new root
+([the step][phone-move]). An uninstall
+never deletes an old root, so this page leaves `~/.sessionphone` alone. On a Mac that
+never moved it, it still holds the agent's Delta Chat account and its keys, and the
+bot's older logs.
 
 ### Your clones
 
@@ -730,7 +771,17 @@ your Mac had none. Each is Homebrew's, and other tools may use it.
   from before the kit, which other programs may write to too. A mail seat
   agent still logs there today, to `~/Library/Logs/seat-agent.ADDRESS.log`. Those
   stay.
-  Delete them by hand only if you want them gone.
+- **The old folders from before each package's state moved.** An uninstall never
+  deletes one: [Session records][session-records] names `~/.session`,
+  `~/.local/share/sessiontools/sound` and `~/.sessionmail`; [Accounts][accounts]
+  names `~/.config/sessiontools`; [Voice][voice] names
+  `~/.sessionvoice`, the voice's files in `~/.voicemode`, `~/.ears` and the old places
+  of its state items; [Phone][phone] names `~/.sessionphone`; [Mail][mail] names
+  `~/.mail` and `~/.config/notmuch/sessionkit`. The sidebar's old state
+  folder, `~/.local/state/sessionview` (or its older name, `~/.local/state/herd`),
+  stays too, with its old state and log in it. A folder a `migrate` verb moved is now a link to
+  its new place, and the voice's originals sit beside theirs as
+  `<path>.pre-sessionkit`: those stay as well.
 - **What is not the kit's.** Homebrew, uv and Claude Code (sections 1 and 2) are not
   the kit's, and other tools may use them. So are Claude Code's own folders, such as
   `~/.claude` and `~/.local/state/claude`: leave them. Never delete `~/.local/bin`,
@@ -749,6 +800,10 @@ your Mac had none. Each is Homebrew's, and other tools may use it.
 [voice]: #voice
 [home]: #the-kits-home
 [mail]: #mail
+[session-records]: #session-records
+[accounts]: #accounts
+[voice-move]: troubleshooting.md#the-voice-state-is-still-in-the-old-root
+[phone-move]: troubleshooting.md#the-phone-bot-still-uses-the-old-root
 [brew]: #homebrews-tools
 [clones-route]: ../INSTALL.md#from-your-own-clones-to-work-on-the-plugins-optional
 [mail-setup]: ../INSTALL.md#mail-between-agents

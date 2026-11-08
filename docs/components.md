@@ -3,7 +3,8 @@
 What the install adds to your Mac: commands on your PATH, services you can
 run, folders in your home, and a log for each package.
 
-- **Commands:** eleven, each with a page here ([commands][commands]).
+- **Commands:** twelve ([commands][commands]). Eleven have a page here; `settled`
+  answers `--help`.
 - **Services:** launchd jobs you start yourself, and the pager monitor
   ([services][services]).
 - **Folders:** settings, sessions, mail and voice ([folders][folders]).
@@ -26,6 +27,7 @@ Every command answers `--help`, and each verb's help is its reference.
 | [`ears-serve`][cmd-ears-serve] | A speech-to-text server over Apple's on-device speech. | [sessionvoice][pkg-voice] |
 | [`mouth`][cmd-mouth] | Speak one line at a time, on the device you choose. | [sessionvoice][pkg-voice] |
 | [`talk`][cmd-talk] | A live web view of the conversation. | [sessionvoice][pkg-voice] |
+| `settled` | The Settings app: see and change the kit's settings from a web page. `settled --help` lists its verbs. | settled |
 
 Three more, `sessionview-config`, `sessionview-session` and
 `sessionview-messages`, are helpers the sidebar calls. They are leaving your
@@ -105,6 +107,7 @@ first.
 | The ears: `dev.sessionkit.voice.ears-mouth`, `-ears-keeper`, `-ears-mail` | `ears services install` | [sessionvoice][pkg-voice] |
 | The phone bot | `sessionphone bot install` | [sessionphone][pkg-phone] |
 | The live view | `talk serve` | [sessionvoice][pkg-voice] |
+| The settings desk, `dev.sessionkit.settled.desk` | `settled install` | settled |
 | The pager monitor | the sessionmail plugin, inside each Claude Code session | [sessionmail][pkg-mail] |
 
 The launchd jobs are labelled `dev.sessionkit.<package>.<job>`. The
@@ -121,17 +124,36 @@ uninstall removes them ([uninstall][uninstall]).
   account and its keys. Before 0.3.2 it was `~/.sessionphone/`. A Mac that
   has only the old one keeps using it, and nothing moves it by itself
   ([moving it][phone-root]).
-- `~/.session/`: your sessions and seats.
-- `~/.mail/`: the mail between agents.
-- `~/.sessionvoice/`, `~/.ears/` and `~/.local/state/ears/`: the voice.
+- `~/.sessionkit/tools/state/`: sessiontools' state: your sessions, seats,
+  agent files, backups and the sound engine. `session path` prints each
+  folder. A Mac that already has `~/.session/` keeps its sessions, seats,
+  agent files and backups there, and nothing moves them by itself. Its
+  `state` and `sound` folders (`~/.session/state/`,
+  `~/.local/share/sessiontools/sound/`) stay too, until
+  `session path migrate` moves them ([moving it][tools-move]).
+- `~/.sessionkit/mail/`: the mail between agents (`message path --root`).
+  A Mac set up before sessionmail 0.3.3 keeps it in `~/.mail`, by a `root`
+  line in `~/.sessionkit/mail/settings/mail.json`, and nothing moves it by
+  itself.
+- `~/.sessionkit/voice/state/`: the voice's state: the heard log, the
+  mouth's folder, talk's token and the speakers' rows. `ears home
+  state-dir` prints it. A Mac whose heard log is already in
+  `~/.sessionvoice/` or `~/.voicemode/` keeps using that folder, and a
+  state item at its old path (such as `~/.local/state/ears/`) stays there,
+  until `ears home migrate` moves them ([moving it][voice-move]). The old
+  shared seat home, `~/.ears/`, is read while a Mac still has one; nothing
+  moves it, and a new Mac makes none.
+- **Upgrade all six packages together.** An older copy of one package on
+  the same Mac can split its state between the old and new folders.
+  `session path --json` adds `stranded` to a folder that lags.
 
 ## Logs
 
 The kit writes no log of its own: `sessionkit setup` prints to your
 terminal. Each family package keeps its own:
 
-- **sessionmail** (from 0.2.0): `~/.session/sessions/<session-id>/log/mail/pager.jsonl`,
-  one row for each thing the pager told an agent
+- **sessionmail** (from 0.2.0): `log/mail/pager.jsonl` in each session's
+  folder (`session path sessions <session-id>`), one row for each thing the pager told an agent
   (the pager log: [sessionmail's docs/pager-inject-log.md][mail-log]).
   Its launch agents, when you install them, log to `~/.sessionkit/mail/log/`:
   a seat agent to `seat-agent.<ADDRESS>.log`
@@ -204,4 +226,6 @@ Which file to read for a symptom: [troubleshooting][troubleshooting].
 [tools-logs]: https://github.com/sessionkit/sessiontools#logs
 [phone-logs]: https://github.com/sessionkit/sessionphone#logs
 [phone-root]: troubleshooting.md#the-phone-bot-still-uses-the-old-root
+[tools-move]: troubleshooting.md#tools-state-is-still-in-the-old-folders
+[voice-move]: troubleshooting.md#the-voice-state-is-still-in-the-old-root
 [view-logs]: https://github.com/sessionkit/sessionview#logs

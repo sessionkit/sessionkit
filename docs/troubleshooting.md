@@ -23,8 +23,11 @@ Voice flows ears → heard log → turn mail → pager → your agent → mouth.
 The usual answer is three files. Measured, there are four, and the
 third is there only if turn mail runs:
 
-1. **The heard log**:
-   `~/.voicemode/logs/conversations/heard_YYYY-MM-DD.jsonl`. What the ears
+1. **The heard log**: `logs/conversations/heard_YYYY-MM-DD.jsonl` in the
+   voice's state root, which `ears home state-dir` prints:
+   `~/.sessionkit/voice/state` on a new Mac, and `~/.sessionvoice` or
+   `~/.voicemode` on a Mac that kept its log there
+   ([moving it][voice-move]). What the ears
    heard (`partial`, `turn`), what the mouth said (`saying`, `said`), and
    a `heartbeat` every 15 seconds while a capture runs. Every line has a
    `seq`, which links it to the turn mail.
@@ -46,18 +49,20 @@ third is there only if turn mail runs:
    install has no turn mail**: `ears services install` does not install
    it ([manual install, section 5][hear]). There, this file is missing,
    and the waiter wakes your agent instead.
-4. **The pager's verdicts**:
-   `~/.session/sessions/<session-id>/mail/verdicts`. One JSON line per
-   mail the pager judged for that agent: `wake` or `ride`, and the rule
-   that decided it. The file appears with the first mail judged.
+4. **The pager's verdicts**: `mail/verdicts` in the agent's session
+   folder, which `session path sessions <session-id>` prints
+   (`~/.sessionkit/tools/state/sessions/<session-id>` on a new Mac,
+   `~/.session/sessions/<session-id>` on a Mac that has `~/.session/`).
+   One JSON line per mail the pager judged for that agent: `wake` or
+   `ride`, and the rule that decided it. The file appears with the first mail judged.
    ([how the pager works][pager])
 
 Paste this:
 
 ```bash
-tail -F ~/.voicemode/logs/conversations/heard_$(date +%F).jsonl \
+tail -F "$(ears home state-dir)"/logs/conversations/heard_$(date +%F).jsonl \
   ~/.sessionkit/voice/log/ears-*.log \
-  "$(ls -t ~/.session/sessions/*/mail/verdicts | head -1)"
+  "$(ls -t "$(session path sessions)"/*/mail/verdicts | head -1)"
 ```
 
 The last line takes the agent whose pager judged a mail most recently.
@@ -81,7 +86,7 @@ You talk, but no `turn` lines appear in the heard log.
 
   ```bash
   grep -ho 'whisper at[^"]*' ~/.sessionkit/voice/log/ears-*.log \
-    ~/.voicemode/logs/conversations/heard_$(date +%F).jsonl | tail -3
+    "$(ears home state-dir)"/logs/conversations/heard_$(date +%F).jsonl | tail -3
   ```
 
   Then check that the server answers; this should print `200`. It is the
@@ -119,7 +124,7 @@ The turn is in the heard log, but the agent did nothing.
 
   ```bash
   grep '"kind": "turn"' \
-    ~/.voicemode/logs/conversations/heard_$(date +%F).jsonl | tail -3
+    "$(ears home state-dir)"/logs/conversations/heard_$(date +%F).jsonl | tail -3
   ```
 
 - **No turn mail:** `tail -3 ~/.sessionkit/voice/log/ears-mail.log`. No such
@@ -155,7 +160,7 @@ answered it, and why a call never connected: see
 
   ```bash
   grep '"source": "call"' \
-    ~/.voicemode/logs/conversations/heard_$(date +%F).jsonl |
+    "$(ears home state-dir)"/logs/conversations/heard_$(date +%F).jsonl |
     grep -c '"kind": "turn"'
   ```
 
@@ -172,6 +177,14 @@ An upgrade replaces the programs. It does not change a server that is
 already running. Each step here is done by hand, on each Mac, when you
 choose to. It is a step of its own, not part of the upgrade, and nothing
 runs it for you.
+
+### The plugins are older than the kit
+
+`sessionkit doctor` reads `🧩 Plugin versions: not at their packages'
+versions` and names each plugin left behind. Upgrading the kit's package
+does not update its Claude Code plugins, and a failed plugin update leaves
+them where they were. Run the `→` lines under that row, then restart
+Claude Code.
 
 ### A plain session hears the default seat's mail
 
@@ -211,6 +224,171 @@ there keeps it. ([the default seat][session-seat])
 `unknown variable: CLAUDE_CODE_AGENT` (exit 1) after the removal; a pane
 opened before the removal still held the word, and a pane opened after
 did not.
+
+### Tools' state is still in the old folders
+
+sessiontools keeps its state in `~/.sessionkit/tools/state/` on a new Mac.
+A Mac that already has `~/.session/` keeps using its old folders, and
+nothing moves them by itself: an upgrade never does. `session path` prints
+each folder, and `session path --json` says `old` for each one still in
+the old place. ([where tools keeps its state][tools-paths])
+
+`session path migrate` moves two of them, once, on each Mac:
+
+- **`state`:** `~/.session/state/` to `~/.sessionkit/tools/state/`.
+- **`sound`:** `~/.local/share/sessiontools/sound/` to
+  `~/.sessionkit/tools/state/sound/`.
+
+It moves each by rename and leaves the old path as a link to the new
+folder. Nothing deletes the old path. Your sessions, seats, agent files
+and backups stay in `~/.session/`: this verb does not move them. Do not
+move or delete `~/.session` by hand.
+([moving tools' state][tools-migrate])
+
+The move is a step of its own on each Mac: stop, move, check, start again.
+
+- Check first. Its `agents` block names each tools agent and says
+  `loaded` or `not loaded`. It changes nothing.
+
+  ```bash
+  session path migrate --dry-run
+  ```
+
+- Stop each agent the check shows `loaded`. A real run refuses while one
+  is loaded.
+  - **`pane-state agent`:**
+
+    ```bash
+    session pane-state agent off
+    ```
+
+  - **`sound engine`:**
+
+    ```bash
+    session sound engine off
+    ```
+
+  - **`default-model watch`:**
+
+    ```bash
+    launchctl bootout gui/$(id -u)/dev.sessionkit.tools.default-model
+    ```
+
+  - **`pane-state watch`:** a `session pane-state watch` you started by
+    hand. Stop it in its own terminal.
+- A `session default-model watch` you started by hand is not in the
+  check. Stop any you started.
+- Check again. Every agent should read `not loaded`, with no `would
+  refuse` line and no key-like name (`id_rsa`, `*.pem`). A key-like name
+  is listed, not refused: stop there and look at it first.
+
+  ```bash
+  session path migrate --dry-run
+  ```
+
+- Move:
+
+  ```bash
+  session path migrate
+  ```
+
+  When it refuses (exit 3), nothing was moved, and it names why.
+- Check the move. `state` and `sound` should read `new`.
+
+  ```bash
+  session path --json
+  ```
+
+- Start again each agent you stopped:
+  - **`pane-state agent`:**
+
+    ```bash
+    session pane-state agent on
+    ```
+
+  - **`sound engine`:**
+
+    ```bash
+    session sound engine on
+    ```
+
+  - **`default-model watch`:**
+
+    ```bash
+    launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/dev.sessionkit.tools.default-model.plist
+    ```
+
+- **Upgrade all six packages together.** An older copy of sessiontools
+  (the one inside another package's environment, say) still writes
+  `~/.session/state/` and makes the old folder real again. `session path
+  --json` adds `stranded` to a folder whose new copy holds state while the
+  old one is in use.
+
+### The voice state is still in the old root
+
+The voice keeps its state (the heard log, the mouth's folder, talk's
+token, the speakers' rows) in `~/.sessionkit/voice/state` on a new Mac. A
+Mac whose heard log is in `~/.sessionvoice` or `~/.voicemode` keeps using
+that folder, and a state item at its old path (such as
+`~/.local/state/ears/`) stays there. Nothing moves by itself. `ears
+services status` then prints a second `state` row naming the old path and
+`ears home migrate`. A root you set (`SESSIONVOICE_HOME`,
+`VOICEMODE_BASE_DIR`) is never moved, and this step is not for it.
+([the state root][voice-root])
+
+`ears home migrate` moves it, once, on each Mac. It copies, checks each
+file, and leaves each old path as a link to its new place, with the
+original kept beside it as `<path>.pre-sessionkit`. It never deletes. On
+`~/.voicemode` it moves only the voice's own files, never VoiceMode's.
+The old shared seat home, `~/.ears`, is not moved. Do not move or delete
+any of these by hand.
+
+The move is a step of its own on each Mac: stop, move, check, start again.
+
+- Check first. It prints the plan and every reason it would refuse, and
+  writes nothing.
+
+  ```bash
+  ears home migrate --dry-run
+  ```
+
+- Stop the voice jobs. The move refuses while a voice launch agent is
+  loaded or a voice writer runs, and the plan names each one.
+
+  ```bash
+  ears services uninstall
+  ```
+
+- Stop any other writer the plan names: a voice program you started by
+  hand and, when the old root is `~/.voicemode`, VoiceMode's own capture
+  loop or mouth player, and the phone bot.
+- Move:
+
+  ```bash
+  ears home migrate
+  ```
+
+  When it refuses (exit 1), nothing was written. When it stops part-way
+  (exit 3), run it again: a second run finishes the move.
+- Check the move. The `state` row should name
+  `~/.sessionkit/voice/state`, with no second row naming an old path.
+
+  ```bash
+  ears services status
+  ```
+
+- Re-arm each reader the move's report lists: the ones that hold the
+  heard log open.
+- Install the voice jobs again, before any writer starts and before your
+  next login, with the same flags you installed them with. Install writes
+  the new paths into each job; a job left from before still names an old
+  path and makes it real again.
+
+  ```bash
+  ears services install
+  ```
+
+- Start again any other writer you stopped.
 
 ### The phone bot still uses the old root
 
@@ -294,3 +472,7 @@ new root. ([moving the root][phone-migrate])
 [sv-mouth]: https://github.com/sessionkit/sessionvoice/blob/HEAD/docs/troubleshooting.md#mouth-the-voice-chops
 [sv-parts]: https://github.com/sessionkit/sessionvoice#components
 [sv-req]: https://github.com/sessionkit/sessionvoice#requirements
+[tools-migrate]: https://github.com/sessionkit/sessiontools/blob/HEAD/docs/tools-state-migrate.md
+[tools-paths]: https://github.com/sessionkit/sessiontools/blob/HEAD/docs/tools-state-paths.md
+[voice-move]: #the-voice-state-is-still-in-the-old-root
+[voice-root]: https://github.com/sessionkit/sessionvoice/blob/HEAD/docs/configuration.md#the-state-root

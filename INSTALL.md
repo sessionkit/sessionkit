@@ -40,6 +40,7 @@ installed, and walked on a fresh Mac for a session started with `session start <
     ```bash
     source ~/.zshrc
     ```
+
 - Claude Code, Anthropic's installer, about 13 seconds:
 
   ```bash
@@ -133,6 +134,7 @@ Either way, keep `--python 3.14`.
 **MEASURED** (uv 0.13.4, sessionkit 0.2.1 from PyPI, in an empty tool folder with an empty
 uv cache, each line run on a fresh `--python 3.14` install, read in the tool's
 `pyvenv.cfg` and `uv-receipt.toml`; measured on 0.2.1, not yet on 0.3.0):
+
 - `uv tool upgrade sessionkit`, with or without `--reinstall`, and `uv tool upgrade --all`
   stayed on 3.14 with the pin kept.
 - `uv tool install --python 3.14 --reinstall sessionkit` stayed on 3.14 with the pin kept.
@@ -143,17 +145,18 @@ uv cache, each line run on a fresh `--python 3.14` install, read in the tool's
 - `uv tool upgrade` has no `--refresh` on uv 0.13.4: it refuses that flag, exit 2.
 
 **MEASURED** (read-only against PyPI): the five packages this release
-needs are on PyPI, each at 0.3.0: sessionmail, sessionphone, sessiontools, sessionview
-and sessionvoice. The kit asks for 0.3.0 or later of each. This line installs the kit and
-its five packages, 61 packages in all, and 14 commands on your PATH:
-`sessionkit message pager memory session sessionphone sessionview sessionview-config
-sessionview-messages sessionview-session ears ears-serve mouth talk`. **MEASURED**
-(this release's six packages at 0.3.0 installed from a folder of their
-wheels, Python 3.14, an empty tool folder, an empty uv cache and a temporary home
-directory): 61 packages and the 14 commands. Every `--help` tried answered but four of
-`sessionview`'s, which run the verb instead: `sessionview install --help` runs its
-requirements check, `sessionview autostart --help` and `sessionview from --help` do what
-the verb does, and `sessionview sidebar --help` opens the sidebar.
+needs are on PyPI, each at 0.3.2: sessionmail, sessionphone, sessiontools, sessionview
+and sessionvoice. The kit asks for 0.3.2 or later of each. This line installs the kit, its
+five packages and settled, the Settings app, 63 packages in all, and 15 commands on your
+PATH: `sessionkit message pager memory session sessionphone sessionview sessionview-config
+sessionview-messages sessionview-session ears ears-serve mouth talk settled`. **MEASURED**
+(the kit and settled 0.1.0 from a folder of their wheels, the five packages at 0.3.2 from
+PyPI, Python 3.14, an empty tool folder, an empty uv cache and a temporary home
+directory): 63 packages and the 15 commands. Every command's own `--help` answered. The
+four verbs of `sessionview` that run instead of helping were not tried this time:
+`sessionview install --help` runs its requirements check, `sessionview autostart --help`
+and `sessionview from --help` do what the verb does, and `sessionview sidebar --help`
+opens the sidebar (measured on 0.3.0).
 
 **The install size.** **MEASURED** (the 0.2.1 install, on Apple silicon; not yet
 re-measured on 0.3.0): uv downloaded about 93 MB, and the kit's tool folder is about
@@ -203,13 +206,13 @@ operator is written all the same. The last lines read like this:
 
 ```text
 message setup: done what it can; 2 step(s) left for you:
-  1. notmuch-index (BLOCKED): notmuch: 'notmuch' not found ($SESSIONMAIL_NOTMUCH, else PATH), so the index and hook steps are left. Once it is found, setup runs `notmuch --config=/Users/<you>/.config/notmuch/sessionkit/config new --no-hooks` once and links the hooks
+  1. notmuch-index (BLOCKED): notmuch: 'notmuch' not found ($SESSIONMAIL_NOTMUCH, else PATH), so the index and hook steps are left. Once it is found, setup runs `notmuch --config=/Users/<you>/.sessionkit/mail/settings/notmuch/sessionkit/config new --no-hooks` once and links the hooks
   2. notmuch-hook (BLOCKED): waits on notmuch-index
 then run `message setup` again.
 Mail setup left steps for you (above); re-run sessionkit setup after.
 Wrote /Users/<you>/.sessionkit/tools/settings/session.d/10-operator.json: the operator is address '<you>@<your-mac>'.
 session operator: {"operator": "<you>@<your-mac>", "mailbox": null, "privileged": ["<you>@<your-mac>"]}
-Wrote /Users/<you>/.session/agents/claude.md: the agent 'claude', not keyed.
+Wrote /Users/<you>/.sessionkit/tools/state/agent/config/claude.md: the agent 'claude', not keyed.
 session start --list-agents: lists 'claude'.
 To hear Delta messages, start Claude with: session start
 ```
@@ -226,8 +229,8 @@ not yet released, a temporary home directory, run with `--address`): with no `--
 and with `--agent claude`, the last line was the bare form; with `--agent other`, it
 ended `session start other`; with sessiontools 0.3.0, `session start claude`. Exit 4
 each. **MEASURED** (this release's sessionkit's mail step, with sessionmail's mail setup
-built from its source ahead of its next release, a temporary home directory, no
-notmuch): the first five lines, exit 4. **MEASURED** (a fresh macOS 27 VM, sessionkit
+built from its master ahead of 0.3.3, a temporary home directory standing in as the
+account's home, no notmuch): the first five lines, exit 4. **MEASURED** (a fresh macOS 27 VM, sessionkit
 0.2.0 and sessionmail 0.2.0 from PyPI, run with `--address`): the two operator lines
 after them, exit 4; that sessionmail named one notmuch step, on one line. The last
 three are this release's assistant step (below), which sessionkit 0.2.0 does not have.
@@ -239,8 +242,14 @@ step ending `session start claude` (that sessiontools has no default seat), exit
 named for your account, as the operator (read in its source). **NOT YET** on a fresh
 Mac without `--address`.
 
-**Then your assistant:** it writes `~/.session/agents/claude.md`, the agent
+**Then your assistant:** it writes `~/.sessionkit/tools/state/agent/config/claude.md`, the agent
 `session start claude` starts (section 4), and asks mail setup for its box, `claude`.
+The folder is the one `session path agent --config` names: setup asks sessiontools for
+it, and on a fresh Mac it is `~/.sessionkit/tools/state/agent/config`. A sessiontools
+without that verb gets no agent file and no launch step: one line says so, and says to
+run sessionkit setup again once a sessiontools with the verb is installed. That run
+exits 1. **NOT YET** measured with a released sessiontools that has the verb: the
+measurements above ran before setup asked it, and wrote the file to `~/.session/agents`.
 
 **Then the wake seat:** it makes your agent the one your voice wakes, `claude` or the
 name you gave `--agent`, so you do not add it by hand in section 5 (see
@@ -682,22 +691,42 @@ claude plugin install "${r:?}@${r:?}"
   session start NAME
   ```
 
-- **Turn the mail hooks on. HUMAN (edit a file).** The sessionmail plugin's
-  hooks run clean, and your session's box under `~/.mail/agents/` is made when the session
-  starts, by the plugin's start hook. **MEASURED** in part (in the release rehearsal; the
-  box at session start in a temporary home directory). The hooks stay off until you set
-  `"hooks": true` in `~/.sessionkit/mail/settings/mail.json`.
-  Nothing on your screen says so: the plugin writes that file, with the hooks off, the
-  first time your session runs a tool, and it tells your agent, not you. The README's
-  step **The mail hooks start off** is one block that does either of these:
-  - No file yet: make it with exactly this content:
+- **Turn the mail hooks on. HUMAN (one command).** The sessionmail plugin's
+  hooks run clean, and your session's box, in sessionmail's boxes folder (`message path
+  --boxes`), is made when the session starts, by the plugin's start hook. **MEASURED** in part (in the release rehearsal; the
+  box at session start in a temporary home directory). The hooks stay off until you turn
+  them on. Nothing on your screen says so: the plugin writes
+  `~/.sessionkit/mail/settings/mail.json`, with the hooks off, the first time your session
+  runs a tool, and it tells your agent, not you. The README's step **The mail hooks start
+  off** is this same command, sessionmail's own:
 
-    ```json
-    {"version": 1, "hooks": true, "sendmail": "drop"}
+  ```bash
+  pager settings hooks on
+  ```
+
+  - It sets only `"hooks": true` in that file, and keeps every other key and byte. With no
+    file yet, it makes one from sessionmail's template, with the hooks on. A second run
+    writes nothing.
+  - Each session's next hook reads it.
+  - To turn them off again:
+
+    ```bash
+    pager settings hooks off
     ```
 
-  - The file is there: change only `"hooks": false` to `"hooks": true`, and keep its
-    other keys.
+  - To see which they are, run it bare. It writes nothing, and exits 0 for on, 3 for off:
+
+    ```bash
+    pager settings hooks
+    ```
+
+  **MEASURED** (sessionmail 0.3.2 from PyPI, the release the kit installs, and
+  sessionmail's master; a temporary home directory): `pager settings --help` lists
+  `hooks`. With no file, bare `pager settings hooks` said off, exit 3. `on` made the file
+  with `"hooks": true`, exit 0, and bare then said on, exit 0. `off` wrote
+  `"hooks": false`, exit 0, and bare said off, exit 3. A second `on` wrote nothing. On a
+  file of three keys over five lines, `on` changed only the `hooks` value. It needs no
+  session: it ran in a plain shell with no session in its environment.
 
   **MEASURED** (sessionmail 0.2.0 and 0.3.0 from PyPI, the plugin's start and tool-batch
   hooks run by hand on a temporary home directory): the start wrote only
@@ -865,8 +894,8 @@ what was measured.
    `tmux window 'claude' in session 'agents'`. `session start claude --dry-run`
    refused, exit 2, and launched nothing. From outside tmux with no target,
    `session start --in-tmux` stopped with `nowhere to place the window`, exit 2.
-4. **Have it listen.** Turn the mail hooks on first (`"hooks": true`, in the checks
-   above). After that, the pager's hook tells your agent when it is not listening, and
+4. **Have it listen.** Turn the mail hooks on first (**Turn the mail hooks on**, in the
+   checks above). After that, the pager's hook tells your agent when it is not listening, and
    the agent starts `pager listen` itself, as a background tool call. You can also ask
    it to. The banner says whether mail reaches the agent's box. `pager status`, run by
    the agent, reads that box. **NOT YET.**
@@ -1155,8 +1184,10 @@ Mail wakes your agent. The ears only hear you and write mail, and each session's
 pager wakes its own session. Room mode (step 4) is the one other way: a waiter your
 agent runs itself. Five parts decide which mail wakes it:
 
-- **The session box.** Every session has its own box, named by its session id, under
-  `~/.mail/agents/`. Mail to the session id lands there. The pager watches this box and
+- **The session box.** Every session has its own box, named by its session id, in
+  sessionmail's boxes folder (`message path --boxes`: `~/.sessionkit/mail/stores/` on a
+  Mac the kit sets up with sessionmail 0.3.3 or later, `~/.mail/agents/` on an older
+  one). Mail to the session id lands there. The pager watches this box and
   no other. The box is made when the session starts, by the sessionmail plugin's start
   hook.
 - **Subscriptions.** A session can subscribe to another box, and that box's mail is
@@ -1285,13 +1316,15 @@ no mail setting. Step 1 was measured on the released 0.2.0, on a fresh Mac.
    ```
 
    Mail setup writes sessionmail's
-   own notmuch profile, `~/.config/notmuch/sessionkit/config` (under
-   `$XDG_CONFIG_HOME` when that is set), with the mail folder as its database, runs
+   own notmuch profile, `~/.sessionkit/mail/settings/notmuch/sessionkit/config`
+   (`message path --notmuch-config` prints it; a Mac that had the profile at
+   `~/.config/notmuch/sessionkit/config` before sessionmail 0.3.3 keeps using that
+   one), with the mail root as its database, runs
    `notmuch new` on it once to build the index, and links sessionmail's hooks there.
    It never reads or writes a notmuch config of your own: `~/.notmuch-config` and any
    other profile are left exactly as they are, and nothing is linked into them. It
-   adopts no notmuch database: if the mail folder already holds one,
-   `~/.mail/.notmuch`, mail setup writes no profile, and its
+   adopts no notmuch database: if the mail root already holds one, `.notmuch` in
+   it, mail setup writes no profile, and its
    `notmuch-profile` line says `MANUAL` instead of `wrote`, and names what to do. That
    database is yours, and the uninstall leaves it (section 8). **MEASURED**
    (a temporary home directory whose mail folder held a database made by
@@ -1602,26 +1635,29 @@ temporary home directory.
   uv tool uninstall sessionkit
   ```
 
-- **What the programs left.** Program files, none of them your data: the voice model
-  and run state, the speech server, the sidebar's old state, the mail cache, the image
-  reader's cache, and the voice's list of audio devices. The last line removes that
-  list's folder only if it is empty. Paste the lines as they are: they carry no
+- **What the programs left.** Program files, none of them your data: the voice's
+  models, run state and helper programs, the speech server, the speakers' venv, the
+  music separator, the mail cache and the image reader's cache. Each `rmdir` line
+  removes a folder only if it is empty. Paste the lines as they are: they carry no
   comments, because in zsh a `#` typed at the prompt is not a comment.
 
   ```bash
-  rm -rf "${HOME:?}/.cache/ears"
+  find "${HOME:?}/.cache/ears" -mindepth 1 -not -name 'ears-mail.state.json*' -delete
+  rmdir "${HOME:?}/.cache/ears"
   rm -rf "${HOME:?}/.local/share/ears/speech"
-  rm -rf "${HOME:?}/.local/state/sessionview"
-  rm -rf "${HOME:?}/.local/state/herd"
-  rm -rf "${HOME:?}/.local/state/ears"
+  rm -rf "${HOME:?}/.local/share/ears/speakers/venv"
+  rm -rf "${HOME:?}/.local/share/ears/separator"
+  rmdir "${HOME:?}/.local/share/ears/speakers"
+  rmdir "${HOME:?}/.local/share/ears"
   rm -rf "${HOME:?}/.cache/session-mail"
   rm -rf "${HOME:?}"/Library/Caches/imgtext-*
-  rm -f "${HOME:?}/.local/state/audio/devices.json"
-  rmdir "${HOME:?}/.local/state/audio"
   ```
 
   In zsh, the `imgtext-*` line prints `no matches found` when there is none: that is
-  fine.
+  fine. An `rmdir` that says `Directory not empty` found the voice's state from
+  before it moved (the turn mail's place, or the voices you enrolled): it stays
+  ([the old places][uninstall-voice-data]). One that says `No such file or directory`
+  found nothing there.
 
 The marketplace line and the cache line were **MEASURED** on a temporary home
 directory, and `uv tool uninstall sessionkit` on temporary uv tool directories. The
@@ -1636,24 +1672,24 @@ to keep it. **NOT YET**: no walk has run these lines.
 - ⚠️ **Account tokens.** `~/.sessionkit/tools/accounts/` holds the backups
   `session account` made of your tokens. Delete it, or keep it, on purpose:
   [Accounts][uninstall-accounts].
-- ⚠️ **VoiceMode shares some of these files**: the mouth's mail box, and the
-  transcript in `~/.voicemode`. Use VoiceMode? Skip the lines marked "No VoiceMode":
-  [Mail][uninstall-mail] and [Voice][uninstall-voice-data].
+- ⚠️ **VoiceMode shares the mouth's mail box.** Use VoiceMode? Skip the lines marked
+  "No VoiceMode": [Mail][uninstall-mail].
 
 Your data, in this order:
 
-- **Mail:** every agent's box in `~/.mail/agents`, and mail setup's notmuch profile.
-  [Mail][uninstall-mail].
-- **Session records:** `~/.session`, `~/.sessionmail`, and the agent file
-  `sessionkit setup` wrote. [Session records][uninstall-session].
+- **Mail:** every agent's box in `~/.sessionkit/mail/stores` (`message path --boxes`)
+  and their notmuch index; the profile goes with the kit's home. [Mail][uninstall-mail].
+- **Session records:** the `session` tool's state folder `~/.sessionkit/tools/state`,
+  with the agent file `sessionkit setup` wrote. [Session records][uninstall-session].
 - **Accounts:** above. [Accounts][uninstall-accounts].
 - **The kit's home, `~/.sessionkit`:** each package's settings, logs and state, the
   phone's included. It keeps `claude-code.json`, which is yours.
   [The kit's home][uninstall-home].
-- **Voice:** `~/.sessionvoice`, `~/.ears` and the voices you enrolled.
+- **Voice:** what the ears heard, the mouth said and the voices you enrolled, in
+  `~/.sessionkit/voice/state`. It goes with the kit's home.
   [Voice][uninstall-voice-data].
-- **Phone:** `~/.sessionphone`, the agent's chat account and its keys.
-  [Phone][uninstall-phone].
+- **Phone:** the agent's chat account and its keys, in `~/.sessionkit/phone/state`.
+  It goes with the kit's home. [Phone][uninstall-phone].
 - **Your clones** (section 3), only after block 2. [Your clones][uninstall-clones].
 
 Caches and tools other programs share, each only if nothing else uses it:
@@ -1665,9 +1701,19 @@ Caches and tools other programs share, each only if nothing else uses it:
 - Homebrew's tmux, ffmpeg, notmuch, and jq if you installed it.
 
 **What stays.** The older logs in `~/Library/Logs`: an uninstall never deletes from
-there. Homebrew, uv and Claude Code, and their folders. Never delete `~/.cache`,
-`~/.local/bin` or `~/.voicemode` whole: other tools keep files there.
-[What stays][uninstall-stays].
+there. The old folders each package used before its state moved: an uninstall never
+deletes them either. On a Mac that had them, they still hold what they held, keys
+included: `~/.session` (the `session` tool's sessions, seats, agent files and backups),
+`~/.local/share/sessiontools/sound` (the busy sound's engine), `~/.config/sessiontools`
+(older backups of your account tokens), `~/.sessionmail` (mail's seat settings and the
+seats' signing keys), `~/.sessionvoice`, the voice's files in `~/.voicemode`, and
+`~/.ears` (what the ears heard and the mouth said, and each seat's place in it), the
+voice's other old state under `~/.local` and in `~/.cache/ears` (such as the voices you
+enrolled), `~/.sessionphone` (the phone's Delta Chat account and its keys), `~/.mail`
+(mail's boxes and index from before 0.3.3), `~/.config/notmuch/sessionkit` (their
+profile), and `~/.local/state/sessionview` (the sidebar's old state and log). Homebrew,
+uv and Claude Code, and their folders, stay too. Never delete `~/.cache`, `~/.local/bin`
+or `~/.voicemode` whole: other tools keep files there. [What stays][uninstall-stays].
 
 [uninstall-ref]: docs/uninstall.md
 [uninstall-voice]: docs/uninstall.md#1-stop-and-remove-the-jobs

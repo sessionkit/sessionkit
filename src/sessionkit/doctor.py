@@ -7,10 +7,13 @@ and passes its lines through as they are. That file is the repo's root
 turns the link into a copy of the same bytes. So a change to a check reaches
 `curl ... | bash -s -- --check`, the installer and the doctor at once.
 
-The doctor then adds the three rows the installer never checks, each read by
-the family package that owns the state:
+The doctor then adds the four rows the installer never checks, each read by
+the package that owns the state:
 
-- the mail hooks: sessionmail's own settings reader (REQUIRED);
+- the mail hooks: sessionmail's own settings reader (REQUIRED); its remedy
+  names the pager's hooks verb when `pager settings --help` lists one;
+- the Settings app: settled's installed metadata and its command on the
+  PATH (REQUIRED: the kit depends on it). It never runs `settled`;
 - the phone bot: sessionphone's bot name and its launchd job (optional);
 - the session key: sessionmail's `keyed`, sessiontools' key-init path (info).
 
@@ -27,6 +30,7 @@ from __future__ import annotations
 
 import importlib
 import os
+import re
 import shutil
 import subprocess
 from collections.abc import Callable, Mapping
@@ -81,9 +85,62 @@ def _load(module: str, *names: str):
         return None
 
 
+# The pager has mail's hooks verb when `pager settings --help` lists a `hooks`
+# command: install.sh's hooks_verb, the same rule. It reads the help text,
+# never a bare exit, and it matches one line at a time, as grep does: a line
+# that starts with blanks, then `hooks`, then a blank or the line's end. It
+# reads the help's bytes, so a blank is an ASCII one, as [[:space:]] is in the
+# C locale; in a str, \s would also take Unicode spaces and \x1c-\x1f.
+# tests/test_doctor.py runs install.sh's own pattern beside this one.
+HOOKS_VERB = re.compile(rb"^[^\S\n]+hooks(?:[^\S\n]|$)", re.MULTILINE)
+HOOKS_ON = "pager settings hooks on"
+# install.sh's HOOKS_BY_HAND, for a pager with no hooks verb: the file is
+# sessionmail's, so the doctor names the edit and never makes it.
+HOOKS_BY_HAND = 'set "hooks": true in {shown}, and change no other key'
+HOOKS_SECTION = 'the README\'s Installation, "The mail hooks start off"'
+# How long the pager's help may take. A pager that does not answer in time is
+# read as one with no verb: the hand edit works with any pager.
+HELP_TIMEOUT = 10
+
+
+def find_tool(name: str, env: Mapping[str, str]) -> str | None:
+    """The command NAME as install.sh's find_tool finds it: on PATH, else
+    under ~/.local/bin, else None."""
+    path = env.get("PATH")
+    found = shutil.which(name, path=path) if path else None
+    if found:
+        return found
+    home = env.get("HOME")
+    p = os.path.join(home, ".local", "bin", name) if home else ""
+    return p if p and os.access(p, os.X_OK) else None
+
+
+def hooks_verb(env: Mapping[str, str]) -> str | None:
+    """Why the pager cannot turn the hooks on, or None when it can: its
+    `settings --help` lists a `hooks` command. The reasons are install.sh's
+    own words for its end screen."""
+    pager = find_tool("pager", env)
+    if pager is None:
+        return "no pager on the PATH"
+    try:
+        r = subprocess.run(
+            [pager, "settings", "--help"],
+            env=dict(env),
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            timeout=HELP_TIMEOUT,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return "this pager has no hooks verb yet"
+    return None if HOOKS_VERB.search(r.stdout) else "this pager has no hooks verb yet"
+
+
 def hooks_row(env: Mapping[str, str]) -> Row:
     """The mail hooks: REQUIRED. sessionmail's reader decides, by its own strict
-    rule: only `"hooks": true` is on (`"true"` and `1` are off)."""
+    rule: only `"hooks": true` is on (`"true"` and `1` are off). The remedy is
+    the pager's hooks verb when it has one, else the hand edit."""
     what = "📬 Mail hooks"
     got = _load("sessionmail._settings", "read", "ON", "MISSING", "SHOWN")
     if got is None:
@@ -98,14 +155,15 @@ def hooks_row(env: Mapping[str, str]) -> Row:
         state = f"off ({s.why})"
     else:
         state = "off"
-    return Row(
-        f"{what}: {state}",
-        [
-            f'{REMEDY}set "hooks": true in {shown}, and change no other key',
-            f'{REMEDY_MORE}the README\'s Installation, "The mail hooks start off", has the lines to paste',
-        ],
-        missing=True,
-    )
+    why = hooks_verb(env)
+    if why is None:
+        under = [f"{REMEDY}{HOOKS_ON}", f"{REMEDY_MORE}{HOOKS_SECTION}, says what it changes"]
+    else:
+        under = [
+            f"{REMEDY}{HOOKS_BY_HAND.format(shown=shown)}",
+            f"{REMEDY_MORE}{why}, so by hand; for a newer pager, {HOOKS_SECTION}, has the one command",
+        ]
+    return Row(f"{what}: {state}", under, missing=True)
 
 
 def phone_row(env: Mapping[str, str]) -> Row:
@@ -168,7 +226,41 @@ def key_row(env: Mapping[str, str]) -> Row:
     return Row(line, under)
 
 
-ROWS: tuple[Callable[[Mapping[str, str]], Row], ...] = (hooks_row, phone_row, key_row)
+# The kit's own reinstall line, install.sh's word for word (its plugin row's
+# "puts back a package the kit installs" remedy, KIT_PYTHON filled in):
+# INSTALL.md's Reinstall. Not `--force`: that drops the Python pin.
+# tests/test_doctor.py holds it to install.sh.
+REINSTALL = "uv tool install --python 3.14 --reinstall sessionkit"
+SETTLED = "settled"
+
+
+def settled_row(env: Mapping[str, str]) -> Row:
+    """The Settings app: REQUIRED. The kit depends on settled, so a kit with
+    no settled package, or no `settled` command, is a broken install, not an
+    option left out. It reads the installed metadata, as `sessionkit
+    --version` does, and looks for the command as install.sh's find_tool
+    does. It never runs `settled`, and does not ask after its launch agent."""
+    # Imported here, not at the top: cli imports this module.
+    from sessionkit.cli import NOT_INSTALLED, installed_version
+
+    what = "⚙️ Settings app (settled)"
+    got = installed_version(SETTLED)
+    cmd = find_tool(SETTLED, env)
+    if got == NOT_INSTALLED:
+        under = [f"{REMEDY}{REINSTALL}", f"{REMEDY_MORE}it puts back a package the kit installs that its tool has lost"]
+        if cmd is not None:
+            under.append(f"{NOTE}a settled command is at {_tilde(cmd, env)}, but not the kit's package")
+        return Row(f"{what}: {NOT_INSTALLED}", under, missing=True)
+    if cmd is None:
+        return Row(
+            f"{what}: {got}, but no settled command on the PATH or in ~/.local/bin",
+            [f"{REMEDY}{REINSTALL}", f"{REMEDY_MORE}it links the commands the kit re-exports, settled among them"],
+            missing=True,
+        )
+    return Row(f"{what}: {got}, command at {_tilde(cmd, env)}")
+
+
+ROWS: tuple[Callable[[Mapping[str, str]], Row], ...] = (hooks_row, settled_row, phone_row, key_row)
 
 
 # --- The run ----------------------------------------------------------------

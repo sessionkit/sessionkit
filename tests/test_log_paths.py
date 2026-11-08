@@ -109,7 +109,12 @@ def test_components_logs_names_mails_launch_agent_logs_and_keeps_the_pager_log()
     bullet = " ".join(
         next(b for b in section.split("\n- ") if b.startswith("**sessionmail")).split()
     )
-    assert "`~/.session/sessions/<session-id>/log/mail/pager.jsonl`" in bullet
+    # The pager log is in the session's folder, which sessiontools names
+    # (sessionmail _injectlog.py: `<session-dir>/log/mail/pager.jsonl`, the
+    # dir `sessiontools.settings.session_dir` resolves); no path is spelled.
+    assert ("`log/mail/pager.jsonl` in each session's folder "
+            "(`session path sessions <session-id>`)") in bullet
+    assert "~/.session/" not in bullet
     assert "log to `~/.sessionkit/mail/log/`" in bullet
     assert "a seat agent to `seat-agent.<ADDRESS>.log`" in bullet
     assert "the puller to `puller.log`" in bullet

@@ -6,7 +6,7 @@ or session can change it for itself.
 
 - **Where:** under `~/.sessionkit/<package>/settings/`, in the folder of
   the package that ships the tool, with the agent, seat and session layers
-  under `~/.session/` ([where](#where-settings-live)).
+  in sessiontools' state folder ([where](#where-settings-live)).
 - **How they stack:** template, host, agent, seat, session. The lowest
   wins, a `_locked` key stops the layers below from changing it, and the
   environment is not a layer ([the cascade](#the-cascade)).
@@ -35,9 +35,22 @@ live in the settings folder of the package that ships it,
 | --- | --- |
 | template | `~/.sessionkit/<package>/settings/<tool>.template.json`, shipped with the tool |
 | host | `~/.sessionkit/<package>/settings/<tool>.json`, then `<tool>.d/*.json` beside it |
-| agent | the agent's file, `~/.session/agent/config/<name>.md`, under `settings:` in its front matter |
-| seat | `~/.session/seats/<seat>/settings/<tool>.json`, then `<tool>.d/*.json` |
-| session | `~/.session/sessions/<session-id>/settings/<tool>.json`, then `<tool>.d/*.json` |
+| agent | the agent's file, `<agents folder>/<name>.md`, under `settings:` in its front matter |
+| seat | `<seats>/<seat>/settings/<tool>.json`, then `<tool>.d/*.json` |
+| session | `<sessions>/<session-id>/settings/<tool>.json`, then `<tool>.d/*.json` |
+
+- **The agent, seat and session folders are sessiontools'.** On a new Mac
+  they are under `~/.sessionkit/tools/state/`: `agent/config/`, `seats/`
+  and `sessions/`. A Mac that already has `~/.session/` keeps them there:
+  `~/.session/agent/config/` (or the older `~/.session/agents/`),
+  `~/.session/seats/` and `~/.session/sessions/`. Nothing moves them by
+  itself. Ask sessiontools rather than spell a path:
+
+  ```bash
+  session path agent --config
+  session path seats
+  session path sessions
+  ```
 
 - **One folder for each package.** A tool reads its template and host
   files from its package's settings folder, and from no other folder. No
@@ -45,8 +58,11 @@ live in the settings folder of the package that ships it,
   one settings file instead, such as `EARS_CONF`; their own pages say so.
 - **Settings only.** A package keeps its other files, such as state and
   logs, outside its `settings/` folder.
-- **Mail stays in `~/.mail`.** That folder holds the mail itself, not
-  settings, and it does not move.
+- **Mail is not settings.** The mail root (`message path --root`:
+  `~/.sessionkit/mail` on a Mac the kit sets up with sessionmail 0.3.3 or
+  later; `~/.mail` on an older one, kept by `"root": "~/.mail"` in
+  `~/.sessionkit/mail/settings/mail.json`) holds the mail itself, beside
+  mail's settings folder, and nothing in the kit moves it.
 
 ## The cascade
 
@@ -81,8 +97,8 @@ locks one, in `~/.sessionkit/<package>/settings/example.json`:
 {"_locked": ["greeting.volume"], "greeting": {"text": "hello", "volume": 40}}
 ```
 
-One session changes both, in
-`~/.session/sessions/<session-id>/settings/example.json`:
+One session changes both, in `settings/example.json` in its session
+folder (`session path sessions <session-id>`):
 
 ```json
 {"greeting": {"text": "good morning", "volume": 90}}

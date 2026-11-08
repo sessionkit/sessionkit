@@ -3,8 +3,9 @@
 ## Purpose
 
 Where a session's, a seat's and an agent's files live under `~/.session/`,
-where each tool's host settings live, and what a package's directory under
-`~/.sessionkit/` holds beside its settings. How the settings in these places
+where each tool's host settings live, what a package's directory under
+`~/.sessionkit/` holds beside its settings, and where the mail tool keeps
+its mail. How the settings in these places
 stack is the settings specification (`openspec/specs/settings/spec.md`).
 
 Not yet specified, and so not required here:
@@ -178,6 +179,100 @@ package's directory, and SHALL NOT read the folders beside it.
   that package
 - **THEN** it reads files under `~/.sessionkit/tools/settings/` only, and no
   file under `~/.sessionkit/tools/accounts/` is read or listed
+
+### Requirement: The mail tree is under one mail root
+
+The mail tool SHALL keep its mail under one folder, the mail root:
+`$SESSIONMAIL_ROOT` when it is set and not empty, else the `root` key in
+`~/.sessionkit/mail/settings/mail.json`, else `~/.sessionkit/mail`. A
+leading `~` in either SHALL mean the home directory. `SESSIONMAIL_ROOT`
+SHALL name the mail root itself, never the folder of boxes in it; the older
+names `SESSION_MAIL_ROOT` and `MAIL_ROOT` SHALL NOT be read. On the default
+root the mail tree sits in the mail package's directory, beside
+`settings/`. Under the mail root:
+
+- `stores/` SHALL hold the boxes, one maildir each, `<box>/` with `cur/`,
+  `new/` and `tmp/`.
+- `agents/` SHALL hold the boxes instead on a tree made before they moved:
+  while `<root>/agents/` is a directory and `<root>/stores/` is not. A fresh
+  install SHALL make neither `<root>/agents/` nor `~/.mail`.
+- `.notmuch` is the notmuch index of the boxes, when notmuch has built one.
+- `.postfix` holds the host's copy of the map generator and its standing
+  alias lines, on a host where postfix delivers.
+- `.state` holds the map generator's log of a refused rebuild.
+
+The notmuch profile the mail tool reads SHALL be
+`~/.sessionkit/mail/settings/notmuch/<profile>/config` (`sessionkit` by
+default), with the mail root as its database. An older profile, at
+`~/.config/notmuch/<profile>/config` or `~/.notmuch-config.<profile>`, SHALL
+be read instead while it is a real file. A notmuch config that is not the
+mail tool's, `~/.notmuch-config` among them, SHALL NOT be read or written.
+
+A host whose mail was at `~/.mail` keeps it there by `"root": "~/.mail"` in
+`mail.json`, or by a symlink from `~/.sessionkit/mail` to `~/.mail`; its
+boxes stay in `agents/`, and nothing moves. The mail tool SHALL NOT fall back
+to `~/.mail` on its own. `message path` SHALL print each place: `--root`
+the mail root, `--boxes` the folder of boxes, and `--notmuch-config` the
+profile.
+
+#### Scenario: A fresh host
+
+- **GIVEN** a home with no mail tree, no `root` key and no
+  `SESSIONMAIL_ROOT`
+- **WHEN** `message setup` runs
+- **THEN** the boxes are made in `~/.sessionkit/mail/stores/`, the profile
+  is written at `~/.sessionkit/mail/settings/notmuch/sessionkit/config`, and
+  no `~/.mail` or `~/.config/notmuch` is made
+
+#### Scenario: A host whose mail was at `~/.mail`
+
+- **GIVEN** `~/.mail/agents/` holding the boxes, and `"root": "~/.mail"`
+  in `~/.sessionkit/mail/settings/mail.json`
+- **WHEN** `message path --boxes` runs
+- **THEN** it prints `~/.mail/agents`, and no box is moved
+
+#### Scenario: An old tree nobody named
+
+- **GIVEN** `~/.mail/agents/` holding boxes, no `root` key, no
+  `SESSIONMAIL_ROOT`, and no boxes folder in `~/.sessionkit/mail`
+- **WHEN** a `message` command resolves the mail root
+- **THEN** it says once on stderr that `~/.mail/agents` exists and how to
+  name it, and still uses `~/.sessionkit/mail`
+
+#### Scenario: The variable names the root
+
+- **GIVEN** `SESSIONMAIL_ROOT` set to `~/elsewhere`
+- **WHEN** `message path --boxes` runs
+- **THEN** it prints the `stores/` folder in `~/elsewhere`
+
+### Requirement: A package declares its services in `services/`
+
+A package that installs a service SHALL declare it in one JSON file under
+`~/.sessionkit/<package>/services/`, beside `settings/`: either
+`<name>.json`, or `<group>/<agent>.json` for a service run once per agent.
+The file SHALL carry the integer key `service`, which marks it as a service
+file, and SHALL be written by that package's own install. The package's
+uninstall SHALL set the file's `enabled` to `false` and keep the file. The
+kit SHALL find services by reading these files, at these two depths only,
+and SHALL NOT write any of them. A reader of settings SHALL NOT read
+`services/`.
+
+#### Scenario: A service is found from its file
+
+- **GIVEN** `~/.sessionkit/voice/services/talk.json` holding
+  `"service": 1`, `"name": "talk"` and a launchd label under
+  `dev.sessionkit.voice.`
+- **WHEN** `sessionkit service list` runs
+- **THEN** it shows `talk` in the `voice` group, with launchd's state for
+  that label, and writes no file
+
+#### Scenario: A per-agent service is one file per agent
+
+- **GIVEN** `~/.sessionkit/phone/services/bots/` holding one file for each
+  agent that has a bot
+- **WHEN** `sessionkit service list` runs
+- **THEN** each file is one row in the `phone` group, named by the file's
+  `name`
 
 ### Requirement: The session tool's account folder
 

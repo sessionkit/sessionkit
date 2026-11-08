@@ -2,7 +2,9 @@
 
 These pin the SHAPE of the kit, not the children's code: the five children
 are dependencies, held to the ruled list by tests/test_dependency_gate.py
-(the list itself is tests/_ruled_deps.py); every child command is re-declared under
+(the list itself is tests/_ruled_deps.py), and so is settled, the Settings
+app: required, but not a family package, so no plugin or marketplace entry;
+every child command, settled's included, is re-declared under
 [project.scripts]; the plugin depends on the five; the marketplace lists the
 kit plus the five, and nothing else (no voicemode: D11 is unruled).
 """
@@ -19,6 +21,8 @@ ROOT = Path(__file__).resolve().parent.parent
 
 # Each child's [project.scripts], measured from its 0.3.0 wheel, by wheel sha256:
 # mail 8e4d9476, tools 8d089699, phone ac402a39, view 3942f119, voice ebc1b65c.
+# settled (required, not family): from the settings repo's pyproject at 1487963
+# and its 0.1.0 wheel, sha256 d796d326; re-measure from the staged wheel.
 CHILD_SCRIPTS = {
     "message": "sessionmail.message:cli",
     "pager": "sessionmail.pager:cli",
@@ -33,6 +37,7 @@ CHILD_SCRIPTS = {
     "ears-serve": "ears.serve:main",
     "mouth": "mouth.__main__:main",
     "talk": "talk.cli:main",
+    "settled": "settled.cli:main",
 }
 
 

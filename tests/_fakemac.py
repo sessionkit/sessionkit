@@ -16,6 +16,14 @@ help of a pager without the verb (install and migrate only, as measured on
 an older sessionmail); `pager_on_rc` makes `on` exit with that number
 and a stderr line, writing nothing.
 
+The plugin versions row (SK-244) reads two stubs. `claude plugin list --json`
+lists the kit's plugin (the `plugin` flag) and the five family plugins, each
+at 0.3.1 unless `plugin_ver.NAME` holds another version, and leaves out any
+with `plugin_absent.NAME`. `sessionkit --version` prints the kit and the five
+packages at 0.3.1 unless `pkg_ver.NAME` holds another (`not installed` too).
+`plugin_json_min`, `plugin_json_fails` and `sk_version_fails` give minified
+JSON, a claude with no --json, and a sessionkit whose --version fails.
+
 The script has no test seam: it calls each tool by name. The one change a
 test makes to its copy is the BREW_PATHS line, pointed at the scratch
 folder, because Homebrew's real prefixes are outside any test's reach.
@@ -163,13 +171,37 @@ esac
   "tool install")
     [ -f "$S/kit_fails" ] && { echo "error: your requirements are unsatisfiable" >&2; exit 1; }
     touch "$S/kit"; mkdir -p "$HOME/.local/bin"
-    cp "$STUB_TOOLS/sessionkit" "$STUB_TOOLS/ears" "$STUB_TOOLS/pager" "$HOME/.local/bin/" ;;
+    cp "$STUB_TOOLS/sessionkit" "$STUB_TOOLS/ears" "$STUB_TOOLS/pager" "$STUB_TOOLS/settled" "$HOME/.local/bin/" ;;
 esac
 """,
     "claude": LOG
     + """case "$*" in
   --version) echo "2.1.310 (Claude Code)" ;;
   "plugin list") [ -f "$S/plugin" ] && echo "  sessionkit@sessionkit" ;;
+  "plugin list --json")
+    # As Claude Code 2.1.312 prints it (measured): pretty-printed, unless
+    # plugin_json_min. Each of the six is at plugin_ver.NAME, else 0.3.1, and
+    # absent when plugin_absent.NAME is set. sessionkit's own is the plugin flag.
+    [ -f "$S/plugin_json_fails" ] && { echo "error: unknown option '--json'" >&2; exit 1; }
+    min=no; [ -f "$S/plugin_json_min" ] && min=yes
+    if [ $min = yes ]; then printf '['; else printf '[\\n'; fi
+    first=yes
+    for n in sessionkit sessionmail sessiontools sessionphone sessionview sessionvoice; do
+      if [ "$n" = sessionkit ]; then [ -f "$S/plugin" ] || continue; fi
+      [ -f "$S/plugin_absent.$n" ] && continue
+      v=$(cat "$S/plugin_ver.$n" 2>/dev/null || echo 0.3.1)
+      if [ $first = no ]; then
+        if [ $min = yes ]; then printf ','; else printf ',\\n'; fi
+      fi
+      first=no
+      # A nested "version" after the plugin's own, as an mcpServers entry can have.
+      if [ $min = yes ]; then
+        printf '{"id":"%s@sessionkit","version":"%s","scope":"user","mcpServers":{"x":{"version":"9.9"}}}' "$n" "$v"
+      else
+        printf '  {\\n    "id": "%s@sessionkit",\\n    "version": "%s",\\n    "scope": "user",\\n    "mcpServers": {\\n      "x": {\\n        "version": "9.9"\\n      }\\n    }\\n  }' "$n" "$v"
+      fi
+    done
+    if [ $min = yes ]; then printf ']\\n'; else printf '\\n]\\n'; fi ;;
   "plugin marketplace list") [ -f "$S/market" ] && echo "  sessionkit" ;;
   "plugin marketplace add "*) touch "$S/market" ;;
   "plugin install "*) touch "$S/plugin" ;;
@@ -178,6 +210,17 @@ exit 0
 """,
     "sessionkit": LOG
     + """case "$*" in
+  # As cli.py version_lines() prints it: the kit, then one line per child,
+  # the family, then the apps (settled, on its own version line: SK-258).
+  # Each is at pkg_ver.NAME, else 0.3.1 (settled 0.1.0); "not installed" is a
+  # value too.
+  --version)
+    [ -f "$S/sk_version_fails" ] && { echo "Error: No such option: --version" >&2; exit 2; }
+    echo "sessionkit, version $(cat "$S/pkg_ver.sessionkit" 2>/dev/null || echo 0.3.1)"
+    for n in sessionmail sessiontools sessionphone sessionview sessionvoice; do
+      printf '  %-12s  %s\\n' "$n" "$(cat "$S/pkg_ver.$n" 2>/dev/null || echo 0.3.1)"
+    done
+    printf '  %-12s  %s\\n' settled "$(cat "$S/pkg_ver.settled" 2>/dev/null || echo 0.1.0)" ;;
   "setup --dry-run")
     if [ -f "$S/setup_dry_rc" ]; then echo "TODO notmuch: index the mail"; exit "$(cat "$S/setup_dry_rc")"; fi
     [ -f "$S/setup" ] && exit 0
@@ -190,6 +233,9 @@ exit 0
     exit "$rc" ;;
 esac
 """,
+    # settled, the Settings app: the kit re-exports its command (SK-258). It
+    # only logs, so a run that asks it anything shows in calls.log.
+    "settled": LOG,
     "ears": LOG
     + """case "$*" in
   backends)
@@ -387,7 +433,7 @@ class FakeMac:
 
     def everything(self) -> FakeMac:
         self.with_brew().with_brew_set().with_local(
-            "uv", "claude", "sessionkit", "ears", "pager"
+            "uv", "claude", "sessionkit", "ears", "pager", "settled"
         ).with_hooks_on()
         for f in (
             "kit",

@@ -231,7 +231,7 @@ def test_section_8_names_both_safety_warnings_with_their_detail():
     flat = " ".join(_section_8().split())
     assert "⚠️ **Account tokens.** `~/.sessionkit/tools/accounts/`" in flat
     assert "[Accounts][uninstall-accounts]" in flat
-    assert "⚠️ **VoiceMode shares some of these files**" in flat
+    assert "⚠️ **VoiceMode shares the mouth's mail box.**" in flat
     assert "Skip the lines marked \"No VoiceMode\"" in flat
     assert "**Only if you want it gone. This cannot be undone.**" in flat
 
@@ -274,6 +274,70 @@ def test_no_line_deletes_from_library_logs():
         for line in text.splitlines():
             if re.match(r"\s*(find|rmdir) ", line):
                 assert "Library/Logs" not in line, line
+
+
+# Each package's folders from before its state moved, measured from its merged
+# master (tools a5a2120, voice dfe20bc, mail 72d949a, phone 7332b9d, view
+# 95707a2). The uninstall rule (2026-10-25; SK-218 (d), SK-220): an uninstall
+# never deletes an old path; each page says where the old data is and that it is
+# left alone.
+OLD_PATHS = (
+    "/.session", "/.local/share/sessiontools", "/.config/sessiontools", "/.sessionmail",
+    "/.sessionvoice", "/.voicemode", "/.ears", "/.local/state/ears", "/.local/state/audio",
+    "/.local/share/ears/speakers", "/.sessionphone", "/.local/state/sessionview",
+    "/.local/state/herd",
+    # mail 72d949a: the old default root (`OLD_DEFAULT_MAIL_ROOT`), read only when a
+    # Mac names it, and the old profile place, read only while it is a real file.
+    "/.mail", "/.config/notmuch/sessionkit",
+)
+
+
+# Inside an old folder but not old: the speakers' venv stays where it was by
+# ruling, beside the speech venv (sessionvoice home.py SPEAKERS_VENV).
+CURRENT_UNDER_OLD = ("/.local/share/ears/speakers/venv",)
+
+
+def _names_old_path(arg: str) -> str | None:
+    path = arg.replace('"', "").rstrip("/")
+    tail = path.split("${HOME:?}", 1)[-1]
+    if any(tail == c or tail.startswith(c + "/") for c in CURRENT_UNDER_OLD):
+        return None
+    for old in OLD_PATHS:
+        if tail == old or tail.startswith(old + "/"):
+            return old
+    return None
+
+
+def test_no_line_deletes_an_old_path():
+    for text in (_section_8(), UNINSTALL_DOC):
+        for _, args in _rm_commands(text):
+            assert not any(_names_old_path(a) for a in args), args
+        for line in text.splitlines():
+            if re.match(r"\s*find ", line) and ("-delete" in line or "-exec" in line):
+                root = re.match(r'\s*find ("[^"]+"|\S+)', line).group(1)
+                assert not _names_old_path(root), line
+    # rmdir removes only an empty folder, so an old place in it stays: the two
+    # voice folders step 6 empties are the only rmdirs near an old path.
+    rmdirs = {line.strip() for line in _both().splitlines() if re.match(r"\s*rmdir ", line)}
+    near_old = {r for r in rmdirs if _names_old_path(r.split(" ", 1)[1])}
+    assert near_old == {'rmdir "${HOME:?}/.local/share/ears/speakers"'}, near_old
+
+
+def test_install_what_stays_says_what_each_old_folder_holds():
+    # Each old folder the short page leaves alone is named WITH what it still
+    # holds (keys included), not only that it is kept (SK-220 write-006 notes).
+    stays = " ".join(_section_8().split("**What stays.**", 1)[1].split())
+    for old, held in (
+        ("`~/.session`", "(the `session` tool's sessions, seats, agent files and backups)"),
+        ("`~/.local/share/sessiontools/sound`", "(the busy sound's engine)"),
+        ("`~/.config/sessiontools`", "(older backups of your account tokens)"),
+        ("`~/.sessionmail`", "(mail's seat settings and the seats' signing keys)"),
+        ("`~/.ears`", "(what the ears heard and the mouth said, and each seat's place in it)"),
+        ("`~/.cache/ears`", "(such as the voices you enrolled)"),
+        ("`~/.sessionphone`", "(the phone's Delta Chat account and its keys)"),
+        ("`~/.local/state/sessionview`", "(the sidebar's old state and log)"),
+    ):
+        assert f"{old} {held}" in stays, old
 
 
 def test_both_pages_say_the_old_logs_in_library_logs_stay():
@@ -333,9 +397,14 @@ def test_the_off_path_verbs_come_before_step_5_removes_the_session_command():
     assert ref.index("**4. The voice") < off_path
     assert off_path < ref.index("**5. The plugins and the kit command")
     assert off_path < ref.index("  session pane-state agent off\n")
-    # `off` alone keeps the engine binaries it built (PROGRAM files); only
-    # `--purge` removes them (sessiontools sound/service.py `cmd_off`).
-    assert off_path < ref.index("  session sound engine off --purge\n")
+    # `off` alone keeps the engine binaries it built. `--purge` removes them
+    # from the folder `session path sound` resolves (sessiontools
+    # sound/service.py `cmd_off`), which on a Mac that built the engine before
+    # its folder moved is the OLD one: an uninstall never deletes there.
+    assert off_path < ref.index("  session sound engine off\n")
+    assert "--purge\n" not in "".join(_blocks(_both()))
+    flat = " ".join(ref.split())
+    assert "`~/.local/share/sessiontools/sound/bin/`, an old folder, and it stays" in flat
     # The default model's agent has no off verb: its bootout and plist, as
     # sessiontools' own README gives them.
     item = ref.split("- Loaded the default model's agent", 1)[1].split("\n- ", 1)[0]
@@ -414,10 +483,6 @@ STATUSLINE = ("statusline.sh", "claude-code.d/50-statusline.json")
 # sessiontools' settings.accounts_dir). Its backups hold account tokens, so
 # the data part deletes it only as an item of its own, by its literal path.
 ACCOUNTS = f"{KIT_HOME}/tools/accounts"
-# The account folder from before it moved into the kit's home (sessiontools'
-# registry.OLD_ACCOUNTS_SUBDIR). The kit never writes it, but a host that used
-# `session account` before the move may still hold its token backups there.
-OLD_ACCOUNTS = "${HOME:?}/.config/sessiontools"
 HOME_ITEM = "The kit's home"
 WHOLE_LOOP = re.compile(r"for d in ([\w ]+); do rm -rf ((?:\"\$\{HOME:\?\}/\.sessionkit/\$\{d:\?\}/\w+\" ?)+); done")
 
@@ -461,8 +526,13 @@ def test_part_b_kit_home_lines_stay_inside_a_packages_own_folders():
     # Accounts item's, by its literal path (pinned below).
     args = [a for a in _kit_home_rm_args() if a != ACCOUNTS]
     assert args, "no rm under the kit's home"
+    # sessionmail 0.3.3 keeps a fresh Mac's mail root under the kit's home,
+    # `~/.sessionkit/mail`: its boxes (`stores/`) and its index (`.notmuch`)
+    # are the Mail item's, beside mail's settings/log/state.
+    mail_tree = r"\$\{HOME:\?\}/\.sessionkit/mail/(stores/|\.notmuch$)"
     for arg in args:
-        assert re.match(r"\$\{HOME:\?\}/\.sessionkit/(\w+|\$\{d:\?\})/(settings|log|state)(/|$)", arg), arg
+        assert (re.match(r"\$\{HOME:\?\}/\.sessionkit/(\w+|\$\{d:\?\})/(settings|log|state)(/|$)", arg)
+                or re.match(mail_tree, arg)), arg
 
 
 def test_no_rm_deletes_a_shared_root_whole():
@@ -474,8 +544,9 @@ def test_no_rm_deletes_a_shared_root_whole():
 
 def test_shared_roots_are_only_ever_rmdired():
     part_b = _part_b()
-    for root in ("${HOME:?}/.mail", "${HOME:?}/.session", "${HOME:?}/.session/agents", KIT_HOME):
-        assert f'rmdir "{root}"' in part_b
+    assert f'rmdir "{KIT_HOME}"' in part_b
+    # ~/.mail is the old mail tree: no line touches it, not even an rmdir.
+    assert '"${HOME:?}/.mail' not in part_b
     assert f'rmdir "{KIT_HOME}/tools/settings"' in part_b
     assert f'for d in mail voice view phone tools; do rmdir "{KIT_HOME}/${{d:?}}"; done' in part_b
 
@@ -497,11 +568,12 @@ def test_part_b_deletes_the_notmuch_index_only_when_mail_setup_made_it():
     # boxes: its rm is a line of its own, named for the one case it is the kit's.
     mail = _part_b_item("Mail")
     flat = " ".join(mail.split())
-    index = '"${HOME:?}/.mail/.notmuch"'
+    index = '"${HOME:?}/.sessionkit/mail/.notmuch"'
     lines = [line.strip() for line in mail.splitlines() if re.match(r"\s*(rm|rmdir) ", line)]
     [own] = [line for line in lines if index in line]
-    assert own == f"rm -rf {index}"
-    assert 'rm -rf "${HOME:?}/.mail/agents/mouth"' in lines
+    # Only the tree sessionmail 0.3.3 makes; the old tree's index stays with it.
+    assert own == "rm -rf " + index
+    assert 'rm -rf "${HOME:?}/.sessionkit/mail/stores/mouth"' in lines
     before = flat.split(" ".join(own.split()), 1)[0]
     assert "Delete it only if mail setup made the profile for it" in before
     # Each answer of the profile line is its own labelled bullet, and the
@@ -514,8 +586,11 @@ def test_part_b_deletes_the_notmuch_index_only_when_mail_setup_made_it():
     assert "- It said `wrote`: mail setup then ran `notmuch new` once on that profile" in before
     assert "you then ran section 5's `notmuch new`" not in flat
     assert before.rindex("- It said `wrote`") > before.rindex("- You cannot tell")
-    # The mail folder's rmdir comes after the index line, so it can empty it.
-    assert lines.index(own) < lines.index('rmdir "${HOME:?}/.mail"')
+    # Through a link to ~/.mail the line would reach the old tree's index: that
+    # Mac is told to leave it, before the bullet that deletes.
+    assert ("- `~/.sessionkit/mail` is a symlink to `~/.mail`: leave it. The index behind"
+            " the link is the old tree's, and it stays.") in before
+    assert before.rindex("- It said `wrote`") > before.rindex("is a symlink to `~/.mail`")
 
 
 def test_part_b_explains_each_message_its_rmdir_lines_print():
@@ -538,24 +613,17 @@ def test_part_b_removes_the_view_settings_in_the_kits_home_not_the_old_one():
     assert "the sidebar's config and state" in _part_b_item(HOME_ITEM)
 
 
-# The sidebar's old state folder, and the older name it was moved from.
-VIEW_STATE = "${HOME:?}/.local/state/sessionview"
-OLD_VIEW_STATE = "${HOME:?}/.local/state/herd"
-
-
-def test_part_a_removes_the_sidebars_old_state_by_its_name_then_its_older_one():
-    step_6 = _step(6)
-    removed = [line.strip() for line in step_6.splitlines() if line.startswith("rm -rf ")]
-    new, old = f'rm -rf "{VIEW_STATE}"', f'rm -rf "{OLD_VIEW_STATE}"'
-    assert new in removed and old in removed, removed
-    assert removed.index(new) < removed.index(old), removed
-    flat = " ".join(step_6.split())
-    # Its state is in the kit's home now; the old folder is an upgrade's.
-    assert "The sidebar keeps its state in the kit's home now, `~/.sessionkit/view/state`" in flat
-    assert "Its older folder, `~/.local/state/sessionview`, is there only on a Mac that ran an earlier release" in flat
-    # Each removes one folder, the sidebar's own, never the shared state root.
-    for _, args in _rm_commands(step_6):
-        assert '"${HOME:?}/.local/state"' not in args, args
+def test_the_sidebars_old_state_folders_stay():
+    # sessionview keeps its state in ~/.sessionkit/view/state (lib/state.sh at
+    # its master 95707a2); the old folder keeps the old log and frame pins, and
+    # the older name, ~/.local/state/herd, is moved to it at most once. Both
+    # are old paths: no line deletes either, and What stays names them.
+    for _, args in _rm_commands(_both()):
+        for arg in args:
+            assert "/.local/state/sessionview" not in arg and "/.local/state/herd" not in arg, arg
+    stays = " ".join(_stays().split())
+    assert "`~/.local/state/sessionview` (or its older name, `~/.local/state/herd`)" in stays
+    assert "the sidebar's config and state" in _part_b_item(HOME_ITEM)
 
 
 def _statusline_undo_lines(text: str) -> list[str]:
@@ -602,15 +670,25 @@ def test_part_b_also_removes_what_statusline_install_wrote():
     _assert_undoes_the_statusline(_part_b())
 
 
-# The Mail item's one find: every box but the mouth's, which VoiceMode shares.
-MAIL_ALL_BUT_MOUTH = (
-    'find "${HOME:?}/.mail/agents" -mindepth 1'
-    ' -not -path "${HOME:?}/.mail/agents/mouth"'
-    ' -not -path "${HOME:?}/.mail/agents/mouth/*" -delete'
+# The Mail item's find: every box but the mouth's, which VoiceMode shares, in the
+# tree sessionmail 0.3.3 makes under the kit's home, since `message` is gone by
+# section 3 and no line here deletes on a name the reader sets. The older
+# `~/.mail` is an old folder and stays (OLD_PATHS).
+MAIL_ALL_BUT_MOUTH_NEW = (
+    'find "${HOME:?}/.sessionkit/mail/stores" -mindepth 1'
+    ' -not -path "${HOME:?}/.sessionkit/mail/stores/mouth"'
+    ' -not -path "${HOME:?}/.sessionkit/mail/stores/mouth/*" -delete'
 )
 # Session records: the agent files setup wrote (and any the reader wrote) in
 # the fresh-Mac agents folder; never the links an older host keeps there.
-AGENT_FILES = 'find "${HOME:?}/.session/agents" -maxdepth 1 -type f -name \'*.md\' -delete'
+# tools' state folder, the state leaf's NEW path and every other leaf's parent:
+# on a fresh Mac it holds the agents folder setup writes to,
+# `agent/config`, and all the rest of the session tool's records, so the
+# Session records item deletes it whole, by its literal path.
+TOOLS_STATE = "${HOME:?}/.sessionkit/tools/state"
+CACHE_EARS = ('find "${HOME:?}/.cache/ears" -mindepth 1 '
+              "-not -name 'ears-mail.state.json*' -delete")
+TOOLS_STATE_RM = f'rm -rf "{TOOLS_STATE}"'
 # The speech weights: only empty folders left in the hub's blobs folder.
 EMPTY_BLOB_DIRS = 'find "${hub:?}/blobs" -mindepth 1 -type d -empty -delete'
 
@@ -619,7 +697,7 @@ def test_every_find_that_deletes_is_one_the_tests_pin():
     for line in _both().splitlines():
         if re.match(r"\s*find ", line) and "-delete" in line:
             line = line.strip()
-            if line in (MAIL_ALL_BUT_MOUTH, AGENT_FILES, EMPTY_BLOB_DIRS):
+            if line in (MAIL_ALL_BUT_MOUTH_NEW, CACHE_EARS, EMPTY_BLOB_DIRS):
                 continue
             assert line.startswith(f'find "{TOOLS_SETTINGS}" '), line
 
@@ -720,21 +798,20 @@ def test_part_b_names_the_account_folder_and_warns_before_its_one_line():
     assert "the uninstall leaves these tokens on disk until you run this line" in flat
     assert "cannot be undone: to keep your accounts, skip it" in flat
     assert [line.strip() for line in item.splitlines() if re.match(r"\s*(rm|rmdir|find) ", line)] \
-        == [f'rm -rf "{ACCOUNTS}"',
-            f'rm -rf "{OLD_ACCOUNTS}"']
+        == [f'rm -rf "{ACCOUNTS}"']
     # The kit's home points at it, and at the tree spec that puts it beside settings/.
     home = " ".join(_part_b_item(HOME_ITEM).split())
     assert "`openspec/specs/tree/spec.md`" in home
     assert (ROOT / "openspec/specs/tree/spec.md").is_file()
     assert "The account folder beside its settings is the item above" in home
-    assert "or the account folder you kept" in home
+    assert "the account folder you kept" in home
 
 
 def test_part_b_deletes_the_account_folder_before_the_kit_home_rmdirs_run():
     # So the kit's home item's rmdir lines can empty tools/ and ~/.sessionkit.
     part_b = _part_b()
     assert part_b.index(f'rm -rf "{ACCOUNTS}"') < part_b.index(f"\n### {HOME_ITEM}\n")
-    assert "Accounts comes before the kit's home" in " ".join(part_b.split())
+    assert "Session records and Accounts come before the kit's home" in " ".join(part_b.split())
     # The program part deletes nothing under the account folder.
     assert not any("accounts" in a for _, args in _rm_commands(_part_a()) for a in args)
 
@@ -979,18 +1056,28 @@ def test_the_ride_along_hook_says_how_to_remove_its_empty_folder():
 # Program state the voice, mail, the sidebar and the phone leave outside the
 # folders the data part names.
 PROGRAM_STATE = (
-    ".local/state/ears/call-ears/live", ".local/state/ears/call-ears/capture-1.log",
-    ".local/state/ears/call-tap/LISTEN-OFF",
     ".cache/session-mail/ext/v1/stamp",
-    ".local/state/audio/devices.json",
     ".cache/ears/silero_vad.onnx", ".cache/ears/run/keeper.pid",
+    ".cache/ears/bin/apple-speech", ".cache/ears/smart-turn-v3.2-gpu.onnx",
     ".local/share/ears/speech/bin/python",
-    ".local/state/sessionview/mutt/x", ".local/state/herd/x",
+    ".local/share/ears/speakers/venv/bin/python",
+    ".local/share/ears/separator/installed.json",
     "Library/Caches/imgtext-1a2b3c4d/com.apple.e5rt.e5bundlecache/x",
 )
-# Not the program's: user data the program part keeps, and other tools' files.
-NOT_PROGRAM = (
+# The voice's old places inside the folders step 6 cleans (sessionvoice
+# src/ears/home.py ITEMS at its master dfe20bc): the turn mail's place and the
+# enrolled voices, with the originals `ears home migrate` keeps beside a link.
+VOICE_OLD_IN_PROGRAM = (
+    ".cache/ears/ears-mail.state.json",
+    ".cache/ears/ears-mail.state.json.pre-sessionkit",
     ".local/share/ears/speakers/me/voice.npy",
+)
+# Not the program's: old places step 6 once deleted, user data, other tools' files.
+NOT_PROGRAM = (
+    *VOICE_OLD_IN_PROGRAM,
+    ".local/state/ears/call-ears/live", ".local/state/ears/call-tap/LISTEN-OFF",
+    ".local/state/audio/devices.json",
+    ".local/state/sessionview/mutt/x", ".local/state/herd/x",
     ".local/state/claude/lock",
     ".local/state/other/x",
     ".cache/huggingface/hub/model",
@@ -1004,12 +1091,28 @@ def test_part_a_step_6_removes_the_program_state(tmp_path, shell):
     if shutil.which(shell) is None:
         pytest.skip(f"no {shell}")
     [block] = _blocks(_step(6))
+    # A fresh Mac: only program state. Every file and folder goes, quietly.
+    _seed(tmp_path, PROGRAM_STATE)
+    done = _run(tmp_path, block, shell)
+    assert _files(tmp_path) == set(), done.stderr
+    assert done.stderr == "", done.stderr
+    assert not (tmp_path / ".cache/ears").exists()
+    assert not (tmp_path / ".local/share/ears").exists()
+    assert not list((tmp_path / "Library/Caches").glob("imgtext-*"))
+
+
+@pytest.mark.parametrize("shell", ["bash", "zsh"])
+def test_part_a_step_6_leaves_every_old_place_and_other_tools_files(tmp_path, shell):
+    if shutil.which(shell) is None:
+        pytest.skip(f"no {shell}")
+    [block] = _blocks(_step(6))
     _seed(tmp_path, PROGRAM_STATE + NOT_PROGRAM)
     done = _run(tmp_path, block, shell)
     assert _files(tmp_path) == set(NOT_PROGRAM), done.stderr
-    assert done.stderr == "", done.stderr
-    assert not (tmp_path / ".local/state/audio").exists()
-    assert not list((tmp_path / "Library/Caches").glob("imgtext-*"))
+    # The only noise is the `Directory not empty` the text explains, from the
+    # three rmdirs whose folder still holds an old place.
+    errors = [line for line in done.stderr.splitlines() if line]
+    assert len(errors) == 3 and all("Directory not empty" in e for e in errors), errors
 
 
 def test_part_a_step_6_names_the_image_readers_cache():
@@ -1019,19 +1122,23 @@ def test_part_a_step_6_names_the_image_readers_cache():
     assert "the `imgtext-*` line prints `no matches found` when there is none" in flat
 
 
-def test_part_a_step_6_deletes_only_the_voices_file_in_the_shared_audio_folder(tmp_path):
-    # The folder's name is generic and its file is read by other tools: the
-    # step deletes the voice's file and the folder only when it is empty.
-    [block] = _blocks(_step(6))
-    for _, args in _rm_commands(block):
-        assert '"${HOME:?}/.local/state/audio"' not in args, args
-    assert 'rmdir "${HOME:?}/.local/state/audio"' in block
-    _seed(tmp_path, PROGRAM_STATE + (".local/state/audio/other.json",))
-    done = _run(tmp_path, block)
-    assert _files(tmp_path) == {".local/state/audio/other.json"}, done.stderr
-    errors = [line for line in done.stderr.splitlines() if line]
-    assert len(errors) == 1 and "Directory not empty" in errors[0], errors
-    assert "`~/.local/state/audio/devices.json`" in _step(6)
+def test_part_a_step_6_names_the_voices_old_places_and_leaves_them():
+    step_6 = _step(6)
+    flat = " ".join(step_6.split())
+    assert "**The voice's old places stay.**" in flat
+    for named in ("`~/.cache/ears/ears-mail.state.json`", "`~/.local/share/ears/speakers`",
+                  "`~/.local/state/ears`", "`~/.local/state/audio/devices.json`"):
+        assert named in flat, named
+    assert "If an `rmdir` says `Directory not empty`, that folder holds one of them: leave it" in flat
+    # The cache is cleaned around the old place, never as a whole folder.
+    [block] = _blocks(step_6)
+    assert CACHE_EARS in block
+    for _, args in _rm_commands(_both()):
+        for arg in args:
+            path = arg.replace('"', "")
+            assert path not in ("${HOME:?}/.cache/ears", "${HOME:?}/.local/share/ears",
+                                "${HOME:?}/.local/share/ears/speakers"), arg
+            assert "/.local/state/ears" not in path and "/.local/state/audio" not in path, arg
 
 
 def test_what_stays_names_claude_codes_state_and_launch_agents_as_not_the_kits():
@@ -1042,189 +1149,210 @@ def test_what_stays_names_claude_codes_state_and_launch_agents_as_not_the_kits()
     assert "Leave it." in flat
 
 
-SESSION_SEED = (
+# tools' fresh-new layout: `session path --json` on an empty
+# HOME names every leaf under ~/.sessionkit/tools/state, and the state leaf IS
+# that folder, so the session list, holders and default-model's backups sit in
+# it beside the nested leaves. setup's agent file is the last one.
+TOOLS_STATE_SEED = (
+    ".sessionkit/tools/state/list/snapshot.json",
+    ".sessionkit/tools/state/pane-state/watch.lock",
+    ".sessionkit/tools/state/sessions/sid-2/mail/marks",
+    ".sessionkit/tools/state/seats/operator/settings/session.json",
+    ".sessionkit/tools/state/agent/data/claude/x",
+    ".sessionkit/tools/state/backups/x.bak",
+    ".sessionkit/tools/state/sound/bin/engine",
+    ".sessionkit/tools/state/agent/config/claude.md",
+)
+# The old folders a Mac that ran the tools before their state moved still has
+# (sessiontools settings.py leaf_old / legacy_agents_dir at its master a5a2120;
+# sessionmail _settings.py old_state_dir at 72d949a): never deleted.
+TOOLS_OLD = (
     ".session/agent/config/x", ".session/seats/s/x", ".session/sessions/sid/mail/marks",
     ".session/sessions/sid/log/mail", ".session/mail/x", ".session/state/list/snapshot.json",
-    ".session/state/pane-state/watch.lock", ".sessionmail/sessions/x",
-    ".session/agents/claude.md",
+    ".session/state/pane-state/watch.lock", ".session/agents/claude.md",
+    ".session/backups/x.bak",
+    ".local/share/sessiontools/sound/bin/engine",
+    ".sessionmail/sessions/x", ".sessionmail/seat-keys/operator.key",
 )
+SESSION_SEED = (*TOOLS_OLD, *TOOLS_STATE_SEED)
+OLD_ROOTS_LS = ('ls -d "${HOME:?}/.session" "${HOME:?}/.local/share/sessiontools" '
+                '"${HOME:?}/.sessionmail"')
 
 
-def test_part_b_session_records_remove_the_session_lists_state_and_setups_agent(tmp_path):
+def test_part_b_session_records_delete_the_new_folder_and_leave_the_old_ones(tmp_path):
     item = _part_b_item("Session records")
-    [block] = _blocks(item)
-    assert "for d in agent seats sessions mail state; do" in block
-    assert AGENT_FILES in block
+    assert _blocks(item) == [TOOLS_STATE_RM + "\n", OLD_ROOTS_LS + "\n"]
     _seed(tmp_path, SESSION_SEED)
-    done = _run(tmp_path, block)
-    assert _files(tmp_path) == set(), done.stderr
-    assert not (tmp_path / ".session").exists()
+    done = _run(tmp_path, _blocks(item)[0])
     assert done.stderr == "", done.stderr
+    assert _files(tmp_path) == set(TOOLS_OLD)
+    assert not (tmp_path / ".sessionkit/tools/state").exists()
 
 
 def test_part_b_session_records_name_the_agent_file_setup_wrote():
-    # sessionkit setup writes NAME.md in ~/.session/agents when
-    # ~/.session/agent/config is not a folder (setup.py agents_root): on a
-    # fresh Mac, so the walk's `rmdir ~/.session` failed on claude.md.
+    # sessionkit setup writes NAME.md in the folder `session path agent
+    # --config` names: on a fresh Mac ~/.sessionkit/tools/state/agent/config,
+    # which the item deletes. An earlier sessionkit wrote ~/.session/agents:
+    # an old folder, named and left.
     from sessionkit import setup
 
-    assert (setup.SESSION_HOME, setup.AGENTS_DIR_NAME) == (".session", "agents")
+    assert setup.AGENTS_PATH_ARGV[:4] == ("session", "path", "agent", "--config")
     flat = " ".join(_part_b_item("Session records").split())
     assert "`sessionkit setup` (section 2) wrote one agent file, `NAME.md`" in flat
-    assert "On a fresh Mac that folder is `~/.session/agents`" in flat
+    assert "the one `session path agent --config` names" in flat
+    assert "On a fresh Mac that folder is `~/.sessionkit/tools/state/agent/config`" in flat
+    assert ("the older agents folder, `~/.session/agents`, where an earlier sessionkit wrote "
+            "its agent file") in flat
     assert "so copy any you want first" in flat
 
 
-def test_part_b_session_records_leave_the_older_agents_links(tmp_path):
-    item = _part_b_item("Session records")
-    flat = " ".join(item.split())
-    assert "`~/.session/agents` may also still hold a link for each agent" in flat
-    assert "`Directory not empty`" in flat
-    [block] = _blocks(item)
-    (tmp_path / ".session/agents").mkdir(parents=True)
-    (tmp_path / ".session/agents/someone").symlink_to(tmp_path / "elsewhere")
-    (tmp_path / ".session/agents/claude.md").write_text("x\n")
-    done = _run(tmp_path, block)
-    assert _files(tmp_path) == {".session/agents/someone"}, done.stderr
+def test_part_b_session_records_delete_the_session_tools_whole_state_folder(tmp_path):
+    # `session path --json` on an empty HOME puts every leaf
+    # under ~/.sessionkit/tools/state, the state leaf being the folder itself.
+    # The item names them and deletes the folder whole, so nothing the tool
+    # wrote is left for the kit's home rmdirs to trip on.
+    flat = " ".join(_part_b_item("Session records").split())
+    assert "The `session` tool keeps these in its state folder, `~/.sessionkit/tools/state`" in flat
+    assert "`session path --json` names each folder in it" in flat
+    for leaf in ("sessions", "seats", "agent", "backups", "sound"):
+        assert f"`{leaf}`" in flat, leaf
+    assert "The line deletes the whole state folder" in flat
+    _seed(tmp_path, TOOLS_STATE_SEED)
+    done = _run(tmp_path, _blocks(_part_b_item("Session records"))[0])
+    assert _files(tmp_path) == set(), done.stderr
+    assert not (tmp_path / ".sessionkit/tools/state").exists()
+    assert (tmp_path / ".sessionkit/tools").is_dir()   # the kit's home rmdirs it
+
+
+def test_part_b_session_records_then_kit_home_empty_a_fresh_hosts_kit_home(tmp_path):
+    # A reported fresh 0.3.3 host: `rmdir ~/.sessionkit/tools` and `rmdir
+    # ~/.sessionkit` failed `Directory not empty` on tools' state. Run in the
+    # page's order, every rmdir succeeds and nothing is left.
+    _seed(tmp_path, TOOLS_STATE_SEED)
+    script = (_part_b_block("Session records") + _part_b_block("Accounts")
+              + _part_b_block(HOME_ITEM))
+    done = _run_kit_home(tmp_path, KIT_FILES + ACCOUNT_FILES, script)
+    assert not (tmp_path / ".sessionkit").exists(), (_left(tmp_path), done.stderr)
+    errors = [line for line in done.stderr.splitlines() if line]
+    # Only the look at the three old folders, which a fresh Mac never had.
+    assert len(errors) == 3 and all("No such file or directory" in e for e in errors), errors
+    assert all(".sessionkit" not in e for e in errors), errors
+
+
+def test_part_b_kit_home_alone_names_the_kept_tools_state(tmp_path):
+    # A reader who skips Session records keeps tools' state; the kit's home
+    # item says that is why `tools` and `~/.sessionkit` stay.
+    flat = " ".join(_part_b_item(HOME_ITEM).split())
+    assert ("or the `session` tool's state folder if you skipped "
+            "[Session records][session-records]") in flat
+    assert "\n[session-records]: #session-records\n" in _ref()
+    _seed(tmp_path, TOOLS_STATE_SEED)
+    done = _run_kit_home(tmp_path, KIT_FILES)
+    assert _left(tmp_path) == {p.removeprefix(".sessionkit/") for p in TOOLS_STATE_SEED}
     errors = [line for line in done.stderr.splitlines() if line]
     assert len(errors) == 2 and all("Directory not empty" in e for e in errors), errors
 
 
-def test_part_b_session_records_on_a_host_with_no_agents_folder(tmp_path):
-    # The text names the two `No such file or directory` lines, and they are all.
+def test_part_b_session_records_name_each_old_folder_and_what_it_holds():
     flat = " ".join(_part_b_item("Session records").split())
-    assert ("On a host with no `~/.session/agents`, the second and third lines print "
-            "`No such file or directory`: that is fine.") in flat
-    _seed(tmp_path, SESSION_SEED[:-1])
-    done = _run(tmp_path, _blocks(_part_b_item("Session records"))[0])
-    errors = [line for line in done.stderr.splitlines() if line]
-    assert len(errors) == 2 and all("No such file or directory" in e for e in errors), errors
-    assert not (tmp_path / ".session").exists()
+    assert "**The old folders stay.** An uninstall never deletes an old folder" in flat
+    for named in ("**`~/.session`:**", "**`~/.local/share/sessiontools/sound`:**",
+                  "**`~/.sessionmail`:**", "the seats' signing keys (`seat-keys`)"):
+        assert named in flat, named
+    assert "To see which of them this Mac has" in flat
 
 
-# What sessionvoice writes on a fresh install: everything under its own home,
-# ~/.sessionvoice, then ~/.ears and the speakers' home. Its services' logs are
-# in ~/.sessionkit/voice/log (the kit's home item); the older ones in
-# ~/Library/Logs/ears stay.
+def test_part_b_session_records_leave_the_older_agents_links(tmp_path):
+    # A host that ran `session` before its agents folder moved: the old folder,
+    # its files and its links all stay.
+    (tmp_path / ".session/agents").mkdir(parents=True)
+    (tmp_path / ".session/agents/someone").symlink_to(tmp_path / "elsewhere")
+    _seed(tmp_path, SESSION_SEED)
+    done = _run(tmp_path, _part_b_block("Session records"))
+    assert done.stderr == "", done.stderr
+    assert _files(tmp_path) == set(TOOLS_OLD) | {".session/agents/someone"}
+
+
+# What sessionvoice writes on a fresh install: everything under its state
+# root, ~/.sessionkit/voice/state (src/ears/home.py NEW and ITEMS at its master
+# dfe20bc), which is the voice's `state` and goes with the kit's home.
 VOICE_FRESH = (
+    "voice/state/logs/conversations/heard_2030-06-09.jsonl",
+    "voice/state/logs/conversations/heard.lock",
+    "voice/state/logs/conversations/speakers_2030-06-09.jsonl",
+    "voice/state/state/heard-cursor/sid", "voice/state/state/missed-reply/clip.wav",
+    "voice/state/audio/2030-06-09/120000-000-1.wav",
+    "voice/state/mouth/playing.json", "voice/state/mouth/done/x",
+    "voice/state/talk/token", "voice/state/speakers/me/voice.npy",
+    "voice/state/seats/claude/heard.state", "voice/state/call-tap/LISTEN-OFF",
+    "voice/state/audio-devices.json", "voice/state/ears-mail.state.json",
+)
+# The old places a Mac that ran the voice before its state moved still has:
+# never deleted, by any line on either page.
+VOICE_OLD = (
     ".sessionvoice/logs/conversations/heard_2030-06-09.jsonl",
-    ".sessionvoice/logs/conversations/heard.lock",
-    ".sessionvoice/logs/conversations/speakers_2030-06-09.jsonl",
-    ".sessionvoice/state/heard-cursor/sid", ".sessionvoice/state/heard-cursor/sid.lock",
-    ".sessionvoice/state/missed-reply/clip.wav",
-    ".sessionvoice/audio/2030-06-09/120000-000-1.wav",
-    ".sessionvoice/mouth/playing.json", ".sessionvoice/mouth/done/x",
-    ".sessionvoice/mouth/audio/line.wav",
-    ".sessionvoice/talk/token",
-    ".ears/heard.state",
-    ".local/share/ears/speakers/me/voice.npy",
-)
-# The files only sessionvoice writes, where an older sessionvoice kept them,
-# in ~/.voicemode.
-VOICE_LEGACY = (
-    ".voicemode/logs/conversations/speakers_2030-06-09.jsonl",
-    ".voicemode/talk/token",
-    ".voicemode/state/missed-reply/clip.wav",
-    ".voicemode/audio/2030-06-09/120000-000-1.wav",
-)
-# What VoiceMode writes too (its own heard log, the log's lock, its cursors
-# and its mouth): deleted only on the reader's word.
-VOICE_SHARED = (
+    ".sessionvoice/talk/token", ".sessionvoice.pre-sessionkit/talk/token",
     ".voicemode/logs/conversations/heard_2030-06-09.jsonl",
-    ".voicemode/logs/conversations/heard.lock",
-    ".voicemode/mouth/playing.json", ".voicemode/state/heard-cursor/sid",
-)
-# VoiceMode's own files, Claude Code's, and the old logs: never touched.
-VOICEMODE_OWN = (
-    ".voicemode/voicemode.env", ".voicemode/voices/a.pt", ".voicemode/services/whisper/x",
-    ".voicemode/logs/conversations/exchanges_2030-06-09.jsonl",
-    ".voicemode/audio/2030/06/20300609_120000_tts.wav", ".voicemode/audio/flat.wav",
-    ".claude/heard.state.not-ours", ".local/state/claude/lock",
-    "Library/Logs/ears/keeper.log",
+    ".voicemode/logs/conversations/speakers_2030-06-09.jsonl",
+    ".voicemode/talk/token", ".voicemode/mouth/playing.json",
+    ".voicemode/state/heard-cursor/sid", ".voicemode/state/missed-reply/clip.wav",
+    ".voicemode/audio/2030-06-09/120000-000-1.wav",
+    ".ears/heard.state",
+    ".local/state/ears/call-tap/LISTEN-OFF", ".local/state/audio/devices.json",
+    ".local/share/ears/speakers/me/voice.npy", ".cache/ears/ears-mail.state.json",
 )
 
 
-def test_part_b_voice_deletes_the_heard_log_where_a_fresh_install_writes_it():
+def test_part_b_voice_names_the_state_folder_the_kit_home_deletes():
     item = _part_b_item("Voice")
     flat = " ".join(item.split())
-    first = _blocks(item)[0]
-    assert first.splitlines() == ['rm -rf "${HOME:?}/.sessionvoice" "${HOME:?}/.ears"',
-                                  'rm -rf "${HOME:?}/.local/share/ears"']
+    assert _blocks(item) == ["ears services status\n"]
+    assert not _rm_commands(item)
     for named in ("`heard_*.jsonl`", "`speakers_*.jsonl`", "`talk/token`",
                   "every line the mouth spoke, which it keeps by default",
-                  "If you turned recording on", "`~/.sessionvoice`", "`~/.ears`",
-                  "`~/.sessionkit/voice/log/`"):
+                  "If you turned recording on", "`~/.sessionkit/voice/state`",
+                  "`ears home state-dir` prints it", "`~/.sessionkit/voice/log/`",
+                  "so [the kit's home][home] deletes it", "This item has no line of its own"):
         assert named in flat, named
+    home = " ".join(_part_b_item(HOME_ITEM).split())
+    assert "the voice's state ([Voice][voice])" in home
 
 
-def test_part_b_voice_in_a_temp_home_removes_what_the_voice_wrote(tmp_path):
-    fresh, legacy, shared = _blocks(_part_b_item("Voice"))
-    _seed(tmp_path, VOICE_FRESH + VOICE_LEGACY + VOICE_SHARED + VOICEMODE_OWN)
-    done = _run(tmp_path, fresh + legacy)
+def test_part_b_voice_state_goes_with_the_kit_home_and_the_old_places_stay(tmp_path):
+    _seed(tmp_path, VOICE_OLD)
+    done = _run_kit_home(tmp_path, KIT_FILES + VOICE_FRESH)
     assert done.stderr == "", done.stderr
-    assert _files(tmp_path) == set(VOICE_SHARED + VOICEMODE_OWN)
-    assert not (tmp_path / ".sessionvoice").exists() and not (tmp_path / ".ears").exists()
-    # The shared folders go only with the line the reader chooses.
-    done = _run(tmp_path, shared)
-    assert done.stderr == "", done.stderr
-    assert _files(tmp_path) == set(VOICEMODE_OWN)
+    assert not (tmp_path / ".sessionkit").exists(), _left(tmp_path)
+    assert _files(tmp_path) == set(VOICE_OLD)
 
 
-def test_part_b_voice_lines_do_nothing_where_nothing_is_there(tmp_path):
-    _seed(tmp_path, VOICEMODE_OWN)
-    done = _run(tmp_path, "".join(_blocks(_part_b_item("Voice"))))
-    assert done.stderr == "", done.stderr
-    assert _files(tmp_path) == set(VOICEMODE_OWN)
-
-
-def test_part_b_voice_never_deletes_voicemodes_own_files():
-    item = _part_b_item("Voice")
-    args = [a.replace('"', "") for _, args in _rm_commands(item) for a in args]
-    # sessionvoice files its kept turn audio in dated folders; VoiceMode files
-    # its own by year, then month. Only the dated folders go.
-    dated = "audio/[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]"
-    for arg in args:
-        if "/.voicemode" in arg:
-            rel = arg.split("/.voicemode/", 1)[1]
-            assert not rel.startswith(("voicemode.env", "voices", "services", "eval")), arg
-            assert "exchanges_" not in rel, arg
-            assert not rel.startswith("audio") or rel == dated, arg
-    assert f"${{HOME:?}}/.voicemode/{dated}" in args
-    assert "never delete it whole" in " ".join(item.split())
-
-
-def test_part_b_voice_keeps_voicemodes_heard_log_unless_the_reader_drops_voicemode():
-    # VoiceMode writes the same heard log, with the same lock, in ~/.voicemode,
-    # and keeps its cursors into it. Only the block the reader chooses deletes
-    # them, with the mouth.
-    item = _part_b_item("Voice")
-    fresh, legacy, shared = _blocks(item)
-    for block in (fresh, legacy):
-        assert "heard_" not in block and "heard.lock" not in block and "heard-cursor" not in block
-    assert shared.splitlines() == [
-        'rm -f "${HOME:?}"/.voicemode/logs/conversations/heard_*.jsonl',
-        'rm -f "${HOME:?}/.voicemode/logs/conversations/heard.lock"',
-        'rm -rf "${HOME:?}/.voicemode/mouth" "${HOME:?}/.voicemode/state/heard-cursor"',
-    ]
-    flat = " ".join(item.split())
-    assert "VoiceMode writes the same transcript" in flat
-    # Each path is its own labelled bullet; the block sits under the one that deletes.
-    before = flat.split(" ".join(shared.splitlines()[0].split()), 1)[0]
-    assert "- You use VoiceMode: keep them. The lines below would delete VoiceMode's own" in before
-    assert before.rstrip().endswith("- No VoiceMode: delete them: ```bash"), before[-80:]
-    assert "stay in that transcript, beside VoiceMode's, until you delete it" in flat
+def test_part_b_voice_names_each_old_place_and_leaves_it():
+    flat = " ".join(_part_b_item("Voice").split())
+    assert "**The old places stay.**" in flat
+    assert "until `ears home migrate` moves it ([the step][voice-move])" in flat
+    for named in ("**`~/.sessionvoice`:**", "**`~/.voicemode`:**", "**`~/.ears`:**",
+                  "`~/.local/state/ears`", "`~/.local/state/audio/devices.json`",
+                  "`~/.local/share/ears/speakers`", "`~/.cache/ears/ears-mail.state.json`",
+                  "`<path>.pre-sessionkit`. Both stay"):
+        assert named in flat, named
+    assert "VoiceMode keeps its own files there too" in flat
+    assert ("\n[voice-move]: troubleshooting.md#the-voice-state-is-still-in-the-old-root\n"
+            in _ref())
+    for _, args in _rm_commands(_both()):
+        for arg in args:
+            assert ".voicemode" not in arg and ".sessionvoice" not in arg, arg
+            assert arg.replace('"', "") != "${HOME:?}/.ears", arg
 
 
 def test_part_b_voice_names_every_home_sessionvoice_may_have_chosen():
-    # sessionvoice's home is $SESSIONVOICE_HOME, then $VOICEMODE_BASE_DIR, then
-    # ~/.sessionvoice or ~/.voicemode, whichever already holds a heard log. A
-    # fresh install adopts ~/.voicemode when VoiceMode's converse wrote first.
+    # sessionvoice's root is $SESSIONVOICE_HOME, then $VOICEMODE_BASE_DIR, then
+    # ~/.sessionvoice, the new root, or ~/.voicemode, whichever holds a heard
+    # log (src/ears/home.py). A root the reader set is never touched.
     flat = " ".join(_part_b_item("Voice").split())
     assert "If your shell sets `SESSIONVOICE_HOME`, or VoiceMode's `VOICEMODE_BASE_DIR`" in flat
     assert "Nothing in the kit sets either, so if one is set, you set it" in flat
-    assert "If it names another folder, these lines miss it" in flat
-    assert "an older sessionvoice wrote one there, or VoiceMode's `converse` did" in flat
-    assert "the older sessionvoice heard" not in flat
+    assert "this page does not touch that folder" in flat
+    assert "an older sessionvoice, or VoiceMode's `converse`, wrote the transcript there first" in flat
 
 
 def test_part_b_voice_names_heard_state_in_a_seat_folder_and_never_deletes_that_folder():
@@ -1271,23 +1399,24 @@ def test_part_b_kit_home_names_the_new_log_folders():
     assert "The bot's logs are in `~/.sessionkit/phone/log/`" in phone
 
 
-def test_part_b_accounts_names_the_folder_from_before_the_move_and_warns(tmp_path):
+def test_part_b_accounts_names_the_folder_from_before_the_move_and_leaves_it(tmp_path):
+    # sessiontools account/registry.py OLD_ACCOUNTS_SUBDIR (master a5a2120):
+    # never read, never written, so an old folder, and never deleted.
     item = _part_b_item("Accounts")
     flat = " ".join(item.split())
+    assert "**The old account folder stays.**" in flat
     assert "`~/.config/sessiontools/`" in flat
     assert "**Its backups are your account tokens too.**" in flat
-    assert "to keep those accounts, skip it" in flat
-    assert "It leaves the rest of `~/.config` alone" in flat
-    for _, args in _rm_commands(item):
-        assert '"${HOME:?}/.config"' not in args, args
-    # Each folder is its own block, so a reader who keeps one pastes only the other.
-    blocks = _blocks(item)
-    assert [b.strip() for b in blocks] == [f'rm -rf "{ACCOUNTS}"', f'rm -rf "{OLD_ACCOUNTS}"']
-    block = blocks[1]
-    kept = (".config/notmuch/sessionkit/config", ".config/other/x")
-    _seed(tmp_path, (".config/sessiontools/accounts.json",
-                     ".config/sessiontools/token-file-backups/20300609T000000Z.token") + kept)
-    done = _run(tmp_path, block)
+    assert "this page leaves it alone, with the rest of `~/.config`" in flat
+    for _, args in _rm_commands(_both()):
+        for arg in args:
+            assert ".config/sessiontools" not in arg and arg != '"${HOME:?}/.config"', arg
+    assert [b.strip() for b in _blocks(item)] == [f'rm -rf "{ACCOUNTS}"']
+    kept = (".config/sessiontools/accounts.json",
+            ".config/sessiontools/token-file-backups/20300609T000000Z.token",
+            ".config/notmuch/sessionkit/config", ".config/other/x")
+    _seed(tmp_path, kept)
+    done = _run(tmp_path, _part_b_block("Accounts"))
     assert done.stderr == "", done.stderr
     assert _files(tmp_path) == set(kept)
 
@@ -1406,36 +1535,57 @@ def test_homebrews_tools_are_each_a_labelled_choice():
         assert f"brew install {tool}" in INSTALL_DOC, tool
 
 
-# The mouth's queue, ~/.mail/agents/mouth, is ONE box for both mouths:
+# The mouth's queue, the `mouth` box in sessionmail's boxes folder, is ONE box for both mouths:
 # sessionvoice's (src/mouth/box.py:117, inbox.py:34, maillog.py:52 at
 # 6c849c8) and VoiceMode's (voice_mode/mouth/box.py:85, inbox.py:31 at
 # e03b5d9). The Mail item deletes every other box, and the mouth's only on
 # the reader's word that VoiceMode goes too, as the Voice item does.
-MAIL_BOXES = (
-    ".mail/agents/operator/new/1", ".mail/agents/operator/cur/2:2,S",
-    ".mail/agents/someone-chat/new/3", ".mail/agents/heard/tmp/4",
-    ".mail/agents/.hidden/new/5",
+# The tree sessionmail 0.3.3 makes (mail 72d949a): the root under the kit's
+# home, the boxes in `stores/`, the profile under the root's settings.
+FRESH_BOXES = (
+    ".sessionkit/mail/stores/operator/new/1", ".sessionkit/mail/stores/operator/cur/2:2,S",
+    ".sessionkit/mail/stores/someone-chat/new/3", ".sessionkit/mail/stores/heard/tmp/4",
+    ".sessionkit/mail/stores/.hidden/new/5",
     # Named like the mouth's box, but not it.
-    ".mail/agents/mouthpiece/new/6", ".mail/agents/mouth.old/new/7",
+    ".sessionkit/mail/stores/mouthpiece/new/6", ".sessionkit/mail/stores/mouth.old/new/7",
+    ".sessionkit/mail/settings/notmuch/sessionkit/config", ".sessionkit/mail/settings/mail.json",
+)
+FRESH_MOUTH = (".sessionkit/mail/stores/mouth/new/to-speak",
+               ".sessionkit/mail/stores/mouth/cur/spoken:2,S")
+# The reader's own, and what the third block decides on: never the first two's.
+FRESH_KEPT = (".notmuch-config", ".sessionkit/mail/.notmuch/xapian/db")
+# The old tree, from before sessionmail 0.3.3: an old folder, so no line touches it,
+# the old profile place with it (OLD_PATHS).
+OLD_MAIL = (
+    ".mail/agents/operator/new/1", ".mail/agents/operator/cur/2:2,S",
+    ".mail/agents/mouth/new/to-speak", ".mail/.notmuch/xapian/db",
+    ".mail/.postfix/valias.static", ".mail/.state/regen-failures.log",
     ".config/notmuch/sessionkit/config",
 )
-MOUTH_BOX = (".mail/agents/mouth/new/to-speak", ".mail/agents/mouth/cur/spoken:2,S")
-# The reader's own, and what the third block decides on: never the first two's.
-MAIL_KEPT = (".notmuch-config", ".mail/.notmuch/xapian/db")
+
+
+def _only_the_other_tree(done: subprocess.CompletedProcess, *absent: str) -> None:
+    """Every stderr line is a `No such file or directory` the text names: for
+    a place this Mac does not have, named in ABSENT."""
+    errors = [line for line in done.stderr.splitlines() if line]
+    assert errors, done.stderr
+    for line in errors:
+        assert "No such file or directory" in line and any(a in line for a in absent), line
 
 
 def test_part_b_mail_keeps_the_mouths_box_unless_the_reader_drops_voicemode():
     item = _part_b_item("Mail")
     boxes, mouth, _index = _blocks(item)
-    assert boxes.splitlines()[0] == MAIL_ALL_BUT_MOUTH
+    assert boxes.splitlines() == [MAIL_ALL_BUT_MOUTH_NEW]
     assert mouth.splitlines() == [
-        'rm -rf "${HOME:?}/.mail/agents/mouth"',
-        'rmdir "${HOME:?}/.mail/agents"',
+        'rm -rf "${HOME:?}/.sessionkit/mail/stores/mouth"',
+        'rmdir "${HOME:?}/.sessionkit/mail/stores"',
     ]
-    # No line deletes the boxes' folder whole.
-    assert not any(a.replace('"', "") == "${HOME:?}/.mail/agents"
+    # No line deletes a boxes folder whole.
+    assert not any(a.replace('"', "") == "${HOME:?}/.sessionkit/mail/stores"
                    for _, args in _rm_commands(item) for a in args)
     flat = " ".join(item.split())
+    assert "On a Mac with only the old tree, it says `No such file or directory`" in flat
     assert "sessionvoice's mouth and VoiceMode's both queue their lines in that one box" in flat
     assert "So the first line deletes every box but that one" in flat
     # Each path is its own labelled bullet; the block sits under the one that deletes.
@@ -1446,24 +1596,63 @@ def test_part_b_mail_keeps_the_mouths_box_unless_the_reader_drops_voicemode():
     for name in ("`MOUTH_MAILBOX`", "`VOICEMODE_MOUTH_MAILBOX`", "`MOUTH_DIR`",
                  "`VOICEMODE_MOUTH_DIR`"):
         assert name in flat, name
-    assert "The `rmdir` prints `Directory not empty`, and the folder stays, if you kept the mouth's box" in flat
+    assert "The `rmdir` prints `Directory not empty`, and the folder stays, if you kept the mouth's box" not in flat
+    assert "Its `rmdir` prints `Directory not empty`, and the folder stays, if you kept the mouth's box" in flat
+
+
+def test_part_b_mail_says_where_the_old_tree_is_and_what_it_holds():
+    # The uninstall rule (2026-10-25; SK-220): an uninstall never deletes an old
+    # path. sessionmail master reads ~/.mail only when a Mac names it, and the old
+    # profile only while it is a real file: both are old places, named with what
+    # they hold.
+    flat = " ".join(_part_b_item("Mail").split())
+    assert "**The old mail tree stays.** A Mac that had mail before sessionmail 0.3.3 keeps it in `~/.mail`" in flat
+    assert "`~/.mail` is an old folder, and an uninstall never deletes one ([What stays][stays])" in flat
+    for held in ("`agents/`, every agent's box from then, the mouth's among them",
+                 "`.notmuch`, their notmuch index", "sessionmail's own `.postfix` and `.state`",
+                 "The old notmuch profile, `~/.config/notmuch/sessionkit/config`, stays too"):
+        assert held in flat, held
+    stays = " ".join(_ref().split("\n## 5. What stays\n", 1)[1].split())
+    assert "[Mail][mail] names `~/.mail` and `~/.config/notmuch/sessionkit`" in stays
 
 
 @pytest.mark.parametrize("shell", ["bash", "zsh"])
-def test_part_b_mail_in_a_temp_home_keeps_the_mouths_box_until_the_reader_chooses(tmp_path, shell):
+def test_part_b_mail_on_an_old_mac_touches_nothing_in_the_old_tree(tmp_path, shell):
+    # A Mac with only the old tree: every block says `No such file or directory`
+    # and the old tree, its index and its profile are all still there.
     if shutil.which(shell) is None:
         pytest.skip(f"no {shell}")
-    boxes, mouth, _index = _blocks(_part_b_item("Mail"))
-    _seed(tmp_path, MAIL_BOXES + MOUTH_BOX + MAIL_KEPT)
-    done = _run(tmp_path, boxes, shell)
-    assert done.stderr == "", done.stderr
-    assert _files(tmp_path) == set(MOUTH_BOX + MAIL_KEPT)
-    assert sorted(p.name for p in (tmp_path / ".mail/agents").iterdir()) == ["mouth"]
-    # The mouth's box goes only with the block the reader chooses.
-    done = _run(tmp_path, mouth, shell)
-    assert done.stderr == "", done.stderr
-    assert _files(tmp_path) == set(MAIL_KEPT)
-    assert not (tmp_path / ".mail/agents").exists()
+    _seed(tmp_path, OLD_MAIL + (".notmuch-config",))
+    for block in _blocks(_part_b_item("Mail")):
+        done = _run(tmp_path, block, shell)
+        # `rm -rf` is silent on a missing path; `find` and `rmdir` say so.
+        for line in filter(None, done.stderr.splitlines()):
+            assert "No such file or directory" in line and ".sessionkit/mail" in line, line
+    assert _files(tmp_path) == set(OLD_MAIL + (".notmuch-config",))
+
+
+@pytest.mark.parametrize("shell", ["bash", "zsh"])
+def test_part_b_mail_on_a_fresh_tree_under_the_kits_home(tmp_path, shell):
+    # sessionmail 0.3.3: the root is ~/.sessionkit/mail, the boxes in stores/,
+    # the profile under the root's settings. The root keeps its settings/ for
+    # the kit's home item, which removes the root itself. An old tree beside it
+    # stays whole.
+    if shutil.which(shell) is None:
+        pytest.skip(f"no {shell}")
+    boxes, mouth, index = _blocks(_part_b_item("Mail"))
+    _seed(tmp_path, FRESH_BOXES + FRESH_MOUTH + FRESH_KEPT + OLD_MAIL)
+    settings = {p for p in FRESH_BOXES if "/settings/" in p}
+    for block in (boxes, mouth, index):
+        done = _run(tmp_path, block, shell)
+        assert done.returncode == 0 and not done.stderr, done.stderr
+        if block is boxes:
+            assert _files(tmp_path) == set(FRESH_MOUTH + FRESH_KEPT + OLD_MAIL) | settings
+            assert sorted(p.name for p in (tmp_path / ".sessionkit/mail/stores").iterdir()) == ["mouth"]
+    assert not (tmp_path / ".sessionkit/mail/stores").exists()
+    assert _files(tmp_path) == {".notmuch-config"} | settings | set(OLD_MAIL)
+    assert (tmp_path / ".sessionkit/mail").is_dir()
+    flat = " ".join(_part_b_item("Mail").split())
+    assert "[the kit's home][home], which removes it once its `settings/` folder is gone" in flat
 
 
 # The whole uninstall on one temp HOME, as a reader pastes it: the reference's
@@ -1475,47 +1664,47 @@ def test_part_b_mail_in_a_temp_home_keeps_the_mouths_box_until_the_reader_choose
 # command as paths). A reader who keeps VoiceMode skips each block under a
 # "No VoiceMode:" bullet.
 E2E_KIT = (
-    ".sessionvoice/logs/conversations/heard_2030-12-08.jsonl",
-    ".sessionvoice/logs/conversations/heard.lock",
-    ".sessionvoice/logs/conversations/speakers_2030-12-08.jsonl",
-    ".sessionvoice/state/heard-cursor/sid-1", ".sessionvoice/state/missed-reply/clip.wav",
-    ".sessionvoice/audio/2030-12-08/101010-123-1.wav",
-    ".sessionvoice/mouth/playing.json", ".sessionvoice/mouth/audio/line.wav",
-    ".sessionvoice/talk/token", ".ears/heard.state",
+    *(f".sessionkit/{p}" for p in VOICE_FRESH),
     ".sessionkit/voice/settings/ears.json", ".sessionkit/voice/settings/stt.key",
     ".sessionkit/voice/log/ears-keeper.log", ".sessionkit/voice/log/install.log",
     ".cache/ears/silero_vad.onnx", ".cache/ears/run/keeper.pid",
-    ".local/share/ears/speech/bin/python", ".local/share/ears/speakers/me.npy",
-    ".local/state/ears/call-ears/live", ".local/state/ears/call-tap/LISTEN-OFF",
-    ".local/state/audio/devices.json",
+    ".local/share/ears/speech/bin/python", ".local/share/ears/speakers/venv/bin/python",
     "Library/Caches/imgtext-1a2b3c4d/x",
-    ".mail/agents/operator/new/1", ".mail/agents/operator/cur/2:2,S",
-    ".mail/agents/assistant-chat/new/3", ".mail/.notmuch/xapian/db",
-    ".config/notmuch/sessionkit/config", ".sessionkit/mail/settings/mail.json",
-    ".session/sessions/sid-1/mail/marks", ".session/sessions/sid-1/log/mail",
-    ".sessionmail/post-new/state", ".cache/session-mail/ext/v1/stamp",
-    ".session/state/list/snapshot.json", ".session/seats/operator/seat.json",
-    ".session/agent/config/agent.json", ".session/agents/claude.md",
+    ".sessionkit/mail/stores/operator/new/1", ".sessionkit/mail/stores/operator/cur/2:2,S",
+    ".sessionkit/mail/stores/assistant-chat/new/3", ".sessionkit/mail/.notmuch/xapian/db",
+    ".sessionkit/mail/settings/notmuch/sessionkit/config", ".sessionkit/mail/settings/mail.json",
+    ".sessionkit/mail/state/seat-keys/operator.key",
+    ".cache/session-mail/ext/v1/stamp",
+    *TOOLS_STATE_SEED,
     ".sessionkit/tools/settings/session.json",
     ".sessionkit/tools/settings/session.d/10-operator.json",
     ".sessionkit/tools/settings/.sounds.schema.json",
     ".sessionkit/tools/settings/statusline.sh.bak-a",
     ".sessionkit/tools/log/pane-state.log",
     ".sessionkit/tools/accounts/token-file-backups/work.token",
-    ".config/sessiontools/token-file-backups/work.token",
-    ".sessionphone/calls/call-1/audio.wav", ".sessionphone/bot.log",
     ".sessionkit/phone/settings/phone.json", ".sessionkit/phone/log/claude/bot.log",
-    ".local/state/sessionview/mutt/x", ".local/state/herd/x",
+    ".sessionkit/phone/state/accounts/dc.db", ".sessionkit/phone/state/invite.png",
     ".sessionkit/view/settings/config.json", ".sessionkit/view/state/recent.tsv",
     ".sessionkit/view/log/sessionview.log",
     ".local/share/sessionkit/src/sessionkit/README.md",
 )
 # Used by VoiceMode too: kept while the reader keeps VoiceMode.
 E2E_SHARED = (
-    ".mail/agents/mouth/new/to-speak", ".mail/agents/mouth/cur/spoken:2,S",
-    ".voicemode/logs/conversations/heard_2030-06-09.jsonl",
-    ".voicemode/logs/conversations/heard.lock",
-    ".voicemode/state/heard-cursor/vm-1", ".voicemode/mouth/playing.json",
+    ".sessionkit/mail/stores/mouth/new/to-speak", ".sessionkit/mail/stores/mouth/cur/spoken:2,S",
+)
+# Every package's old folders, from before its state moved (each measured from
+# its merged master: tools a5a2120, voice dfe20bc, mail 72d949a, phone
+# 7332b9d, view 95707a2). An uninstall never deletes one, in any mode.
+E2E_OLD = (
+    *TOOLS_OLD, *VOICE_OLD,
+    ".config/sessiontools/token-file-backups/work.token",
+    ".sessionphone/calls/call-1/audio.wav", ".sessionphone/bot.log",
+    ".sessionphone/accounts/dc.db",
+    ".local/state/sessionview/mutt/x", ".local/state/sessionview/sessionview.log",
+    ".local/state/herd/x",
+    # mail's old tree from before 0.3.3, the mouth's old box and the old profile in it
+    ".mail/agents/operator/new/1", ".mail/agents/mouth/new/to-speak",
+    ".mail/.notmuch/xapian/db", ".config/notmuch/sessionkit/config",
 )
 # Never the kit's, in either mode. The old logs in ~/Library/Logs stay too.
 E2E_THEIRS = (
@@ -1560,10 +1749,12 @@ def test_the_uninstall_in_a_temp_home_leaves_nothing_the_kit_wrote(tmp_path, she
     home = tmp_path / "home"
     keep = mode == "keep-voicemode"
     if mode == "kit-alone":
-        seeded, survivors = E2E_KIT + E2E_SHARED[:2] + E2E_OLD_LOGS, E2E_OLD_LOGS
+        seeded, survivors = E2E_KIT + E2E_SHARED + E2E_OLD_LOGS, E2E_OLD_LOGS
     else:
         seeded, survivors = E2E_KIT + E2E_SHARED + E2E_THEIRS, E2E_THEIRS
         survivors += E2E_SHARED if keep else ()
+    # A Mac that ran the packages before their state moved: every old folder stays.
+    seeded, survivors = seeded + E2E_OLD, survivors + E2E_OLD
     for rel in seeded:
         (home / rel).parent.mkdir(parents=True, exist_ok=True)
         (home / rel).write_text(f"{rel}\n", encoding="utf-8")

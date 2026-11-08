@@ -9,6 +9,94 @@ stamps this file.
 
 ## [Unreleased]
 
+## [0.3.3] - 2026-11-08
+
+- The kit now needs sessionmail, sessiontools, sessionphone, sessionview and
+  sessionvoice at 0.3.3 or later (was 0.3.2); settled stays at 0.1.0 or later.
+
+- The docs follow the state moves in sessiontools and sessionvoice, and the
+  uninstall never deletes an old path. A fresh Mac keeps the `session`
+  tool's state in `~/.sessionkit/tools/state` and the voice's in
+  `~/.sessionkit/voice/state`; a Mac set up before keeps its old folders,
+  and the troubleshooting page walks `session path migrate` and
+  `ears home migrate`. The tree spec now lists the mail tree under its mail
+  root: `stores/` (`agents/` on an older tree), `.notmuch`, `.postfix`,
+  `.state`, and where the notmuch profile lives. INSTALL's fresh-Mac
+  `message setup` lines are re-measured on sessionmail's master, with the
+  profile at `~/.sessionkit/mail/settings/notmuch/sessionkit/config`. The
+  uninstall deletes no old folder and nothing in `~/Library/Logs`:
+  `~/.session`, `~/.sessionmail`, `~/.sessionvoice`, `~/.ears`,
+  `~/.sessionphone`, the old mail tree `~/.mail` and its notmuch profile in
+  `~/.config/notmuch/sessionkit` stay, among others, and each page says what
+  each still holds. Its Mail item now deletes only the boxes and index in
+  `~/.sessionkit/mail`.
+- The docs no longer spell where mail lives. sessionmail 0.3.3 puts a fresh
+  Mac's mail root at `~/.sessionkit/mail`, its boxes under `stores/` there,
+  and its notmuch profile at
+  `~/.sessionkit/mail/settings/notmuch/sessionkit/config`; a Mac set up
+  before keeps `~/.mail` and `agents/`, by a `root` line in
+  `~/.sessionkit/mail/settings/mail.json`. Where a page named a path it now
+  names `message path --root`, `--boxes` or `--notmuch-config`.
+  `docs/uninstall.md`'s Mail item names both trees, the new and the old:
+  `message` is gone by section 3, and its lines delete on no name a reader
+  sets (SK-106), so they bind every path from `$HOME` themselves.
+- `sessionkit setup` asks sessiontools where the agents folder is, with
+  `session path agent --config`, and writes `claude.md` there: on a fresh
+  Mac, `~/.sessionkit/tools/state/agent/config`. Before, setup kept its own
+  copy of sessiontools' rule and wrote `~/.session/agents/claude.md`, so a
+  fresh Mac got a `~/.session` folder, and the `session` tool then kept its
+  sessions, seats, agents and backups under it, not under `~/.sessionkit`.
+  A sessiontools without the verb gets no agent file and no launch step.
+  One line says so and says to run setup again once a sessiontools that
+  has the verb is installed, and the run exits 1. The uninstall also
+  deletes the agent files in the new folder.
+- `docs/uninstall.md`'s Session records item now deletes the `session`
+  tool's whole state folder, `~/.sessionkit/tools/state`: its sessions,
+  seats, agents, backups, sound engine and session list. Before, it deleted
+  only the agent files there, so on a fresh Mac the kit's home item's
+  `rmdir ~/.sessionkit/tools` and `rmdir ~/.sessionkit` failed with
+  `Directory not empty`. Step 1 names the sound engine's new folder too.
+- `sessionkit hello` is gone. It was a placeholder that printed a greeting
+  and did nothing else; `sessionkit -h` no longer lists it.
+- The five family plugins now install and update over HTTPS, so a machine
+  with no GitHub SSH key gets them too. Before, an in-session `/plugin
+  install` or a `claude plugin update` could try SSH and fail.
+- `sessionkit doctor` and `install.sh --check` now warn when a Claude Code
+  plugin is not at its package's version, as when 0.3.1 plugins stay under
+  a 0.3.2 kit. The row names each plugin and the commands that bring it
+  level, then says to restart Claude Code. It is a warning: it is not
+  counted as missing, and it does not change the check's exit.
+- The mail hooks are turned on and off with sessionmail's own command,
+  `pager settings hooks on` and `pager settings hooks off`: the README and
+  the manual install name it in place of editing the settings file by hand.
+  `sessionkit doctor` names that command when the pager has it, and the edit
+  by hand when the pager is older and does not.
+- `sessionkit service list`, `status` and `restart`: one command over the
+  kit's services. It finds them from the files each package's install
+  writes under `~/.sessionkit/<package>/services/`, and lists a
+  `dev.sessionkit.*` job with no file yet from launchd. `restart` runs
+  `launchctl kickstart -k`; a group or `all` names its jobs and asks first,
+  and a live phone call refuses it unless `--force`. A job its file says
+  is disabled is not started. It writes no file.
+- `sessionkit completion zsh|bash|fish` prints the TAB completion script,
+  which completes service names.
+- The kit now requires settled 0.1.0 or later, with its `kit` extra: the
+  Settings app, where you see and change the kit's settings. The install
+  brings it, and `settled` is on your PATH (63 packages and 15 commands in
+  all). `sessionkit --version` lists it after the five, and `sessionkit
+  doctor` has a row for it that reads missing, and exits 1, if it is not
+  installed. It is not one of the five family packages: its own version, and
+  no plugin.
+
+### Changed
+
+- Docs: what-listens names the strip's button Turn off.
+
+### Known issues
+
+- sessionphone: an agent can add a guest to a live call by mail without asking the caller (alpha). It goes off by default, with a setting, in the next release. Any process running as the same OS user can also speak into, or listen to, a live call.
+- Known issue: with hooks on, a one-shot `claude -p` may arm `pager listen` when the hook asks and then not exit; set "hooks": false for scripted print-mode runs until this is fixed.
+
 ## [0.3.2] - 2026-10-28
 
 - Upgrade all six packages together: an older copy of one package on the

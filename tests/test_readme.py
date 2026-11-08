@@ -50,83 +50,44 @@ def test_the_hooks_note_follows_the_install_block():
     assert install.index("uv tool install") < install.index("mail hooks start off")
 
 
-def _hooks_block() -> str:
-    """The one bash block of the mail hooks note, dedented."""
+HOOKS_ON, HOOKS_OFF, HOOKS_READ = (
+    "pager settings hooks on", "pager settings hooks off", "pager settings hooks")
+
+
+def _hooks_note() -> str:
     install = _section("Installation")
     note = install[install.index("mail hooks start off"):]
-    blocks = _bash_blocks(note.split("\n\nStep by step", 1)[0])
-    assert len(blocks) == 1, "one block, right whether the file is there or not"
-    return textwrap.dedent(blocks[0])
+    return note.split("\n\nStep by step", 1)[0]
 
 
-def test_every_hooks_command_names_sessionmails_file():
-    block = _hooks_block()
-    assert block.startswith(f"f={MAIL_SETTINGS}\n"), block
-    assert 'if [ -f "$f" ]; then' in block
-    # One perl, slurping the whole file (-0777) so a multi-line file is
-    # edited as one string, in place, and only behind the -f test.
-    assert block.count("perl ") == 1, block
-    assert "perl -0777 -pi -e '" in block
-    assert block.index('if [ -f "$f" ]') < block.index("perl ") < block.index("else")
-    assert "' \"$f\"\n" in block
-    assert f"mkdir -p {MAIL_SETTINGS.rsplit('/', 1)[0]}\n" in block
-    # Every write into the file is the create branch's, behind the -f test:
-    # an unguarded `>` over the plugin's file deletes its other keys.
-    assert re.findall(r">+ *(\S+)", block) == ['"$f"'], block
+def test_the_hooks_note_turns_them_on_off_and_reads_them_with_sessionmails_verb():
+    # One command each: on, then off, then the bare read. Each in its own
+    # block, the off and the read each under a bullet of their own.
+    assert [b.strip() for b in _bash_blocks(_hooks_note())] == [HOOKS_ON, HOOKS_OFF, HOOKS_READ]
+    flat = " ".join(_hooks_note().split())
+    assert "- To turn them off again: ```bash pager settings hooks off ```" in flat
+    assert "exits 0 for on, 3 for off" in flat
 
 
-def test_the_hooks_create_line_is_sessionmails_template_with_the_hooks_on():
-    # The file the step writes when there is none is the one the plugin's
-    # hook would have written (sessionmail's own template), with one key
-    # changed. A template that gains a key makes this fail, here.
-    from sessionmail import _settings as mail_settings
-
-    want = json.loads(mail_settings.template())
-    want["hooks"] = True
-    echoed = re.search(r"echo '(\{.*\})' > \"\$f\"", _hooks_block())
-    assert echoed, "the create branch echoes one JSON object into $f"
-    assert json.loads(echoed.group(1)) == want
-    assert echoed.group(1) == json.dumps(want)
+def test_the_hooks_note_hand_edits_nothing():
+    # sessionmail's verb is THE way: no perl, no echo, no write into the file.
+    note = _hooks_note()
+    for word in ("perl", "echo ", "> ", "mkdir"):
+        assert word not in note, word
 
 
-@pytest.mark.skipif(not (shutil.which("sh") and shutil.which("perl")), reason="needs sh and perl")
-@pytest.mark.parametrize("present", [True, False], ids=["file-present", "file-absent"])
-def test_the_hooks_step_turns_the_hooks_on_and_keeps_every_other_key(tmp_path, present):
-    from sessionmail import _settings as mail_settings
-
-    home = tmp_path / "home"
-    home.mkdir()
-    env = {"HOME": str(home), "PATH": "/usr/bin:/bin"}
-    target = mail_settings.path(env)
-    if present:
-        # As the plugin's hook leaves it, plus a key a person set by hand.
-        created = json.loads(mail_settings.template())
-        created["sendmail"] = "/usr/sbin/sendmail"
-        target.parent.mkdir(parents=True)
-        target.write_text(json.dumps(created) + "\n", encoding="utf-8")
-    script = tmp_path / "step.sh"
-    script.write_text(_hooks_block(), encoding="utf-8")
-    for _ in range(2):  # a second run changes nothing
-        subprocess.run(["sh", str(script)], env=env, check=True)
-        assert mail_settings.read(env).hooks is True
-    got = json.loads(target.read_text(encoding="utf-8"))
-    want = json.loads(mail_settings.template())
-    want["hooks"] = True
-    if present:
-        want["sendmail"] = "/usr/sbin/sendmail"
-    assert got == want
-    # The hook's own create path leaves the file as the step wrote it.
-    before = target.read_bytes()
-    _, made = mail_settings.ensure(env)
-    assert made is False
-    assert target.read_bytes() == before
+def _pager() -> Path:
+    """The `pager` the kit's environment installs: sessionmail's, as locked."""
+    return Path(sys.executable).parent / "pager"
 
 
 # A mail.json can hold any keys, in any layout, the hooks key among them or
 # not: one made by hand with only a `sendmail` key has none. Each case runs
-# the README's block as written, twice, and must leave a JSON object that
-# sessionmail reads as hooks on, with every other key as it was.
+# the README's block as written, twice, with the pager the kit installs, and
+# must leave a JSON object that sessionmail reads as hooks on, with every
+# other key as it was.
 _HOOKS_CASES = {
+    "no-file": None,
     "true-unchanged": '{"version": 1, "hooks": true, "sendmail": "drop"}\n',
     "false-one-line": '{"version": 1, "hooks": false, "sendmail": "drop"}\n',
     "false-multi-line": '{\n  "version": 1,\n  "hooks" :\n    false,\n  "sendmail": "drop"\n}\n',
@@ -140,29 +101,58 @@ _HOOKS_CASES = {
 }
 
 
-@pytest.mark.skipif(not (shutil.which("sh") and shutil.which("perl")), reason="needs sh and perl")
+def _run(block: str, env: dict[str, str]) -> subprocess.CompletedProcess:
+    return subprocess.run(block.split(), env=env, capture_output=True, text=True, check=False)
+
+
+@pytest.mark.skipif(not _pager().is_file(), reason="needs sessionmail's pager in this environment")
 @pytest.mark.parametrize("before", list(_HOOKS_CASES.values()), ids=list(_HOOKS_CASES))
 def test_the_hooks_step_turns_the_hooks_on_in_any_mail_json(tmp_path, before):
     from sessionmail import _settings as mail_settings
 
     home = tmp_path / "home"
     home.mkdir()
-    env = {"HOME": str(home), "PATH": "/usr/bin:/bin"}
+    env = {"HOME": str(home), "PATH": f"{_pager().parent}:/usr/bin:/bin"}
     target = mail_settings.path(env)
-    target.parent.mkdir(parents=True)
-    target.write_text(before, encoding="utf-8")
-    script = tmp_path / "step.sh"
-    script.write_text(_hooks_block(), encoding="utf-8")
-    subprocess.run(["sh", str(script)], env=env, check=True)
+    if before is not None:
+        target.parent.mkdir(parents=True)
+        target.write_text(before, encoding="utf-8")
+    on = _bash_blocks(_hooks_note())[0].strip()
+    assert _run(on, env).returncode == 0
     once = target.read_bytes()
-    subprocess.run(["sh", str(script)], env=env, check=True)
+    assert _run(on, env).returncode == 0
     assert target.read_bytes() == once, "a second run changes nothing"
     assert mail_settings.read(env).hooks is True
-    want = json.loads(before)
+    got = json.loads(once)
+    if before is None:
+        # No file: sessionmail's own template, with the hooks on. The verb
+        # also stamps the host it made the file on, a key the template lacks.
+        want = json.loads(mail_settings.template())
+        got.pop("host", None)
+    else:
+        want = json.loads(before)
+        if want.get("hooks") is True:
+            assert once == before.encode(), "a file already on is left byte for byte"
     want["hooks"] = True
-    assert json.loads(once) == want
-    if json.loads(before).get("hooks") is True:
-        assert once == before.encode(), "a file already on is left byte for byte"
+    assert got == want
+
+
+@pytest.mark.skipif(not _pager().is_file(), reason="needs sessionmail's pager in this environment")
+def test_the_hooks_note_reads_off_on_off_as_it_says(tmp_path):
+    # The bare read exits 0 for on and 3 for off, as the note says, and the
+    # off block turns them off again.
+    from sessionmail import _settings as mail_settings
+
+    home = tmp_path / "home"
+    home.mkdir()
+    env = {"HOME": str(home), "PATH": f"{_pager().parent}:/usr/bin:/bin"}
+    on, off, read = (b.strip() for b in _bash_blocks(_hooks_note()))
+    assert _run(read, env).returncode == 3
+    assert _run(on, env).returncode == 0
+    assert _run(read, env).returncode == 0
+    assert _run(off, env).returncode == 0
+    assert mail_settings.read(env).hooks is False
+    assert _run(read, env).returncode == 3
 
 
 # SK-58: uv's installer ends "restart your shell or run
@@ -705,13 +695,13 @@ def test_the_readme_no_longer_says_the_plugin_install_fails(claim):
 def test_quick_start_shows_the_version_lines_shape_with_no_version_pinned(monkeypatch):
     # SK-227: the block showed 0.3.0 in the 0.3.1 README. It keeps the shape
     # `sessionkit --version` prints (cli.version_lines), the kit then each
-    # family package, with `X.Y.Z` in place of every version, so it cannot go
-    # stale at the next release.
+    # family package, then each app (SK-258: settled), with `X.Y.Z` in place
+    # of every version, so it cannot go stale at the next release.
     quick = _section("Quick start")
     [text] = re.findall(r"^```text\n(.*?)^```", quick, re.MULTILINE | re.DOTALL)
     lines = text.splitlines()
     assert lines[0] == "sessionkit, version X.Y.Z"
-    assert [line.split() for line in lines[1:]] == [[name, "X.Y.Z"] for name in cli.FAMILY]
+    assert [line.split() for line in lines[1:]] == [[name, "X.Y.Z"] for name in (*cli.FAMILY, *cli.APPS)]
     # Byte for byte what the CLI prints, with every installed version X.Y.Z.
     monkeypatch.setattr(cli, "installed_version", lambda _dist: "X.Y.Z")
     assert lines == cli.version_lines()
@@ -906,8 +896,8 @@ def test_install_doc_no_longer_waits_for_the_release():
     assert "until the release" not in INSTALL_DOC.lower()
     assert "--find-links" not in INSTALL_DOC
     flat = " ".join(kit.split())
-    assert ("the five packages this release needs are on PyPI, each at 0.3.0: sessionmail, "
-            "sessionphone, sessiontools, sessionview and sessionvoice. The kit asks for 0.3.0 "
+    assert ("the five packages this release needs are on PyPI, each at 0.3.2: sessionmail, "
+            "sessionphone, sessiontools, sessionview and sessionvoice. The kit asks for 0.3.2 "
             "or later of each.") in flat
     # 0.3.0: four sessionview verbs run instead of answering --help, so the
     # doc no longer says every --help answers, and names the four.
@@ -959,7 +949,7 @@ def test_install_doc_states_the_size_and_when_calls_download():
     assert "**The install size.**" in kit
     assert "uv downloaded about 93 MB, and the kit's tool folder is about 280 MB on disk" in flat
     assert "about 52 MB of the 280 MB" in flat
-    assert "61 packages" in flat and "14 commands" in flat
+    assert "63 packages" in flat and "15 commands" in flat
     assert ("**Phone calls are installed, and walked for a session started with "
             "`session start <name>`.** A plain `claude` session does not hear calls you make to it "
             "yet.") in flat
@@ -1661,8 +1651,8 @@ def test_install_mouth_step_passes_no_device_and_says_the_default():
 # Section 4: the plugin's start hook makes the session box, not the first listen.
 def test_install_section_4_says_the_box_is_made_at_session_start():
     flat = " ".join(_install_section(4).split())
-    assert ("your session's box under `~/.mail/agents/` is made when the session starts, "
-            "by the plugin's start hook.") in flat
+    assert ("your session's box, in sessionmail's boxes folder (`message path --boxes`), "
+            "is made when the session starts, by the plugin's start hook.") in flat
     assert "created the first time the pager listens" not in flat
 
 
@@ -1736,8 +1726,9 @@ def test_postfix_example_is_a_mail_json_sessionmail_reads_with_the_hooks_on(tmp_
             "malformed and leaves the hooks off.") in flat
     assert "It is `true` here because section 4 turned the hooks on." in flat
     first_checks = " ".join(_install_section(4).split())
-    assert "The hooks stay off until you set `\"hooks\": true`" in first_checks
-    assert "Turn the mail hooks on first (`\"hooks\": true`" in first_checks
+    assert "The hooks stay off until you turn them on." in first_checks
+    assert "```bash pager settings hooks on ```" in first_checks
+    assert "Turn the mail hooks on first (**Turn the mail hooks on**, in the checks above)" in first_checks
     assert INSTALL_DOC.index("## 4. First checks") < INSTALL_DOC.index(opt_in)
 
 
@@ -1790,7 +1781,11 @@ def test_mail_section_uses_its_own_notmuch_profile_and_never_yours():
     assert notmuch < setup
     assert "Install it before step 4:" in flat
     assert "```bash\n   brew install notmuch\n   ```" in mail
-    assert "`~/.config/notmuch/sessionkit/config`" in flat
+    # sessionmail 0.3.3 keeps its profile under the mail root's settings; the
+    # verb names it, and a Mac with the older file keeps using that one.
+    assert "`~/.sessionkit/mail/settings/notmuch/sessionkit/config`" in flat
+    assert "(`message path --notmuch-config` prints it" in flat
+    assert "a Mac that had the profile at `~/.config/notmuch/sessionkit/config` before sessionmail 0.3.3 keeps using that one" in flat
     assert "It never reads or writes a notmuch config of your own" in flat
     assert "`~/.notmuch-config` and any other profile are left exactly as they are" in flat
     # Mail setup runs the profile's first `notmuch new` itself (measured on
@@ -2434,7 +2429,8 @@ def test_section_2_quotes_setups_real_refusal_and_its_agent_lines():
         (
             "  1. notmuch-index (BLOCKED): notmuch: 'notmuch' not found ($SESSIONMAIL_NOTMUCH, "
             "else PATH), so the index and hook steps are left. Once it is found, setup runs "
-            "`notmuch --config=/Users/<you>/.config/notmuch/sessionkit/config new --no-hooks` "
+            "`notmuch --config=/Users/<you>/.sessionkit/mail/settings/notmuch/sessionkit/config "
+            "new --no-hooks` "
             "once and links the hooks"
         ),
         "  2. notmuch-hook (BLOCKED): waits on notmuch-index",
@@ -2442,24 +2438,40 @@ def test_section_2_quotes_setups_real_refusal_and_its_agent_lines():
         "Mail setup left steps for you (above); re-run sessionkit setup after.",
     ]
     assert lines[-3:] == [
-        "Wrote /Users/<you>/.session/agents/claude.md: the agent 'claude', not keyed.",
+        (
+            "Wrote /Users/<you>/.sessionkit/tools/state/agent/config/claude.md: the agent "
+            "'claude', not keyed."
+        ),
         "session start --list-agents: lists 'claude'.",
         LAUNCH,
     ]
     flat = _flat(two)
     assert "no notmuch): the first five lines, exit 4." in flat
+    # SK-220: re-measured on sessionmail master after the mail-root move; the
+    # profile is the kit's, and the old XDG path is not in the block.
+    assert "built from its master ahead of 0.3.3" in flat
+    assert ".config/notmuch/sessionkit/config new" not in block
     assert "the two operator lines after them, exit 4" in flat
     assert "The last three are this release's assistant step" in flat
     assert "the first four lines, exit 4" not in flat
     assert "those seven lines" not in flat and "Mail not set up" not in two
     # The ONE line section 2 gains: what setup now writes.
-    assert ("**Then your assistant:** it writes `~/.session/agents/claude.md`, the agent "
+    assert ("**Then your assistant:** it writes "
+            "`~/.sessionkit/tools/state/agent/config/claude.md`, the agent "
             "`session start claude` starts (section 4)") in flat
+    # The folder is sessiontools' answer, never a copy of its rule.
+    assert ("The folder is the one `session path agent --config` names: setup asks "
+            "sessiontools for it, and on a fresh Mac it is "
+            "`~/.sessionkit/tools/state/agent/config`.") in flat
+    assert ("A sessiontools without that verb gets no agent file and no launch step") in flat
+    assert "~/.session/agents/claude.md" not in two
 
 
 def test_docs_sessionkit_names_the_agent_file_and_the_launch():
     doc = _flat((ROOT / "docs" / "sessionkit.md").read_text(encoding="utf-8"))
-    assert "`~/.session/agents/claude.md`" in doc
+    assert "the one `session path agent --config` names" in doc
+    assert "`~/.sessionkit/tools/state/agent/config/claude.md` on a fresh Mac" in doc
+    assert "~/.session/agents" not in doc
     assert f"`{LAUNCH}`" in doc
 
 

@@ -10,11 +10,13 @@ The ruling: a kit install is the whole family, phone calls included.
 - Floored at 0.3.0: the kit is released and tested with the family's 0.3.0,
   so it needs every family package at 0.3.0 or later, and PyPI's 0.0.1 name
   placeholders and the 0.1.0 alphas must never satisfy these.
-- sessiontools and sessionmail are floored at 0.3.1, for what the kit's code
-  and docs call on: `sessionkit setup` asks sessiontools 0.3.1's
-  `session agent default`, and INSTALL.md describes sessionmail 0.3.1's
-  one-run mail setup.
-- All five are floored at 0.3.2: the family is released together, and an
+- Within the 0.3.3 floor below, `sessionkit setup` asks sessiontools for
+  `session agent default`, and INSTALL.md describes sessionmail's one-run
+  mail setup. Setup also asks sessiontools for the agents folder with
+  `session path agent --config --json`. That verb ships in sessiontools
+  0.3.3, the floor below; with a sessiontools that lacks it, setup writes
+  no agent file and says so.
+- All five are floored at 0.3.3: the family is released together, and an
   older copy of one package beside the others splits its state between the
   old and new folders.
 - sessionphone comes WITH its media extra. Calls, the bot and
@@ -22,7 +24,26 @@ The ruling: a kit install is the whole family, phone calls included.
   rather than as a second install.
 - sessionvoice comes WITH its capture extra, so the ears can hear the room.
 
-The strings are written exactly as pyproject.toml writes them.
+The second ruling: the kit also REQUIRES settled, the Settings app. It
+ships with the kit, and it is a hard dependency: it goes in [project]
+dependencies, never an optional extra.
+
+- settled is required, like the family: a kit install without it is broken.
+- Floored at 0.1.0, so PyPI's 0.0.1 name placeholder can never satisfy it.
+- It comes WITH its kit extra. That extra brings the kit's registry
+  (sessiontools.settings) and jsonschema, which validates the kit's own
+  schemas. Without it settled reads only SETTINGS_ROOT, its standalone input,
+  and shows none of the kit's tools. That extra asks for sessiontools 0.3.3,
+  which FAMILY_RULED now floors.
+- It is NOT a family package, so it is written in APPS, apart from
+  FAMILY_RULED. It has its own version line (0.1.0, never the family's
+  0.3.x), so a family floor bump never moves it. It ships no Claude plugin,
+  so the plugin manifest and the marketplace (which follow FAMILY) leave it
+  out. Its licence is AGPL-3.0-or-later, as ruled; nothing here reads it.
+
+RULED is FAMILY_RULED + APPS: drift() and the gate hold pyproject, the built
+wheel and uv.lock to all of it. The strings are written exactly as
+pyproject.toml writes them.
 """
 
 from __future__ import annotations
@@ -32,16 +53,23 @@ from collections.abc import Iterable
 from packaging.requirements import InvalidRequirement, Requirement
 from packaging.utils import canonicalize_name
 
-RULED = (
-    "sessionmail>=0.3.2",
-    "sessiontools>=0.3.2",
-    "sessionphone[media]>=0.3.2",
-    "sessionview>=0.3.2",
-    "sessionvoice[capture]>=0.3.2",
+# The family: released together, floored together, one Claude plugin each.
+FAMILY_RULED = (
+    "sessionmail>=0.3.3",
+    "sessiontools>=0.3.3",
+    "sessionphone[media]>=0.3.3",
+    "sessionview>=0.3.3",
+    "sessionvoice[capture]>=0.3.3",
 )
 
+# Required, but not family: each on its own version line, with no plugin.
+APPS = ("settled[kit]>=0.1.0",)
+
+# Everything the kit is ruled to require: what drift() holds a list to.
+RULED = FAMILY_RULED + APPS
+
 # The five family packages, in the ruled order (the plugin manifest's order).
-FAMILY = [Requirement(spec).name for spec in RULED]
+FAMILY = [Requirement(spec).name for spec in FAMILY_RULED]
 
 
 def _extras(extras: Iterable[str]) -> str:
@@ -55,7 +83,7 @@ def drift(declared: Iterable[str], where: str) -> list[str]:
     child missing, declared twice, an extra dropped or added, a floor that is
     not the ruled one, or an environment marker that makes it conditional.
     An empty list means `declared` carries the ruled list exactly. Requirements
-    that are not family packages (click, say) are not this list's business.
+    that are not ruled (click, say) are not this list's business.
     """
     problems: list[str] = []
     by_name: dict[str, list[tuple[str, Requirement]]] = {}

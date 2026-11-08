@@ -67,6 +67,12 @@ SETTINGS_TOOL = "session"
 DROP_IN_DIR = f"{SETTINGS_TOOL}.d"
 DROP_IN_NAME = "10-operator.json"
 OPERATOR_KEY = "operator"
+# The documents the kit ships for the person being recorded (settled's
+# consent page opens them): every `*.md` in this package's `docs/` folder.
+# `run_docs` writes each to `~/.sessionkit/docs/` when it is missing or has
+# changed, and never deletes one there. No variable moves the folder.
+DOCS_PACKAGE_DIR = "docs"
+DOCS_HOME = "docs"
 MAILBOX_KEY = "mailbox"
 ADDRESS_KEY = "address"
 PRIVILEGED_KEY = "privileged"
@@ -551,15 +557,21 @@ SEAT_UNKNOWN_LINE = (
     "that has the verb is installed, run sessionkit setup again."
 )
 
-# Where `session start NAME` looks for agents: sessiontools'
-# `start/agents.py:agents_root`, the same rule, mirrored here so the kit does
-# not import sessiontools' internals. `$AGENTS_DIR`, else
-# `~/.session/agent/config` if that is a directory, else `~/.session/agents`.
-# tests/test_setup.py holds this rule to the installed sessiontools'.
-AGENTS_DIR_ENV = "AGENTS_DIR"
-SESSION_HOME = ".session"
-AGENT_CONFIG_DIR = ("agent", "config")
-AGENTS_DIR_NAME = "agents"
+# Where `session start NAME` looks for agents is sessiontools' to say, never
+# the kit's to compute: no package computes another's root.
+# The kit asks `session path agent --config --json`, with no NAME: exit 0 and
+# one JSON object, `{"path", "source", "rung"}`, `path` the folder `session
+# start` reads agent files from. Not `agent NAME --config`: that exits 2 for
+# a NAME with no file yet, and setup's agent has none until it is written.
+AGENTS_PATH_ARGV: tuple[str, ...] = ("session", "path", "agent", "--config", "--json")
+# The verb only resolves a path and answers at once; a slow one is not waited on.
+AGENTS_PATH_TIMEOUT = 5.0
+
+AGENTS_UNKNOWN_LINE = (
+    "No agent file written: `{verb}` did not answer, so setup does not know "
+    "the folder `session start` reads agents from, and guesses none. Once a "
+    "sessiontools that has the verb is installed, run sessionkit setup again."
+)
 
 # The reader: every agent `session start` would accept, one name a line.
 LIST_AGENTS_ARGV: tuple[str, ...] = ("session", "start", "--list-agents")
@@ -586,20 +598,28 @@ like: setup never writes over it.
 """
 
 
-def agents_root(home: Path, environ: Mapping[str, str]) -> Path:
-    """The agents folder `session start` reads, by sessiontools' rule."""
-    named = environ.get(AGENTS_DIR_ENV)
-    if named:
-        return Path(os.path.expanduser(named))
-    config = home / SESSION_HOME / Path(*AGENT_CONFIG_DIR)
-    if config.is_dir():
-        return config
-    return home / SESSION_HOME / AGENTS_DIR_NAME
+def agents_root(environ: Mapping[str, str]) -> Path | None:
+    """The agents folder `session start` reads, as sessiontools names it.
 
-
-def agent_file(home: Path, environ: Mapping[str, str], agent: str) -> Path:
-    """The file setup writes for AGENT: the flat layout, `<root>/NAME.md`."""
-    return agents_root(home, environ) / f"{agent}.md"
+    `session path agent --config --json`'s `path`, or None when the verb does
+    not answer: not on the PATH, a sessiontools without it (argparse exits 2
+    on `--config`), non-zero, a timeout, output that is not one JSON object,
+    or a `path` that is not an absolute path. No folder stands in for it,
+    ever: an unknown folder is said so (AGENTS_UNKNOWN_LINE), never guessed."""
+    done = _run(AGENTS_PATH_ARGV, environ, timeout=AGENTS_PATH_TIMEOUT)
+    if done is None or done.returncode != 0:
+        return None
+    try:
+        data = json.loads(done.stdout or "")
+    except ValueError:
+        return None
+    if not isinstance(data, dict):
+        return None
+    path = data.get("path")
+    if not isinstance(path, str) or not path.strip():
+        return None
+    root = Path(path)
+    return root if root.is_absolute() else None
 
 
 def agent_text(agent: str) -> str:
@@ -627,22 +647,30 @@ def run_agent(
     *,
     agent: str,
     dry_run: bool = False,
-    home: Path | None = None,
     environ: Mapping[str, str] | None = None,
 ) -> Outcome:
     """Write AGENT's file where `session start` looks, once; then verify.
+
+    The folder is the one `session path agent --config` names (agents_root).
+    When the verb does not answer, nothing is written and one line says so
+    (AGENTS_UNKNOWN_LINE), a dry run too: no folder is guessed, and the code
+    is EXIT_REFUSED, so no launch step that would fail is printed.
 
     Never clobbers: either layout `session start` reads (`<root>/NAME/NAME.md`,
     which wins, or `<root>/NAME.md`) already there means write nothing. A
     folder `<root>/NAME/` without its NAME.md, or a flat path that is not a
     file, is refused: `session start` could not start NAME from it, and
     writing beside it would not change that. AGENT is already shape-checked.
+    No HOME is read: the folder is sessiontools' answer, not a path under one.
     """
     environ = os.environ if environ is None else environ
-    home = Path.home() if home is None else home
-    root = agents_root(home, environ)
+    root = agents_root(environ)
+    if root is None:
+        return Outcome(
+            EXIT_REFUSED, [AGENTS_UNKNOWN_LINE.format(verb=" ".join(AGENTS_PATH_ARGV))]
+        )
     folder = root / agent
-    flat = agent_file(home, environ, agent)
+    flat = root / f"{agent}.md"
     if folder.is_dir():
         inside = folder / f"{agent}.md"
         if inside.is_file():
@@ -776,6 +804,63 @@ def run_wake(*, name: str, dry_run: bool, environ: Mapping[str, str]) -> list[st
     return [f'Wake seat {name!r}: "hey {name}" wakes it.']
 
 
+# --- the documents the kit ships ---------------------------------------------
+
+
+def docs_folder(home: Path) -> Path:
+    """Where the kit's documents land under HOME: `~/.sessionkit/docs/`."""
+    return home / SETTINGS_HOME / DOCS_HOME
+
+
+def shipped_docs() -> list[Path]:
+    """The `*.md` files this package ships in its `docs/` folder, by name."""
+    folder = Path(__file__).resolve().parent / DOCS_PACKAGE_DIR
+    if not folder.is_dir():
+        return []
+    return sorted(p for p in folder.iterdir() if p.is_file() and p.suffix == ".md")
+
+
+def run_docs(*, dry_run: bool, home: Path) -> list[str]:
+    """Write each shipped document to `docs_folder(home)` when it is missing
+    or differs from the shipped text; one line per file, and never the exit.
+
+    A write is a temp file beside the target and one rename, so a reader (the
+    consent page serving `GET /docs/NAME.md`) never sees a half file. Nothing
+    is deleted there: a document the kit stops shipping stays until the person
+    removes it. A dry run names what it would do and makes nothing, not even
+    the folder."""
+    lines: list[str] = []
+    folder = docs_folder(home)
+    for source in shipped_docs():
+        target = folder / source.name
+        text = source.read_text(encoding="utf-8")
+        try:
+            same = target.is_file() and target.read_text(encoding="utf-8") == text
+        except OSError as e:
+            why = e.strerror or e.__class__.__name__
+            lines.append(f"Document {target}: could not read it ({why}); left alone.")
+            continue
+        if same:
+            lines.append(f"Document {target}: unchanged.")
+            continue
+        past = "replaced" if target.exists() else "written"
+        if dry_run:
+            verb = "replace" if target.exists() else "write"
+            lines.append(f"Would {verb} {target} ({source.name}, {len(text)} chars).")
+            continue
+        try:
+            folder.mkdir(parents=True, exist_ok=True)
+            temp = target.with_name(f".{target.name}.tmp-{os.getpid()}")
+            temp.write_text(text, encoding="utf-8")
+            os.replace(temp, target)
+        except OSError as e:
+            why = e.strerror or e.__class__.__name__
+            lines.append(f"Document {target}: not {past} ({why}). Copy it by hand from {source}.")
+            continue
+        lines.append(f"Document {target}: {past}.")
+    return lines
+
+
 # --- the run ------------------------------------------------------------------
 
 
@@ -870,7 +955,7 @@ def run_setup(
     operator = run_operator(
         mailbox=mailbox, address=address, dry_run=dry_run, home=home, environ=environ
     )
-    defined = run_agent(agent=agent, dry_run=dry_run, home=resolved, environ=environ)
+    defined = run_agent(agent=agent, dry_run=dry_run, environ=environ)
     codes = (mail.code, operator.code, defined.code)
     if EXIT_REFUSED in codes:
         code = EXIT_REFUSED
@@ -894,6 +979,9 @@ def run_setup(
     wake = named if named is not None else seat
     if wake is not None:
         lines += run_wake(name=wake, dry_run=dry_run, environ=environ)
+    # The documents the kit ships, for the person being recorded: one line per
+    # file, never the exit.
+    lines += run_docs(dry_run=dry_run, home=resolved)
     # Read only, and never part of the exit: 4 means mail steps are left.
     if ears_model_missing(environ):
         lines.append(EARS_MODEL_LINE)

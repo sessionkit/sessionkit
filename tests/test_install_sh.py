@@ -879,6 +879,211 @@ def test_the_plugin_fix_adds_the_marketplace_only_when_it_is_not_there(mac: Fake
     ]
 
 
+# --- --check: each plugin's version against its package's (SK-244) ----------
+
+VERSIONS_ROW = "🧩 Plugin versions"
+VERSIONS_FOUND = "🧩 Plugin versions: found, each at its package's version"
+VERSIONS_SPLIT = "🧩 Plugin versions: not at their packages' versions: "
+VERSIONS_WARN = (
+    "⚠️ A plugin is not at its package's version: "
+    "the → lines under the plugin versions row bring it level."
+)
+RESTART = "      then restart Claude Code: a plugin update applies at its next start"
+
+
+def _array(name: str) -> list[str]:
+    m = re.search(rf"^{name}=\(([^)]*)\)$", SOURCE, re.MULTILINE)
+    assert m, name
+    return m.group(1).split()
+
+
+def _versions_row(out: str) -> tuple[str, list[str]]:
+    """The plugin versions row, and the indented lines under it."""
+    lines = out.splitlines()
+    at = next(i for i, ln in enumerate(lines) if ln.startswith(VERSIONS_ROW))
+    under = []
+    for ln in lines[at + 1 :]:
+        if not ln.startswith(" "):
+            break
+        under.append(ln)
+    return lines[at], under
+
+
+def test_the_six_plugins_are_the_kit_then_cli_family():
+    from sessionkit import cli
+
+    assert tuple(_array("KIT_PLUGINS")) == ("sessionkit", *cli.FAMILY)
+    plugin = re.search(r"^PLUGIN=(\S+)$", SOURCE, re.MULTILINE).group(1)
+    assert plugin == "sessionkit@sessionkit"
+
+
+def test_every_plugin_at_its_packages_version_is_one_found_line(mac: FakeMac):
+    mac.everything()
+    r = mac.run("--check")
+    assert r.rc == 0, r.out
+    row, under = _versions_row(r.out)
+    assert row == VERSIONS_FOUND
+    assert under == []
+    assert VERSIONS_WARN not in r.out
+    assert "claude plugin list --json" in r.calls
+    assert "sessionkit --version" in r.calls
+
+
+def test_the_versions_row_follows_the_plugins_row(mac: FakeMac):
+    mac.everything()
+    lines = mac.run("--check").out.splitlines()
+    at = lines.index("🧩 Claude Code plugins: found")
+    assert lines[at + 1] == VERSIONS_FOUND
+
+
+def test_one_plugin_behind_names_it_and_its_update_and_still_exits_0(mac: FakeMac):
+    # The Air (K2): the package upgraded to 0.3.2, its plugin left at 0.3.1.
+    mac.everything()
+    mac.flag("pkg_ver.sessionmail", "0.3.2")
+    r = mac.run("--check")
+    assert r.rc == 0, r.out
+    row, under = _versions_row(r.out)
+    assert row == VERSIONS_SPLIT + "sessionmail plugin 0.3.1, package 0.3.2"
+    assert under == [
+        "    → claude plugin marketplace update sessionkit",
+        "    → claude plugin update sessionmail@sessionkit",
+        RESTART,
+    ]
+    assert VERSIONS_WARN in r.out
+    assert "✅ Nothing is missing: Session Kit is all here." in r.out
+    assert "rows above are missing" not in r.out
+    assert "row above is missing" not in r.out
+    assert r.installs == []
+
+
+def test_several_plugins_behind_are_one_row_naming_each(mac: FakeMac):
+    # The Air's whole split: the kit and its five at 0.3.2, every plugin 0.3.1.
+    mac.everything()
+    for n in _array("KIT_PLUGINS"):
+        mac.flag(f"pkg_ver.{n}", "0.3.2")
+    r = mac.run("--check")
+    assert r.rc == 0, r.out
+    row, under = _versions_row(r.out)
+    names = _array("KIT_PLUGINS")
+    assert row == VERSIONS_SPLIT + "; ".join(
+        f"{n} plugin 0.3.1, package 0.3.2" for n in names
+    )
+    assert under == [
+        "    → claude plugin marketplace update sessionkit",
+        *(f"    → claude plugin update {n}@sessionkit" for n in names),
+        RESTART,
+    ]
+    assert sum(ln.startswith(VERSIONS_ROW) for ln in r.out.splitlines()) == 1
+
+
+def test_a_plugin_ahead_of_its_package_is_a_split_too(mac: FakeMac):
+    mac.everything()
+    mac.flag("plugin_ver.sessionview", "0.3.2")
+    row, under = _versions_row(mac.run("--check").out)
+    assert row == VERSIONS_SPLIT + "sessionview plugin 0.3.2, package 0.3.1"
+    assert "    → claude plugin update sessionview@sessionkit" in under
+
+
+def test_a_family_plugin_not_installed_gets_its_install_line(mac: FakeMac):
+    mac.everything()
+    mac.flag("plugin_absent.sessionphone")
+    r = mac.run("--check")
+    assert r.rc == 0, r.out
+    row, under = _versions_row(r.out)
+    assert row == VERSIONS_SPLIT + "sessionphone plugin not installed, package 0.3.1"
+    assert under == [
+        "    → claude plugin marketplace update sessionkit",
+        "    → claude plugin install sessionphone@sessionkit",
+        RESTART,
+    ]
+    assert r.installs == []
+
+
+def test_a_package_not_installed_gets_the_kits_reinstall_not_a_plugin_update(
+    mac: FakeMac,
+):
+    mac.everything()
+    mac.flag("pkg_ver.sessiontools", "not installed")
+    r = mac.run("--check")
+    assert r.rc == 0, r.out
+    row, under = _versions_row(r.out)
+    assert row == VERSIONS_SPLIT + "sessiontools plugin 0.3.1, package not installed"
+    assert under == [
+        "    → uv tool install --python 3.14 --reinstall sessionkit",
+        "      it puts back a package the kit installs that its tool has lost",
+    ]
+
+
+def test_no_sessionkit_command_says_nothing_about_versions(mac: FakeMac):
+    mac.everything()
+    (mac.home / ".local" / "bin" / "sessionkit").unlink()
+    r = mac.run("--check")
+    assert VERSIONS_ROW not in r.out
+    assert "claude plugin list --json" not in r.calls
+
+
+def test_a_sessionkit_that_does_not_answer_its_version_says_nothing(mac: FakeMac):
+    mac.everything()
+    mac.flag("sk_version_fails")
+    r = mac.run("--check")
+    assert r.rc == 0, r.out
+    assert VERSIONS_ROW not in r.out
+
+
+def test_the_kit_plugin_missing_leaves_the_plugins_row_to_say_it(mac: FakeMac):
+    mac.everything()
+    (mac.state / "plugin").unlink()
+    r = mac.run("--check")
+    assert "🧩 Claude Code plugins: missing" in r.out
+    assert VERSIONS_ROW not in r.out
+    assert "🩺 1 row above is missing" in r.out
+
+
+def test_a_claude_with_no_json_list_reads_not_checked(mac: FakeMac):
+    mac.everything()
+    mac.flag("plugin_json_fails")
+    r = mac.run("--check")
+    assert r.rc == 0, r.out
+    row, under = _versions_row(r.out)
+    assert row == (
+        "🧩 Plugin versions: not checked "
+        "(claude plugin list --json does not list sessionkit@sessionkit)"
+    )
+    assert under == []
+
+
+@pytest.mark.parametrize("shape", ["pretty", "minified"])
+def test_pretty_and_minified_json_read_alike(mac: FakeMac, shape):
+    # The fake's entries carry a nested "version" after the plugin's own.
+    mac.everything()
+    if shape == "minified":
+        mac.flag("plugin_json_min")
+    mac.flag("plugin_ver.sessionvoice", "0.3.0")
+    row, _ = _versions_row(mac.run("--check").out)
+    assert row == VERSIONS_SPLIT + "sessionvoice plugin 0.3.0, package 0.3.1"
+
+
+def test_a_split_leaves_the_missing_count_and_the_exit_alone(mac: FakeMac):
+    mac.everything()
+    (mac.state / "ears_model").unlink()
+    level = mac.run("--check")
+    mac.flag("pkg_ver.sessionmail", "0.3.2")
+    split = mac.run("--check")
+    assert level.rc == split.rc == 1
+    for r in (level, split):
+        assert "🩺 1 row above is missing: the → line under it says what to run." in r.out
+    assert VERSIONS_WARN in split.out and VERSIONS_WARN not in level.out
+
+
+def test_the_installer_itself_does_not_read_plugin_versions(mac: FakeMac):
+    mac.everything()
+    mac.flag("pkg_ver.sessionmail", "0.3.2")
+    r = mac.run("--dry-run")
+    assert VERSIONS_ROW not in r.out
+    assert "claude plugin list --json" not in r.calls
+    assert "sessionkit --version" not in r.calls
+
+
 def test_each_fix_is_the_command_its_install_step_runs(tmp_path: Path):
     # The same Mac twice: --check's fixes, then what --yes really runs.
     checked = FakeMac(tmp_path / "a").with_brew()

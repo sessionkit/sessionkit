@@ -46,6 +46,10 @@ HOOKS_BY_HAND='set "hooks": true in ~/.sessionkit/mail/settings/mail.json, and c
 KIT_PYTHON=3.14
 MARKETPLACE=sessionkit/sessionkit
 PLUGIN=sessionkit@sessionkit
+# --check's plugin versions row: the kit's plugin and the five family plugins,
+# each against the package of the same name. The first is the kit; the rest
+# are cli.FAMILY, in its order (tests/test_install_sh.py holds them to it).
+KIT_PLUGINS=(sessionkit sessionmail sessiontools sessionphone sessionview sessionvoice)
 BREW_SET=(tmux ffmpeg notmuch)
 # Where Homebrew lives: Apple silicon first, then Intel.
 BREW_PATHS=(/opt/homebrew/bin/brew /usr/local/bin/brew)
@@ -371,6 +375,7 @@ check_all() {
         say "🧩 Claude Code plugins: $(missing missing)"
     fi
     check_row plugins
+    check_plugin_versions
 
     # Ask the tool, not the path, so a move of its model folder does not break this.
     EARS=$(find_tool ears) || EARS=""
@@ -428,6 +433,90 @@ check_hooks() {
         noverb) say "$what: not checked ($HOOKS_WHY)" ;;
         *) say "$what: $(missing "not checked yet") (the kit brings the pager that turns them on)" ;;
     esac
+}
+
+# --check only: each plugin in KIT_PLUGINS against the package of its name.
+# A plugin is released at its package's version, so a plugin whose version
+# differs was left behind by an update that did not run, or failed. This is a
+# warning, never a missing row: it adds nothing to MISSING_ROWS and leaves the
+# exit alone. On a fresh install the plugins come from the marketplace's head
+# and the packages from PyPI, so the two can differ for a while. The row is
+# said only when the kit's plugin is found and `sessionkit --version` answers;
+# otherwise the plugins and Session Kit rows already say what is missing.
+check_plugin_versions() {
+    VERSIONS_SPLIT=no
+    [[ "$CHECK" == yes && "$PLUGINS" == yes && -n "$SK" ]] || return 0
+    local what="🧩 Plugin versions" pkgs listed market=${PLUGIN#*@}
+    pkgs=$("$SK" --version 2>/dev/null </dev/null) || return 0
+    [[ "$pkgs" == "sessionkit, version "* ]] || return 0
+    listed=$(plugin_versions)
+    if [[ -z "$(plugin_version "$PLUGIN" "$listed")" ]]; then
+        say "$what: not checked (claude plugin list --json does not list $PLUGIN)"
+        return 0
+    fi
+    local name plug pkg splits=() updates=() installs=() reinstall=no
+    for name in "${KIT_PLUGINS[@]}"; do
+        plug=$(plugin_version "$name@$market" "$listed")
+        pkg=$(package_version "$name" "$pkgs")
+        [[ -n "$plug" ]] || plug="not installed"
+        [[ -n "$pkg" ]] || pkg="not installed"
+        [[ "$plug" == "$pkg" && "$pkg" != "not installed" ]] && continue
+        splits+=("$name plugin $plug, package $pkg")
+        if [[ "$plug" == "not installed" ]]; then
+            installs+=("$name@$market")
+        elif [[ "$pkg" != "not installed" ]]; then
+            updates+=("$name@$market")
+        fi
+        [[ "$pkg" == "not installed" ]] && reinstall=yes
+    done
+    if ((${#splits[@]} == 0)); then
+        say "$what: $(found found), each at its package's version"
+        return 0
+    fi
+    VERSIONS_SPLIT=yes
+    local row="" s
+    for s in "${splits[@]}"; do row="${row:+$row; }$s"; done
+    say "$what: $(missing "not at their packages' versions"): $row"
+    if ((${#updates[@]} + ${#installs[@]})); then
+        say "${REMEDY}claude plugin marketplace update $market"
+        for s in "${updates[@]}"; do say "${REMEDY}claude plugin update $s"; done
+        for s in "${installs[@]}"; do say "${REMEDY}claude plugin install $s"; done
+        say "${REMEDY_MORE}then restart Claude Code: a plugin update applies at its next start"
+    fi
+    if [[ "$reinstall" == yes ]]; then
+        say "${REMEDY}uv tool install --python $KIT_PYTHON --reinstall sessionkit"
+        say "${REMEDY_MORE}it puts back a package the kit installs that its tool has lost"
+    fi
+}
+
+# "ID VERSION", one line per installed plugin, from claude's own JSON: no jq,
+# and never a path under ~/.claude/plugins. Each "id" pairs with the next
+# "version" before the next "id", so pretty-printed and minified JSON read alike.
+plugin_versions() {
+    "$CLAUDE" plugin list --json 2>/dev/null </dev/null |
+        grep -oE '"(id|version)"[[:space:]]*:[[:space:]]*"[^"]*"' |
+        awk -F'"' '$2 == "id" { id = $4; next } id != "" { print id, $4; id = "" }'
+    return 0
+}
+
+# The version plugin_versions' lines ($2) give plugin ID $1, or nothing.
+plugin_version() {
+    awk -v id="$1" '$1 == id { print $2; exit }' <<<"$2"
+}
+
+# The version `sessionkit --version` ($2) gives package $1, or nothing. Its
+# first line is the kit's ("sessionkit, version X"), then one per family
+# package ("  NAME  X"); X can read "not installed".
+package_version() {
+    awk -v n="$1" '
+        NR == 1 {
+            if (n == "sessionkit" && $1 == "sessionkit," && $2 == "version") {
+                sub(/^sessionkit, version /, ""); print; exit
+            }
+            next
+        }
+        $1 == n { sub(/^[ \t]*[^ \t]+[ \t]+/, ""); sub(/[ \t\r]+$/, ""); print; exit }
+    ' <<<"$2"
 }
 
 version_of() {
@@ -768,6 +857,13 @@ warn_intel() {
     fi
 }
 
+# --check: a plugin version split is a warning, not a missing row.
+warn_versions() {
+    if [[ "${VERSIONS_SPLIT:-no}" == yes ]]; then
+        say "⚠️ A plugin is not at its package's version: the → lines under the plugin versions row bring it level."
+    fi
+}
+
 warn_disk() {
     local free_kb free_gb
     free_kb=$(df -k "$HOME" 2>/dev/null | awk 'NR == 2 {print $4}')
@@ -1100,6 +1196,7 @@ check_end() {
     else
         warn_intel
     fi
+    warn_versions
     if ((${#STEPS[@]} == 0)) && [[ "$SERVER_MISSING" != yes ]]; then
         say "✅ ${BOLD}Nothing is missing: Session Kit is all here.${RESET}"
         if [[ "$SPEECH" == no && "$SPEECH_HERE" == no ]]; then

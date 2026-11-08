@@ -103,7 +103,8 @@ Under `~/.sessionmail/seats/<seat>/`:
 
 Outside the seat:
 
-- `<mailroot>/<box>/{new,cur,tmp}` - the maildir. The pager never writes here.
+- `<boxes>/<box>/{new,cur,tmp}` - the maildir, `<boxes>` being `message path
+  --boxes`. The pager never writes here.
 - The host's postfix maps, `valias` and `vmailbox` - the doorbell. `pager listen`
   mints this session's alias line when it is missing, and its banner reports the
   doorbell's state.
