@@ -24,10 +24,9 @@ and the docs.
 ## Quick start
 
 After the install, do what its last screen lists (sign in to Claude Code
-once), then start your first session in a project folder:
+once), then start your first session, in whatever folder you're in:
 
 ```bash
-mkdir -p ~/work && cd ~/work
 session start
 ```
 
