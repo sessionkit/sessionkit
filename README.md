@@ -30,8 +30,9 @@ once), then start your first session, in whatever folder you're in:
 session start
 ```
 
-Say "set up Delta" to your session. It shows a QR code: scan it with Delta
-Chat on your phone, and you can text or ring your session.
+Ask Claude to call you. It shows a QR code: scan it with your phone and
+follow the steps to install Delta Chat. Then you can text or ring your
+session.
 
 ## What it installs
 
