@@ -88,8 +88,7 @@ Then quit Claude Code, every window, so the plugins load. Check it with
 [uninstall][uninstall].
 
 **Already using VoiceMode?** It keeps working. Use either one, or both side
-by side: some agents on VoiceMode, some on Session Kit. They should not get
-in each other's way.
+by side.
 
 ## Configuration
 
