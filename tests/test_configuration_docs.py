@@ -242,18 +242,21 @@ def test_settings_table_links_each_package_page_absolutely(repo):
     assert f"[{repo}'s docs/settings.md]" in section
 
 
-SPECS = {"spec-settings": "openspec/specs/settings/spec.md", "spec-tree": "openspec/specs/tree/spec.md"}
+SPECS = ("the settings specification", "the tree specification")
 
 
-@pytest.mark.parametrize("label", SPECS)
-def test_settings_links_the_published_spec_relatively(label):
-    # The guide names the specification and links it: a relative link to the
-    # file in the kit (the docs/ rule), to a spec this tree really holds.
-    text = _read(SETTINGS_DOC)
-    path = SPECS[label]
-    assert f"\n[{label}]: ../{path}\n" in text
-    assert f"][{label}]" in _section(text, "The cascade")
-    assert (ROOT / path).is_file(), path
+def test_settings_names_the_specs_and_where_they_are_kept():
+    # The specs live in the project's OpenSpec store, not in this repo, and
+    # the store is private: the guide names each spec in plain text and says
+    # where it is kept, with no link that would be dead in the repo.
+    cascade = " ".join(_section(_read(SETTINGS_DOC), "The cascade").split())
+    for spec in SPECS:
+        assert spec in cascade, spec
+    assert "kept in the project's OpenSpec store, not in this repository" in cascade
+
+
+def test_settings_links_nothing_into_openspec():
+    assert "openspec/" not in _read(SETTINGS_DOC)
 
 
 def test_settings_no_longer_says_the_spec_is_coming():
@@ -265,15 +268,13 @@ def test_settings_no_longer_says_the_spec_is_coming():
 
 def test_settings_does_not_say_the_spec_holds_every_rule_it_states():
     # The guide states the cascade as built; the spec states only what is
-    # decided and lists the rest as not yet specified. So the guide's link
+    # decided and lists the rest as not yet specified. So the guide's
     # sentence says the spec has such a list, and never that the spec is the
-    # cascade written down, and each linked spec really carries the list.
+    # cascade written down. The specs are in the store now, so whether each
+    # really carries the list is the store's to check, not the kit's.
     cascade = " ".join(_section(_read(SETTINGS_DOC), "The cascade").split())
     assert "written down as a specification of its own" not in cascade
     assert "which also lists what it does not yet specify" in cascade
-    for path in SPECS.values():
-        purpose = _read(path).split("## Requirements", 1)[0]
-        assert "Not yet specified" in purpose, path
 
 
 def test_settings_names_the_five_layers_in_order():

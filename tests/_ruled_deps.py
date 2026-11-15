@@ -10,15 +10,19 @@ The ruling: a kit install is the whole family, phone calls included.
 - Floored at 0.3.0: the kit is released and tested with the family's 0.3.0,
   so it needs every family package at 0.3.0 or later, and PyPI's 0.0.1 name
   placeholders and the 0.1.0 alphas must never satisfy these.
-- Within the 0.3.3 floor below, `sessionkit setup` asks sessiontools for
+- Within the 0.4.0 floor below, `sessionkit setup` asks sessiontools for
   `session agent default`, and INSTALL.md describes sessionmail's one-run
   mail setup. Setup also asks sessiontools for the agents folder with
   `session path agent --config --json`. That verb ships in sessiontools
-  0.3.3, the floor below; with a sessiontools that lacks it, setup writes
+  0.3.3, below the floor; with a sessiontools that lacks it, setup writes
   no agent file and says so.
-- All five are floored at 0.3.3: the family is released together, and an
-  older copy of one package beside the others splits its state between the
-  old and new folders.
+- All five are floored at 0.4.0 or later: the family is released together,
+  and an older copy of one package beside the others splits its state
+  between the old and new folders.
+- sessionview from 0.4.0 has its helpers as verbs (`sessionview
+  config|session|messages`), and the kit links `sessionview` alone. An
+  older sessionview still types `sessionview-messages` into its messages
+  tab, a command the kit no longer puts on the PATH.
 - sessionphone comes WITH its media extra. Calls, the bot and
   `sessionphone web` need it, and the ruling is that calls come with the kit
   rather than as a second install.
@@ -34,7 +38,7 @@ dependencies, never an optional extra.
   (sessiontools.settings) and jsonschema, which validates the kit's own
   schemas. Without it settled reads only SETTINGS_ROOT, its standalone input,
   and shows none of the kit's tools. That extra asks for sessiontools 0.3.3,
-  which FAMILY_RULED now floors.
+  which FAMILY_RULED's 0.4.0 floor covers.
 - It is NOT a family package, so it is written in APPS, apart from
   FAMILY_RULED. It has its own version line (0.1.0, never the family's
   0.3.x), so a family floor bump never moves it. It ships no Claude plugin,
@@ -55,11 +59,11 @@ from packaging.utils import canonicalize_name
 
 # The family: released together, floored together, one Claude plugin each.
 FAMILY_RULED = (
-    "sessionmail>=0.3.3",
-    "sessiontools>=0.3.3",
-    "sessionphone[media]>=0.3.3",
-    "sessionview>=0.3.3",
-    "sessionvoice[capture]>=0.3.3",
+    "sessionmail>=0.4.0",
+    "sessiontools>=0.4.0",
+    "sessionphone[media]>=0.4.0",
+    "sessionview>=0.4.0",
+    "sessionvoice[capture]>=0.4.0",
 )
 
 # Required, but not family: each on its own version line, with no plugin.

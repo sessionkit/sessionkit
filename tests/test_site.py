@@ -89,6 +89,15 @@ def test_no_absolute_or_protocol_relative_url():
             )
 
 
+def test_a_code_block_wraps_and_never_scrolls_sideways():
+    # On a phone, a sideways scroll hid the end of the install line, the one
+    # line people copy. A soft wrap shows all of it and still pastes as one.
+    css = (SITE / "style.css").read_text()
+    rules = re.findall(r"^pre \{(.*?)^\}", css, re.MULTILINE | re.DOTALL)
+    assert any("white-space: pre-wrap" in rule for rule in rules)
+    assert "overflow-x" not in css
+
+
 def test_no_url_anywhere_in_the_css():
     for css in SITE.rglob("*.css"):
         text = css.read_text()
@@ -114,6 +123,20 @@ def test_install_line_is_the_readmes():
     section = _installation_section((ROOT / "README.md").read_text())
     readme_lines = {re.sub(r"\s+#.*$", "", raw).strip() for raw in section.splitlines()}
     assert line in readme_lines, f"{line!r} is not in README's Installation"
+
+
+def test_every_line_in_the_install_block_is_the_readmes():
+    # The page once said the plugin step did not work, long after the README
+    # had given its commands. Each line people copy comes from the README.
+    page = (SITE / "index.html").read_text()
+    block = re.search(r'<pre class="install">(.*?)</pre>', page, re.DOTALL)
+    assert block, "no install block on the page"
+    lines = re.findall(r"<code[^>]*>([^<]+)</code>", block.group(1))
+    assert len(lines) > 1, lines
+    section = _installation_section((ROOT / "README.md").read_text())
+    readme_lines = {raw.strip() for raw in section.splitlines()}
+    for line in lines:
+        assert line in readme_lines, f"{line!r} is not in README's Installation"
 
 
 def test_no_install_doc_filename_anywhere_in_site():

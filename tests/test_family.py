@@ -23,20 +23,41 @@ ROOT = Path(__file__).resolve().parent.parent
 # mail 8e4d9476, tools 8d089699, phone ac402a39, view 3942f119, voice ebc1b65c.
 # settled (required, not family): from the settings repo's pyproject at 1487963
 # and its 0.1.0 wheel, sha256 d796d326; re-measure from the staged wheel.
+# phone's 17 dc-* tools: from sessionphone's pyproject at 4248e9f, the set
+# its tests/test_wheel_dc_tools.py pins (SHIPPED - {dc-env}).
+# view: one command since sessionview d1fc7bf (SV-179); its helpers are the
+# verbs `sessionview config|session|messages`, off the PATH (SK-148).
+# voice's sessionvoice-web (the front door's command for Talk's room): from
+# sessionvoice's pyproject at 9040c1f, its origin master; it ships in 0.4.0.
 CHILD_SCRIPTS = {
     "message": "sessionmail.message:cli",
     "pager": "sessionmail.pager:cli",
     "memory": "sessionmail.memory:cli",
     "session": "sessiontools.cli:main",
     "sessionphone": "sessionphone.cli:main",
+    "dc-answer": "sessionphone.dctools:main",
+    "dc-call": "sessionphone.dctools:main",
+    "dc-call-mix": "sessionphone.dctools:main",
+    "dc-delete": "sessionphone.dctools:main",
+    "dc-dm": "sessionphone.dctools:main",
+    "dc-fetch": "sessionphone.dctools:main",
+    "dc-hangup": "sessionphone.dctools:main",
+    "dc-invite": "sessionphone.dctools:main",
+    "dc-live": "sessionphone.dctools:main",
+    "dc-log": "sessionphone.dctools:main",
+    "dc-log-web": "sessionphone.dctools:main",
+    "dc-react": "sessionphone.dctools:main",
+    "dc-ring": "sessionphone.dctools:main",
+    "dc-say": "sessionphone.dctools:main",
+    "dc-send-file": "sessionphone.dctools:main",
+    "dc-xdc-realtime": "sessionphone.dctools:main",
+    "dc-xdc-update": "sessionphone.dctools:main",
     "sessionview": "sessionview:main",
-    "sessionview-config": "sessionview:main",
-    "sessionview-session": "sessionview:main",
-    "sessionview-messages": "sessionview:main",
     "ears": "ears.cli:main",
     "ears-serve": "ears.serve:main",
     "mouth": "mouth.__main__:main",
     "talk": "talk.cli:main",
+    "sessionvoice-web": "talk.web:main",
     "settled": "settled.cli:main",
 }
 
@@ -125,6 +146,44 @@ def test_kit_keeps_its_own_command_and_adds_no_other() -> None:
     assert set(scripts) == {"sessionkit", *CHILD_SCRIPTS}
     # `session` is sessiontools' command re-exported, never a kit implementation.
     assert not scripts["session"].startswith("sessionkit.")
+
+
+#: sessionview's helpers, verbs of `sessionview` now; never on the PATH (SK-148).
+VIEW_HELPERS = ("sessionview-config", "sessionview-session", "sessionview-messages")
+
+
+def test_sessionview_alone_is_on_the_path_its_helpers_are_not() -> None:
+    scripts = _pyproject()["project"]["scripts"]
+    view = sorted(n for n, target in scripts.items() if target.startswith("sessionview:"))
+    assert view == ["sessionview"]
+    for helper in VIEW_HELPERS:
+        assert helper not in scripts, helper
+        assert helper not in CHILD_SCRIPTS, helper
+
+
+def test_sessionview_is_floored_where_its_helpers_are_verbs() -> None:
+    # sessionview before 0.4.0 types `sessionview-messages` into its messages
+    # tab, a command the kit no longer links: floor it where the helpers are verbs.
+    from packaging.requirements import Requirement
+    from packaging.version import Version
+
+    deps = [Requirement(d) for d in _pyproject()["project"]["dependencies"]]
+    view = next(r for r in deps if r.name == "sessionview")
+    assert view.specifier == ">=0.4.0", str(view.specifier)
+    assert not view.specifier.contains(Version("0.3.3"))
+    assert view.specifier.contains(Version("0.4.0"))
+
+
+def test_the_kit_installs_exactly_these_commands() -> None:
+    # The exact list, by name: a helper (or anything else) coming back fails here.
+    scripts = _pyproject()["project"]["scripts"]
+    dc = sorted(n for n in scripts if n.startswith("dc-"))
+    assert len(dc) == 17
+    assert sorted(n for n in scripts if not n.startswith("dc-")) == sorted([
+        "sessionkit", "message", "pager", "memory", "session", "sessionphone",
+        "sessionview", "ears", "ears-serve", "mouth", "talk", "sessionvoice-web",
+        "settled",
+    ])
 
 
 def test_plugin_depends_on_the_five() -> None:

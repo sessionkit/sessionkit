@@ -9,7 +9,9 @@ the mail root and the first boxes, the operator's box among them, and the
 operator below is written only for a box that exists. The kit calls the verb
 by its argv and reads its exit: 0 every step done, 4 steps are left for you,
 1 a step failed, 2 refused. A sessionmail without the verb (0.1.0) gets the
-exact step printed instead, and the run goes on to the operator.
+exact step printed instead, and the run goes on to the operator, which then
+refuses unless `--mailbox` or `--address` names it: only the verb can say
+which box is the operator's.
 
 The operator lives in the `session` tool's settings cascade (sessiontools'
 `session operator` reads it). This step writes ONE drop-in,
@@ -20,9 +22,12 @@ The operator lives in the `session` tool's settings cascade (sessiontools'
 
 Rules:
 
-- The operator is the human at this keyboard: the OS account name (never
-  `$USER`), or the box or address they name with `--mailbox` / `--address`.
-  No name is ever a default here.
+- The operator is the human at this keyboard: the box or address they name
+  with `--mailbox` / `--address`, else the box sessionmail names as the
+  operator's (`operator_box`: the first `box:` row of `message setup
+  --dry-run`). sessionmail owns that rule and reads the ACCOUNT's home, which
+  `$HOME` need not be, so the kit never recomputes it. No name is
+  ever a default here.
 - A mailbox is written only if sessionmail says it EXISTS (`message box
   path NAME` exits 0). Otherwise nothing is written: refuse, exit 1, and say
   how to name yourself.
@@ -47,12 +52,14 @@ from __future__ import annotations
 
 import json
 import os
-import pwd
+import re
 import shutil
 import subprocess
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
+
+from sessionkit import phoneowner
 
 # Every settings path the kit reads or writes is built by `settings_folder`
 # from these names, under $HOME: `~/.sessionkit/<package>/settings/`. No
@@ -296,14 +303,6 @@ def _cannot_read(path: Path, why: str) -> Outcome:
 # --- the box ------------------------------------------------------------------
 
 
-def account_name() -> str:
-    """The OS account running this, from the password database: not $USER.
-
-    Case-folded, as sessionmail's mail setup folds it when it makes the
-    account's box: the box this names is the box the verb made."""
-    return pwd.getpwuid(os.getuid()).pw_name.casefold()
-
-
 def box_exists(name: str, environ: Mapping[str, str]) -> tuple[bool, str]:
     """sessionmail's own answer: `message box path NAME` exits 0 when the
     box exists. Anything else (exit 2, absent, a timeout) is "cannot
@@ -437,6 +436,30 @@ def _no_verb(why: str, boxes: Sequence[str] = ()) -> Outcome:
     )
 
 
+# A step mail setup leaves, as its next-steps block names it: one numbered
+# line, "  N. ID (STATE): DETAIL" (sessionmail's next_steps).
+LEFT_STEP = re.compile(r"^  \d+\. (\S+) \(([A-Z]+)\): (.*)$")
+
+RERUN_AFTER = "Mail setup left steps for you (above); re-run sessionkit setup after."
+LEFT_ONLY = "Mail setup left steps for you (above)."
+
+
+def rerun_can_help(lines: Sequence[str]) -> bool:
+    """Whether a re-run of sessionkit setup can change what mail setup left.
+
+    Yes when a step left is one setup applies itself: a TODO (a sudo line it
+    could not run without a terminal), or a step that waits on another (it
+    is applied once that one is fixed). A BLOCKED or MANUAL step that nothing
+    waits on is the person's alone: its own line names it and what to do,
+    and a re-run finds it the same. Lines that name no step (a verb that
+    prints no next-steps block) keep the hint: nothing says it cannot help.
+    """
+    steps = [m.groups() for m in map(LEFT_STEP.match, lines) if m]
+    if not steps:
+        return True
+    return any(state == "TODO" or "waits on " in detail for _id, state, detail in steps)
+
+
 def _output_lines(done: subprocess.CompletedProcess) -> list[str]:
     return (done.stdout or "").splitlines() + (done.stderr or "").splitlines()
 
@@ -494,12 +517,14 @@ def run_mail_setup(
         # A dry run applies nothing, so the verb answers 4 while any step is
         # still to do, a fresh host's included (measured); it leaves the
         # steps for the real run, not for you.
-        after = (
-            "Dry run: mail setup has steps still to do (above). Without "
-            "--dry-run it does what it can and names the rest."
-            if dry_run
-            else "Mail setup left steps for you (above); re-run sessionkit setup after."
-        )
+        if dry_run:
+            after = (
+                "Dry run: mail setup has steps still to do (above). Without "
+                "--dry-run it does what it can and names the rest."
+            )
+        else:
+            # The re-run hint only where a re-run can change the outcome.
+            after = RERUN_AFTER if rerun_can_help(lines) else LEFT_ONLY
         return Outcome(EXIT_STEPS_LEFT, lines + [after])
     if code == MAIL_FAILED:
         why = "a mail setup step failed; what ran before it stays"
@@ -514,6 +539,58 @@ def run_mail_setup(
             f"{why[0].upper()}{why[1:]}. Fix what it names, then run sessionkit setup again."
         ],
     )
+
+
+# --- the operator's box: sessionmail's answer, never the kit's own -----------
+
+# The plan's step states (sessionmail docs/message-setup.md). A box row in one
+# of these names a box the verb makes or has made.
+BOX_USABLE = ("DONE", "TODO")
+_BOX_ROW = re.compile(r"^\s+box:(\S+)\s+([A-Z]+)\b:?\s*(.*)$")
+
+
+def operator_box_from_plan(text: str) -> tuple[str | None, str]:
+    """The operator's box in the plan TEXT that `message setup --dry-run`
+    (no `--box`) prints: its FIRST `box:<name>` row, which sessionmail
+    always makes the operator's (docs/message-setup.md, "The first boxes").
+    (NAME, "") when that row is DONE or TODO; else (None, why), WHY saying
+    what sessionmail said: no box row at all, a MANUAL `box:operator` (no
+    operator and no usable name), or a box it cannot make (BLOCKED)."""
+    for line in text.splitlines():
+        row = _BOX_ROW.match(line)
+        if row is None:
+            continue
+        name, state, detail = row.groups()
+        said = f"box:{name} {state}" + (f": {detail.strip()}" if detail.strip() else "")
+        if state in BOX_USABLE:
+            return name, ""
+        if name == "operator" and state == "MANUAL":
+            return None, f"sessionmail has no operator's box ({said})"
+        return None, f"sessionmail cannot make the operator's box ({said})"
+    return None, f"`{_verb()} --dry-run` named no box (no `box:` row)"
+
+
+def operator_box(environ: Mapping[str, str]) -> tuple[str | None, str]:
+    """The operator's box, as sessionmail names it: (NAME, "") or (None, why).
+
+    sessionmail owns the rule (`operator.mailbox` in the session tool's
+    settings under the ACCOUNT's home, else the account's name), and the
+    kit never recomputes it: `$HOME` need not be the account's home, and a
+    second copy of the rule would disagree there. So the kit asks the verb
+    for its plan, read only, with no `--box`, and reads the first box row.
+    Anything that is not a usable answer is refused, with what sessionmail
+    said; there is no fallback name."""
+    argv = [*MAIL_SETUP_ARGV, "--dry-run"]
+    done = _run(argv, environ, timeout=MAIL_SETUP_TIMEOUT)
+    if done is None:
+        return None, "could not ask sessionmail (`message` not found or did not answer)"
+    if done.returncode not in (MAIL_DONE, MAIL_LEFT):
+        lines = [x.strip().rstrip(".") for x in _output_lines(done) if x.strip()]
+        said = lines[-1] if lines else ""
+        return None, f"`{' '.join(argv)}` exited {done.returncode}" + (
+            f": {said}" if said else ""
+        )
+    return operator_box_from_plan(done.stdout or "")
 
 
 # --- the agent: the file `session start NAME` resolves -------------------------
@@ -761,6 +838,45 @@ WAKE_ADD_ARGV: tuple[str, ...] = ("ears", "wake", "add")
 WAKE_LIST_ARGV: tuple[str, ...] = ("ears", "wake", "list")
 WAKE_TIMEOUT = 10.0
 
+# A wake seat is only a name in the wake file. What wakes the seat is the
+# turn mail the ears' `mail` service sends, from what the `keeper` heard
+# (sessionvoice's docs/ears.md, "Wake seats"). So setup promises "hey NAME"
+# only when sessionvoice's own read-only report says both run. Each of its
+# service rows is `NAME   STATE`, the state one of `running, pid N`,
+# `loaded, not running` or `not installed`; it exits 0 either way.
+EARS_STATUS_ARGV: tuple[str, ...] = ("ears", "services", "status")
+WAKE_SERVICES: tuple[str, ...] = ("keeper", "mail")
+# The step that installs them, as the installer's end screen gives it
+# (install.sh SPEECH_ARGV), with its cost as that screen states it.
+EARS_SERVICES_STEP = "ears services install --agent {name}"
+EARS_SERVICES_COST = "about 4.1 GB"
+
+
+def wake_services_running(environ: Mapping[str, str]) -> bool:
+    """True only when `ears services status` answers, exit 0, and its
+    `keeper` row and its `mail` row each say `running, pid`. `ears` absent,
+    a timeout, a failure, a row missing or output we do not know all read
+    as False: the promise is never made on a guess. Read only; setup never
+    runs `ears services install`."""
+    done = _run(EARS_STATUS_ARGV, environ, timeout=EARS_PROBE_TIMEOUT)
+    if done is None or done.returncode != 0:
+        return False
+    states: dict[str, str] = {}
+    for line in (done.stdout or "").splitlines():
+        name, _, state = line.strip().partition(" ")
+        if name in WAKE_SERVICES and name not in states:
+            states[name] = state.strip()
+    return all(states.get(n, "").startswith("running, pid") for n in WAKE_SERVICES)
+
+
+def wake_waiting_line(name: str) -> str:
+    """The wake seat's line when it was added but nothing listens yet."""
+    step = EARS_SERVICES_STEP.format(name=name)
+    return (
+        f'Wake seat {name!r} added: "hey {name}" wakes it once the ears\' '
+        f"services are installed and running ({EARS_SERVICES_COST}): {step}"
+    )
+
 
 def wake_step(name: str) -> str:
     """The one command that adds NAME's wake seat by hand."""
@@ -772,7 +888,10 @@ def run_wake(*, name: str, dry_run: bool, environ: Mapping[str, str]) -> list[st
 
     Only when `ears` is on the PATH. No ears, a refusal, a timeout: ONE line
     naming the step to run, and never the exit (as `ears_model_missing`). A
-    dry run asks `ears wake list`, read only, and writes nothing."""
+    dry run asks `ears wake list`, read only, and writes nothing. Once the
+    seat is added, the line says "hey NAME" wakes it only when the ears'
+    services are measured running (wake_services_running); else it says it
+    will once they are, and names the step that installs them."""
     step = wake_step(name)
     if _find(WAKE_ADD_ARGV[0], environ) is None:
         return [
@@ -801,6 +920,8 @@ def run_wake(*, name: str, dry_run: bool, environ: Mapping[str, str]) -> list[st
             f"it exited {done.returncode}",
         ).rstrip(".")
         return [f"No wake seat added ({why}). Fix that, then run: {step}"]
+    if not wake_services_running(environ):
+        return [wake_waiting_line(name)]
     return [f'Wake seat {name!r}: "hey {name}" wakes it.']
 
 
@@ -928,7 +1049,8 @@ def run_setup(
     the worst of the three: 1 if any refused or failed, else 4 if mail left
     steps for you, else 0. Then the wake seat (run_wake): `ears wake add
     NAME`, NAME the `--agent` given, else the default seat; one line, never
-    the exit. Then `ears backends` is asked, read only: when the ears'
+    the exit, promising "hey NAME" only when `ears services status` says the
+    keeper and the mail service run. Then `ears backends` is asked, read only: when the ears'
     model is missing, one line (EARS_MODEL_LINE) names `ears install`; it
     never changes the exit. With the agent defined, the run ends on the one
     launch step (LAUNCH_SENTENCE: bare when the agent is the default seat,
@@ -985,6 +1107,9 @@ def run_setup(
     # Read only, and never part of the exit: 4 means mail steps are left.
     if ears_model_missing(environ):
         lines.append(EARS_MODEL_LINE)
+    # The phone owner's key pin, read from sessionphone: lines only
+    # when the owner is, or may be, locked out; never part of the exit.
+    lines += phoneowner.setup_lines(environ)
     if defined.code == EXIT_OK:
         lines.append(launch_sentence(agent, seat))
     return Outcome(code, lines)
@@ -1028,7 +1153,12 @@ def run_operator(
     if address is not None:
         block = {ADDRESS_KEY: address}
     else:
-        box = mailbox if mailbox is not None else account_name()
+        box = mailbox
+        if box is None:
+            # sessionmail names the operator's box; the kit never computes one.
+            box, why = operator_box(environ)
+            if box is None:
+                return Outcome(EXIT_REFUSED, [f"No operator written: {why}.", HINT])
         try:
             check_mailbox_shape(box)
         except ShapeError as e:

@@ -1,6 +1,6 @@
 [project]
 name = "sessionkit"
-version = "0.3.3"
+version = "0.4.0"
 description = "Session Kit gives your Claude Code sessions voice, mail, a phone line and a tmux sidebar, in one install."
 readme = "README.md"
 license = "AGPL-3.0-or-later"
@@ -14,15 +14,18 @@ requires-python = ">=3.11,<3.15"
 # with the family's 0.3.0, so it needs every family package at 0.3.0 or
 # later, and PyPI's 0.0.1 name placeholders and the 0.1.0 alphas must never
 # satisfy these.
-# Within the 0.3.3 floor below, `sessionkit setup` asks sessiontools for
+# Within the 0.4.0 floor below, `sessionkit setup` asks sessiontools for
 # `session agent default`, and INSTALL.md describes sessionmail's one-run
 # mail setup. Setup also asks sessiontools for the agents folder with
 # `session path agent --config --json`.
-# That verb ships in sessiontools 0.3.3, the floor below; with a sessiontools
+# That verb ships in sessiontools 0.3.3, below the floor; with a sessiontools
 # that lacks it, setup writes no agent file and says so.
-# All five are floored at 0.3.3: the family is released together, and an older
-# copy of one package beside the others splits its state between the old
-# and new folders.
+# All five are floored at 0.4.0 or later: the family is released together, and
+# an older copy of one package beside the others splits its state between the
+# old and new folders.
+# sessionview from 0.4.0 has its helpers as verbs, and the kit links
+# `sessionview` alone. An older sessionview still types
+# `sessionview-messages` into its messages tab, which the kit no longer links.
 # sessionphone with its media extra: the bot, calls and `sessionphone web` need it.
 # sessionvoice with its capture extra, so the ears can hear the room.
 # settled, the Settings app, is required too: a hard dependency, never an
@@ -31,17 +34,17 @@ requires-python = ">=3.11,<3.15"
 # its kit extra brings the kit's tool registry and jsonschema, without which
 # it shows none of the kit's tools.
 # That extra asks for sessiontools 0.3.3, which the sessiontools line below
-# now floors.
+# covers.
 # This is the RULED list, kept in tests/_ruled_deps.py with the ruling;
 # tests/test_dependency_gate.py fails when these lines, the built wheel or
 # uv.lock drift from it.
 dependencies = [
     "click>=8.1",
-    "sessionmail>=0.3.3",
-    "sessiontools>=0.3.3",
-    "sessionphone[media]>=0.3.3",
-    "sessionview>=0.3.3",
-    "sessionvoice[capture]>=0.3.3",
+    "sessionmail>=0.4.0",
+    "sessiontools>=0.4.0",
+    "sessionphone[media]>=0.4.0",
+    "sessionview>=0.4.0",
+    "sessionvoice[capture]>=0.4.0",
     "settled[kit]>=0.1.0",
 ]
 
@@ -59,8 +62,8 @@ Repository = "https://github.com/sessionkit/sessionkit"
 # mail 8e4d9476, tools 8d089699, phone ac402a39, view 3942f119, voice ebc1b65c.
 # settled: from the settings repo's pyproject at 1487963 and its 0.1.0
 # wheel, sha256 d796d326 (re-measure from the staged 0.1.0 wheel, by sha256).
-# sessionview's four commands share one target: `sessionview:main` reads the
-# name it was run as and runs that command.
+# sessionview ships one command. Its helpers are verbs of it, `sessionview
+# config`, `sessionview session` and `sessionview messages`, never on the PATH.
 # The kit itself still ships no `session` of its own: `session` below is
 # sessiontools' command, re-exported, not a second implementation.
 [project.scripts]
@@ -73,16 +76,36 @@ memory = "sessionmail.memory:cli"
 session = "sessiontools.cli:main"
 # sessionphone
 sessionphone = "sessionphone.cli:main"
+# sessionphone's dc-* tools: one console-script target, sessionphone.dctools:main,
+# which runs the tool named by argv[0]. uv links only the kit's own scripts, so
+# without these lines a kit install leaves them off PATH.
+# dc-env (a library the tools source), bridge-check and bin/sessionphone never ship.
+dc-answer = "sessionphone.dctools:main"
+dc-call = "sessionphone.dctools:main"
+dc-call-mix = "sessionphone.dctools:main"
+dc-delete = "sessionphone.dctools:main"
+dc-dm = "sessionphone.dctools:main"
+dc-fetch = "sessionphone.dctools:main"
+dc-hangup = "sessionphone.dctools:main"
+dc-invite = "sessionphone.dctools:main"
+dc-live = "sessionphone.dctools:main"
+dc-log = "sessionphone.dctools:main"
+dc-log-web = "sessionphone.dctools:main"
+dc-react = "sessionphone.dctools:main"
+dc-ring = "sessionphone.dctools:main"
+dc-say = "sessionphone.dctools:main"
+dc-send-file = "sessionphone.dctools:main"
+dc-xdc-realtime = "sessionphone.dctools:main"
+dc-xdc-update = "sessionphone.dctools:main"
 # sessionview
 sessionview = "sessionview:main"
-sessionview-config = "sessionview:main"
-sessionview-session = "sessionview:main"
-sessionview-messages = "sessionview:main"
 # sessionvoice
 ears = "ears.cli:main"
 ears-serve = "ears.serve:main"
 mouth = "mouth.__main__:main"
 talk = "talk.cli:main"
+# the front door asks it for Talk's room: `sessionvoice-web web-room` (docs/family-web.md)
+sessionvoice-web = "talk.web:main"
 # settled
 settled = "settled.cli:main"
 

@@ -9,6 +9,7 @@ from __future__ import annotations
 import re
 import shutil
 import subprocess
+import unicodedata
 from pathlib import Path
 
 import pytest
@@ -22,6 +23,7 @@ from _fakemac import (
     SPEECH_PROBE_URL,
     FakeMac,
 )
+from _printed import WIDTH, Script, display_width
 
 FRESH_LIST = [
     "🍺 Homebrew",
@@ -30,17 +32,21 @@ FRESH_LIST = [
     "🍻 tmux, ffmpeg and notmuch",
     "📦 Session Kit",
     "🧩 the plugins",
-    "🎙️ ears install",
+    "🎤 ears install",
     "👂 the speech server and the ears",
-    "⚙️ sessionkit setup",
+    "📝 sessionkit setup",
     "📬 turn on the mail hooks",
 ]
 
-HOOKS_STEP = "📬 turn on the mail hooks (so a seat hears mail while idle): pager settings hooks on"
+HOOKS_STEP = "📬 turn on the mail hooks (so a seat hears mail while idle):"
+HOOKS_STEP_RUNS = "         pager settings hooks on"
 HOOKS_ROW = "📬 Mail hooks (so a seat hears mail while idle)"
+REPO_URL = re.search(r"^REPO_URL=(\S+)$", SOURCE, re.MULTILINE).group(1)
 HOOKS_BY_HAND = (
-    '    set "hooks": true in ~/.sessionkit/mail/settings/mail.json, and change no other key\n'
-    '  The README\'s Installation, "The mail hooks start off", has the lines to paste.\n'
+    '    set "hooks": true in ~/.sessionkit/mail/settings/mail.json,\n'
+    "    and change no other key\n"
+    '  INSTALL.md section 4, "Turn the mail hooks on", has the command, at:\n'
+    f"    {REPO_URL}\n"
 )
 
 
@@ -72,9 +78,10 @@ def test_fresh_dry_run_lists_the_ten_in_order_and_installs_nothing(mac: FakeMac)
         assert item.startswith(want), (item, want)
     assert "It will install these 10, in this order:" in r.out
     assert "🔐 asks for your Mac password, and its own [Enter]" in r.out
-    assert 'adds 1 line to ~/.zprofile: eval "$(' in r.out
+    assert '📄 adds 1 line to ~/.zprofile:\n            eval "$(' in r.out
     assert (
-        'adds 1 line to ~/.zshrc and to ~/.profile: . "$HOME/.local/bin/env"' in r.out
+        "📄 adds 1 line to ~/.zshrc and to ~/.profile:\n"
+        '            . "$HOME/.local/bin/env"\n' in r.out
     )
     assert "~/.config/fish/conf.d/uv.env.fish" in r.out
     assert "🧪 Dry run: nothing was installed." in r.out
@@ -102,16 +109,16 @@ def test_every_check_line_shows_on_a_fresh_mac(mac: FakeMac):
         "🍺 Homebrew: missing",
         "🐍 uv: missing",
         "🤖 Claude Code: missing",
-        "🖥️ tmux: missing",
-        "🎞️ ffmpeg: missing",
+        "🪟 tmux: missing",
+        "🎧 ffmpeg: missing",
         "📨 notmuch: missing",
         "📦 Session Kit: missing",
-        "⚙️ Session Kit setup (your mail box, you as operator): not done",
+        "📝 Session Kit setup (your mail box, you as operator): not done",
         "🧩 Claude Code plugins: missing",
-        "🎙️ Ears voice model: missing",
+        "🧠 Ears voice model: missing",
         "👂 Speech server and ears: missing",
         "🔌 Port 8890 (the speech server's): free",
-        f"{HOOKS_ROW}: not checked yet (the kit brings the pager that turns them on)",
+        f"{HOOKS_ROW}: not checked yet\n   (the kit brings the pager that turns them on)",
     ):
         assert line in r.out, line
 
@@ -196,7 +203,7 @@ def test_bare_enter_installs_everything_and_homebrew_gets_the_terminal(mac: Fake
     zprofile = (mac.home / ".zprofile").read_text(encoding="utf-8")
     assert zprofile.count("brew shellenv") == 1
     assert (
-        "✏️  added Homebrew to ~/.zprofile (Homebrew's next steps are done)\n" in r.out
+        "📄 added Homebrew to ~/.zprofile (Homebrew's next steps are done)\n" in r.out
     )
     assert "✅ Session Kit is installed." in r.out
 
@@ -258,7 +265,7 @@ def test_brew_that_prints_its_version_and_exits_1_is_found(mac: FakeMac):
     mac.everything()
     mac.flag("brew_list_fails")
     r = mac.run()
-    assert "🖥️ tmux: found, 1.0" in r.out
+    assert "🪟 tmux: found, 1.0" in r.out
     assert "Nothing to install" in r.out
 
 
@@ -278,10 +285,13 @@ def test_uv_installer_runs_with_local_bin_off_the_path(mac: FakeMac):
 def test_uv_lines_name_every_shell_file_it_writes_on_this_mac(mac: FakeMac):
     (mac.home / ".bash_profile").write_text("# mine\n", encoding="utf-8")
     r = mac.run("--dry-run")
-    uv_line = next(
-        line for line in r.out.splitlines() if "adds 1 line to each of" in line
-    )
-    assert "~/.zshrc, ~/.profile and ~/.bash_profile:" in uv_line
+    # More than two files: one to a line, under the line it adds.
+    assert (
+        '📄 adds 1 line to each of 3 files: . "$HOME/.local/bin/env"\n'
+        "            ~/.zshrc\n"
+        "            ~/.profile\n"
+        "            ~/.bash_profile\n"
+    ) in r.out
     assert "~/.bashrc" not in r.out and "~/.bash_login" not in r.out
 
 
@@ -301,10 +311,7 @@ def test_zdotdir_moves_the_zsh_files(mac: FakeMac):
 def test_local_bin_already_on_path_means_uv_writes_no_shell_file(mac: FakeMac):
     mac.local_bin_on_path = True
     r = mac.run("--dry-run")
-    assert (
-        "none: ~/.local/bin is on your PATH already, so it changes no shell file"
-        in r.out
-    )
+    assert "📄 no shell file: ~/.local/bin is on your PATH already" in r.out
     assert "~/.zshrc" not in r.out
 
 
@@ -319,7 +326,7 @@ def test_homebrew_off_the_path_is_listed_written_once_and_not_again(mac: FakeMac
     assert r.rc == 0, r.out
     zprofile = (mac.home / ".zprofile").read_text(encoding="utf-8")
     assert zprofile.count(f'eval "$({mac.brew_dir}/brew shellenv)"') == 1
-    added = "✏️  added Homebrew to ~/.zprofile (Homebrew's next steps are done)"
+    added = "📄 added Homebrew to ~/.zprofile (Homebrew's next steps are done)"
     assert r.out.count(added) == 1
     again = mac.run()
     assert again.rc == 0, again.out
@@ -381,7 +388,7 @@ def test_no_speech_install_skips_it_and_the_end_screen_names_it(mac: FakeMac):
     assert r.rc == 0, r.out
     assert not any(c.startswith("ears services install") for c in r.calls)
     end = r.out.split("✅ Session Kit is installed.")[1]
-    assert "install the speech server and the ears" in end
+    assert "install the speech server and\n  the ears (about 4.1 GB):" in end
     assert "\n    ears services install --agent claude\n" in end
 
 
@@ -409,16 +416,92 @@ def test_the_speech_step_runs_the_one_argv(mac: FakeMac):
     assert speech == ["ears services install --agent claude"]
 
 
-def test_a_held_port_is_named_in_the_checks_the_list_and_the_end(mac: FakeMac):
+def test_the_speech_step_alone_runs_with_the_mic_check_off(mac: FakeMac):
+    # The installer runs unattended: the speech step turns the microphone
+    # check off for its one command. Nothing else sees the switch, so it is
+    # not exported, and nothing the installer prints names it.
+    mac.with_brew()
+    mac.flag("port_holder", "python3.1")  # so the steps ask ears its status
+    r = mac.run("--yes")
+    assert r.rc == 0, r.out
+    assert "EARS_MIC_CHECK_S" not in r.out
+    seen = mac.mic_env_calls()
+    assert ("0", "ears services install --agent claude") in seen
+    assert [(v, c) for v, c in seen if v != "unset"] == [
+        ("0", "ears services install --agent claude")
+    ]
+    calls = [c for _, c in seen]
+    for other in ("ears install", "ears services status", "sessionkit setup"):
+        assert other in calls, calls
+    assert any(c.startswith("claude ") for c in calls), calls
+    assert "export EARS_MIC_CHECK_S" not in SOURCE
+
+
+def test_a_held_port_is_named_in_the_checks_and_the_list(mac: FakeMac):
     mac.with_brew()
     mac.flag("port_holder", "python3.1")
     r = mac.run("--yes")
     assert r.rc == 0, r.out
     assert "🔌 Port 8890 (the speech server's): held by python3.1 (pid 4242)" in r.out
-    assert "port 8890 is held by python3.1 (pid 4242): used if it is mlx-audio" in r.out
+    assert (
+        "port 8890 is held by python3.1 (pid 4242):\n"
+        "         used if it is mlx-audio, else this step stops\n"
+    ) in r.out
+
+
+def test_the_kits_own_speech_server_on_the_port_is_no_fault_at_the_end(
+    mac: FakeMac,
+):
+    # SK-272: the holder was mlx-audio, the server the speech step adopts;
+    # after the steps, ears says mlx-audio serves the port. Not a fault.
+    mac.with_brew()
+    mac.flag("port_holder", "python3.1")
+    r = mac.run("--yes")
+    assert r.rc == 0, r.out
     end = r.out.split("✅ Session Kit is installed.")[1]
-    assert "Port 8890 was held by python3.1 (pid 4242)" in end
-    assert "\n    ears services status\n" in end
+    assert "Port 8890" not in end
+    assert "ears services status" not in end
+    assert r.calls[-1] == "ears services status"  # asked after the steps
+
+
+def test_the_kits_own_speech_server_on_an_existing_install_is_no_fault(
+    mac: FakeMac,
+):
+    # A re-run over an existing install: the speech server was already
+    # the kit's, and only setup was left to do.
+    _all_here_but(mac, "setup")
+    mac.flag("port_holder", "python3.1")
+    mac.flag("port_holder_full", "/opt/speech/.venv/bin/python3.12\n")
+    r = mac.run("--yes")
+    assert r.rc == 0, r.out
+    assert "held by python3.12 (pid 4242)" in r.out  # the checks still say it
+    end = r.out.split("✅ Session Kit is installed.")[1]
+    assert "Port 8890" not in end
+
+
+def test_a_foreign_port_holder_is_still_named_at_the_end(mac: FakeMac):
+    mac.with_brew()
+    mac.flag("port_holder", "cupsd")
+    mac.flag("port_foreign")
+    r = mac.run("--yes")
+    assert r.rc == 0, r.out
+    end = r.out.split("✅ Session Kit is installed.")[1]
+    assert (
+        "- Port 8890 was held by cupsd (pid 4242) before this ran.\n"
+        "  Check what serves it:\n"
+        "    ears services status\n"
+    ) in end
+
+
+def test_a_held_port_with_no_speech_server_installed_is_still_named(mac: FakeMac):
+    # --no-speech: ears is there but serves nothing, so nothing says the
+    # holder is the kit's own.
+    mac.with_brew()
+    mac.flag("port_holder", "python3.1")
+    r = mac.run("--yes", "--no-speech")
+    assert r.rc == 0, r.out
+    end = r.out.split("✅ Session Kit is installed.")[1]
+    assert "- Port 8890 was held by python3.1 (pid 4242) before this ran." in end
 
 
 def test_the_port_holder_is_named_in_full_not_lsofs_9_characters(mac: FakeMac):
@@ -430,6 +513,16 @@ def test_the_port_holder_is_named_in_full_not_lsofs_9_characters(mac: FakeMac):
     assert r.rc == 0, r.out
     assert "🔌 Port 8890 (the speech server's): held by python3.12 (pid 4242)" in r.out
     assert "ps -o comm= -p 4242" in r.calls
+
+
+def test_a_ps_name_longer_than_its_room_is_cut_to_it(mac: FakeMac):
+    # The holder's line has room for HOLDER_NAME_MAX characters of its name.
+    mac.everything()
+    mac.flag("port_holder", "com.docke")
+    mac.flag("port_holder_full", "/Applications/x/com.docker.backend.helper.app\n")
+    r = mac.run()
+    assert r.rc == 0, r.out
+    assert "held by com.docker.backend.h (pid 4242)" in r.out
 
 
 def test_a_ps_name_that_is_not_lsofs_keeps_lsofs(mac: FakeMac):
@@ -451,11 +544,24 @@ def test_a_port_lsof_cannot_see_still_reads_as_held(mac: FakeMac):
     mac.flag("port_open")
     r = mac.run("--yes")
     assert r.rc == 0, r.out
-    held = "held by a server lsof does not show (another account's)"
+    held = "held by another account's server"
     assert f"🔌 Port 8890 (the speech server's): {held}" in r.out
-    assert f"port 8890 is {held}: used if it is mlx-audio" in r.out
+    assert f"port 8890 is {held}:\n         used if it is mlx-audio" in r.out
+    # The speech step adopted it: ears says mlx-audio serves the port now.
     end = r.out.split("✅ Session Kit is installed.")[1]
-    assert f"Port 8890 was {held} before this ran" in end
+    assert "Port 8890" not in end
+
+
+def test_a_port_lsof_cannot_see_with_no_speech_server_is_named_at_the_end(
+    mac: FakeMac,
+):
+    # With no speech server installed, nothing says whose it is: named.
+    mac.with_brew()
+    mac.flag("port_open")
+    r = mac.run("--yes", "--no-speech")
+    assert r.rc == 0, r.out
+    end = r.out.split("✅ Session Kit is installed.")[1]
+    assert "- Port 8890 was held by another account's server before this ran." in end
 
 
 def test_a_port_neither_lsof_nor_a_connection_finds_is_free(mac: FakeMac):
@@ -479,10 +585,10 @@ def test_setup_whose_dry_run_exits_4_is_in_the_list(mac: FakeMac):
     mac.flag("setup_dry_rc", "4")
     r = mac.run("--dry-run")
     assert (
-        "⚙️ Session Kit setup (your mail box, you as operator): not done, mail steps left"
+        "📝 Session Kit setup (your mail box, you as operator): mail steps left"
         in r.out
     )
-    assert [i.split(":")[0] for i in r.listed()] == ["⚙️ sessionkit setup"]
+    assert [i.split(":")[0] for i in r.listed()] == ["📝 sessionkit setup"]
 
 
 def test_setup_that_leaves_mail_steps_is_a_success_that_names_them(mac: FakeMac):
@@ -494,20 +600,163 @@ def test_setup_that_leaves_mail_steps_is_a_success_that_names_them(mac: FakeMac)
     mac.flag("setup_run_rc", "4")
     r = mac.run("--yes")
     assert r.rc == 0, r.out
-    assert "⚙️ sessionkit setup: done, mail steps left for you (" in r.out
+    assert "📝 sessionkit setup: done, mail steps left for you (" in r.out
     assert "did not finish" not in r.out
     end = r.out.split("✅ Session Kit is installed.")[1]
+    # Setup printed no next-steps block here: its lines above are the list.
     bullet = (
-        "- sessionkit setup set you as operator and left mail steps for you."
-        " Its dry run names them:\n"
-        "    TODO notmuch: index the mail\n"
-        "  Do them, then run it again; it keeps the operator it wrote"
-        " (INSTALL.md section 2):\n"
+        "- Do the mail steps sessionkit setup named above, then run it again:\n"
         "    sessionkit setup\n"
     )
     assert bullet in end
     assert end.count("\n- ") == 5  # the four every install shows, and this one
-    assert r.calls[-1] == "sessionkit setup --dry-run"
+    # SK-272: the end screen never runs setup's dry run again.
+    after = r.calls[r.calls.index("sessionkit setup") :]
+    assert "sessionkit setup --dry-run" not in after
+    assert "TODO notmuch: index the mail" not in end
+
+
+# What mail setup prints when it leaves steps (sessionmail's next_steps): the
+# BLOCKED hook link of a re-run over an existing install, which nothing
+# waits on, a BLOCKED pair where one waits on the other (INSTALL.md section 2),
+# and a sudo line it could not run without a terminal.
+LEFT_BLOCKED = (
+    "message setup: done what it can; 1 step(s) left for you:\n"
+    "  1. notmuch-hook-post-insert (BLOCKED): /Volumes/Mac/account/.sessionkit/"
+    "mail/.notmuch/hooks/post-insert links to ../../hooks/post-insert, not a "
+    "sessionmail hook: setup never replaces it\n"
+    "then run `message setup` again.\n"
+)
+LEFT_WAITS = (
+    "message setup: done what it can; 2 step(s) left for you:\n"
+    "  1. notmuch-index (BLOCKED): notmuch: 'notmuch' not found, so the index "
+    "and hook steps are left\n"
+    "  2. notmuch-hook (BLOCKED): waits on notmuch-index\n"
+    "then run `message setup` again.\n"
+)
+LEFT_SUDO = (
+    "message setup: done what it can; 1 step(s) left for you:\n"
+    "  1. maps (TODO): NOT RUN (no tty to ask for a password): run it yourself: "
+    "sudo -- postmap /etc/postfix/virtual\n"
+    "then run `message setup` again.\n"
+)
+
+
+def _setup_left(mac: FakeMac, text: str) -> FakeMac:
+    _all_here_but(mac, "setup")
+    mac.flag("setup_dry_rc", "4")
+    mac.flag("setup_run_rc", "4")
+    mac.flag("setup_left", text)
+    return mac
+
+
+def _end(r) -> str:
+    assert r.rc == 0, r.out
+    return r.out.split("✅ Session Kit is installed.")[1]
+
+
+def test_existing_install_end_screen_names_each_step_left_once(mac: FakeMac):
+    # A re-run over an existing install once printed
+    # 40+ lines. The end screen names only what to do, never setup's plan or
+    # dry run again, and nothing says "Left for you".
+    _setup_left(mac, LEFT_BLOCKED)
+    r = mac.run("--yes")
+    end = _end(r)
+    assert end.count("notmuch-hook-post-insert") == 1
+    assert (
+        "\n- notmuch-hook-post-insert:\n"
+        "  /Volumes/Mac/account/.sessionkit/mail/.notmuch/hooks/post-insert links\n"
+        "  to ../../hooks/post-insert, not a sessionmail hook: setup never\n"
+        "  replaces it\n"
+    ) in _normal(mac, end)
+    assert "Left for you" not in r.out.split("📝 sessionkit setup: running")[1]
+    assert "dry run" not in end.lower()
+    assert "message setup" not in end
+    assert "(BLOCKED)" not in end
+    after = r.calls[r.calls.index("sessionkit setup") :]
+    assert "sessionkit setup --dry-run" not in after
+
+
+def test_a_step_setup_never_fixes_gets_no_re_run_hint(mac: FakeMac):
+    _setup_left(mac, LEFT_BLOCKED)
+    end = _end(mac.run("--yes"))
+    assert "again" not in end
+    assert "re-run" not in end
+
+
+@pytest.mark.parametrize("text", [LEFT_WAITS, LEFT_SUDO], ids=["waits-on", "sudo"])
+def test_a_step_a_re_run_applies_gets_the_re_run_line_once(mac: FakeMac, text: str):
+    _setup_left(mac, text)
+    end = _end(mac.run("--yes"))
+    assert end.count("- Then run sessionkit setup again.\n") == 1
+    assert end.count("sessionkit setup") == 1
+
+
+def test_the_steps_left_are_one_dash_each(mac: FakeMac):
+    _setup_left(mac, LEFT_WAITS)
+    end = _end(mac.run("--yes"))
+    assert (
+        "- notmuch-index: notmuch: 'notmuch' not found, so the index and hook\n"
+        "  steps are left\n"
+        "- notmuch-hook: waits on notmuch-index\n"
+        "- Then run sessionkit setup again.\n"
+    ) in end
+
+
+def test_session_start_is_said_once_and_no_mkdir(mac: FakeMac):
+    # Setup's "To hear Delta messages, start Claude with:
+    # session start" above "Session Kit is installed" repeated the last step;
+    # and session start offers ~/work itself (README 040df27).
+    mac.with_brew()
+    r = mac.run("--yes")
+    assert r.rc == 0, r.out
+    assert "To hear Delta messages" not in r.out
+    assert r.out.count("session start") == 1
+    end = r.out.split("✅ Session Kit is installed.")[1]
+    assert end.endswith("- Then start your first session:\n    session start\n")
+    assert "mkdir" not in r.out
+    assert "~/work" not in r.out
+    assert "Left for you" not in r.out
+
+
+def test_the_launch_step_setup_names_is_the_one_on_the_end_screen(mac: FakeMac):
+    # An agent that is not the default seat: setup names it, and so does the end.
+    mac.with_brew()
+    mac.flag("launch", "session start claude")
+    r = mac.run("--yes")
+    assert r.rc == 0, r.out
+    assert r.out.count("session start") == 1
+    assert "- Then start your first session:\n    session start claude\n" in r.out
+
+
+@pytest.mark.parametrize("gone", ["plugin", "ears_model"])
+def test_the_launch_step_is_named_when_setup_is_not_in_the_run(
+    mac: FakeMac, gone: str
+):
+    # An existing install where setup ran before: no launch line to read, so
+    # the end screen gives the default, never an empty line.
+    _all_here_but(mac, gone)
+    r = mac.run("--yes")
+    assert "sessionkit setup: running" not in r.out  # not in this run
+    end = _end(r)
+    assert end.endswith("- Then start your first session:\n    session start\n")
+
+
+def test_session_start_is_said_once_when_setup_leaves_steps(mac: FakeMac):
+    _setup_left(mac, LEFT_WAITS)
+    r = mac.run("--yes")
+    assert r.out.count("session start") == 1
+    assert "To hear Delta messages" not in r.out
+
+
+def test_setup_leaving_steps_keeps_its_own_lines_on_screen(mac: FakeMac):
+    # Only the launch step is kept back: setup's plan still prints as it runs.
+    _setup_left(mac, LEFT_BLOCKED)
+    r = mac.run("--yes")
+    during = r.out.split("📝 sessionkit setup: running")[1]
+    during = during.split("📝 sessionkit setup: done")[0]
+    assert "setup ran\n" in during
+    assert "  1. notmuch-hook-post-insert (BLOCKED): " in during
 
 
 def test_setup_that_finishes_shows_no_steps_left_bullet(mac: FakeMac):
@@ -541,7 +790,7 @@ def test_a_failed_step_stops_there_and_names_its_section(mac: FakeMac):
     mac.flag("kit_fails")
     r = mac.run("--yes")
     assert r.rc == 1, r.out
-    assert "🛑 Session Kit failed (exit 1). Nothing after it was installed." in r.out
+    assert "🛑 Session Kit failed (exit 1).\nNothing after it was installed.\n" in r.out
     assert "INSTALL.md section 2. Install the kit" in r.out
     assert not any(c.startswith("claude plugin") for c in r.calls)
     assert "Session Kit is installed" not in r.out
@@ -554,7 +803,11 @@ def test_the_plan_lists_the_hooks_step_last_before_the_one_question(mac: FakeMac
     r = mac.run_tty(answers=("n",))
     assert r.rc == 4, r.out
     assert r.listed()[-1] == HOOKS_STEP
-    assert "if the kit's pager has no hooks verb yet, the end screen names" in r.out
+    assert f"{HOOKS_STEP}\n{HOOKS_STEP_RUNS}\n" in r.out
+    assert (
+        "         if the kit's pager has no hooks verb yet,\n"
+        "         the end screen names the one setting instead\n"
+    ) in r.out
     before = r.out.split("[Y/n]")[0]
     assert HOOKS_STEP in before
     assert r.installs == []
@@ -583,18 +836,32 @@ def test_a_refused_hooks_verb_names_the_step_and_the_install_still_succeeds(
     r = mac.run("--yes")
     assert r.rc == 0, r.out
     assert r.installs[-1] == "pager settings hooks on"
-    why = (
-        f"pager settings hooks on refused (exit {rc}): pager settings hooks: refused"
-        f" - {mac.home}/{HOOKS_FILE} is not a JSON object; fix it by hand"
+    why = f"pager settings hooks on refused (exit {rc})"
+    err = (
+        f"pager settings hooks: refused - {mac.home}/{HOOKS_FILE}"
+        " is not a JSON object; fix it by hand"
     )
-    assert f"📬 the mail hooks: left for you: {why} (" in r.out
+    lines = r.out.splitlines()
+    at = next(
+        i
+        for i, ln in enumerate(lines)
+        if ln.startswith("📬 the mail hooks: left for you (")
+    )
+    assert lines[at + 1] == f"   {why}"
+    # The refusal's first line, every word, folded under it.
+    told = []
+    for ln in lines[at + 2 :]:
+        if not ln.startswith("   "):
+            break
+        told.append(ln[3:])
+    assert "".join(told) == err  # fold -s keeps each space at its line's end
+    assert all(len(t) <= 72 for t in told)
     assert "a second line the installer does not show" not in r.out
     end = r.out.split("✅ Session Kit is installed.")[1]
     assert (
-        f"- Turn the mail hooks on, so a seat hears mail while idle ({why}):\n"
-        + HOOKS_BY_HAND
-        in end
-    )
+        "- Turn the mail hooks on, so a seat hears mail while idle\n"
+        f"  ({why}):\n" + HOOKS_BY_HAND
+    ) in end
     assert not (mac.home / HOOKS_FILE).exists()  # nothing written, by anyone
 
 
@@ -606,13 +873,15 @@ def test_a_pager_with_no_hooks_verb_leaves_the_step_to_the_end_screen(mac: FakeM
     assert "pager settings --help" in r.calls
     assert not any(c.startswith("pager settings hooks") for c in r.calls)
     assert r.installs[-1] == "sessionkit setup"
-    assert (
-        "📬 the mail hooks: left for you: this pager has no hooks verb yet (" in r.out
-    )
+    assert re.search(
+        r"^📬 the mail hooks: left for you \(\d+ s\)\n   this pager has no hooks verb yet\n",
+        r.out,
+        re.MULTILINE,
+    ), r.out
     end = r.out.split("✅ Session Kit is installed.")[1]
     assert (
-        "- Turn the mail hooks on, so a seat hears mail while idle"
-        " (this pager has no hooks verb yet):\n" + HOOKS_BY_HAND
+        "- Turn the mail hooks on, so a seat hears mail while idle\n"
+        "  (this pager has no hooks verb yet):\n" + HOOKS_BY_HAND
     ) in end
     assert not (mac.home / HOOKS_FILE).exists()
 
@@ -641,11 +910,11 @@ def test_a_rerun_with_a_pager_with_no_verb_changes_nothing_and_names_the_step(
     before = mac.tree()
     r = mac.run()
     assert r.rc == 0, r.out
-    assert f"{HOOKS_ROW}: not checked (this pager has no hooks verb yet)" in r.out
+    assert f"{HOOKS_ROW}: not checked\n   (this pager has no hooks verb yet)" in r.out
     assert "✅ Nothing to install: Session Kit is all here." in r.out
     assert (
-        "The mail hooks were not checked (this pager has no hooks verb yet)."
-        " If they are not on yet, so a seat hears mail while idle:\n" + HOOKS_BY_HAND
+        "The mail hooks were not checked (this pager has no hooks verb yet).\n"
+        "If they are not on yet, so a seat hears mail while idle:\n" + HOOKS_BY_HAND
     ) in r.out
     assert "❓" not in r.out
     assert r.installs == []
@@ -706,8 +975,8 @@ def test_the_installer_never_writes_the_hooks_file_itself():
 
 CHECK_HEADER = "🩺 Checking this Mac (read-only): nothing is installed"
 PROBE = f"curl -fsS --noproxy 127.0.0.1 -m 3 -o /dev/null -w %{{http_code}} {SPEECH_PROBE_URL}"
-EARS_ROW = "👂 Ears services (mouth, keeper, mail, the speech job)"
-SERVER_ROW = "🗣️ Speech server on port 8890"
+EARS_ROW = "👂 Ears services (mouth, keeper, mail, speech job)"
+SERVER_ROW = "💬 Speech server on port 8890"
 
 
 def _remedies(out: str) -> list[str]:
@@ -729,13 +998,13 @@ def test_check_on_a_mac_with_everything_exits_0_with_a_found_line_per_row(mac: F
         "🍺 Homebrew: found, 4.6.1",
         "🐍 uv: found",
         "🤖 Claude Code: found",
-        "🖥️ tmux: found",
-        "🎞️ ffmpeg: found",
+        "🪟 tmux: found",
+        "🎧 ffmpeg: found",
         "📨 notmuch: found",
         "📦 Session Kit: found",
-        "⚙️ Session Kit setup (your mail box, you as operator): done",
+        "📝 Session Kit setup (your mail box, you as operator): done",
         "🧩 Claude Code plugins: found",
-        "🎙️ Ears voice model: found",
+        "🧠 Ears voice model: found",
         f"{EARS_ROW}: found",
         f"{SERVER_ROW}: serving",
         "🔌 Port 8890 (the speech server's): free",
@@ -767,13 +1036,13 @@ ONE_MISSING = [
         "curl -fsSL https://claude.ai/install.sh | bash",
         2,
     ),
-    ("tmux", "🖥️ tmux: missing", "brew install tmux", 1),
-    ("ffmpeg", "🎞️ ffmpeg: missing", "brew install ffmpeg", 1),
+    ("tmux", "🪟 tmux: missing", "brew install tmux", 1),
+    ("ffmpeg", "🎧 ffmpeg: missing", "brew install ffmpeg", 1),
     ("notmuch", "📨 notmuch: missing", "brew install notmuch", 1),
     ("kit", "📦 Session Kit: missing", "uv tool install --python 3.14 sessionkit", 2),
     (
         "setup",
-        "⚙️ Session Kit setup (your mail box, you as operator): not done",
+        "📝 Session Kit setup (your mail box, you as operator): not done",
         "sessionkit setup",
         1,
     ),
@@ -783,7 +1052,7 @@ ONE_MISSING = [
         "claude plugin install sessionkit@sessionkit",
         1,
     ),
-    ("ears_model", "🎙️ Ears voice model: missing", "ears install", 1),
+    ("ears_model", "🧠 Ears voice model: missing", "ears install", 1),
     ("speech", f"{EARS_ROW}: missing", "ears services install --agent claude", 1),
     ("speech_serving", f"{SERVER_ROW}: not answering", "ears services status", 1),
 ]
@@ -849,8 +1118,10 @@ def test_homebrews_fix_is_its_own_installer_and_says_it_needs_an_admin(mac: Fake
     url = re.search(r"^BREW_INSTALLER_URL=(\S+)$", SOURCE, re.MULTILINE).group(1)
     lines = r.out.splitlines()
     at = lines.index("🍺 Homebrew: missing")
-    assert lines[at + 1] == f'    → /bin/bash -c "$(curl -fsSL {url})"'
-    assert "needs an administrator account" in lines[at + 2]
+    # Two lines, joined by the backslash: pasted, they are the one command.
+    assert lines[at + 1] == '    → /bin/bash -c "$(curl -fsSL \\'
+    assert lines[at + 2] == f'      {url})"'
+    assert "needs an administrator account" in lines[at + 3]
 
 
 def test_setup_with_mail_steps_left_points_at_its_dry_run(mac: FakeMac):
@@ -860,7 +1131,7 @@ def test_setup_with_mail_steps_left_points_at_its_dry_run(mac: FakeMac):
     r = mac.run("--check")
     assert r.rc == 1, r.out
     assert (
-        "not done, mail steps left\n    → sessionkit setup --dry-run\n"
+        "): mail steps left\n    → sessionkit setup --dry-run\n"
         "      it names the mail steps left" in r.out
     )
 
@@ -883,10 +1154,10 @@ def test_the_plugin_fix_adds_the_marketplace_only_when_it_is_not_there(mac: Fake
 
 VERSIONS_ROW = "🧩 Plugin versions"
 VERSIONS_FOUND = "🧩 Plugin versions: found, each at its package's version"
-VERSIONS_SPLIT = "🧩 Plugin versions: not at their packages' versions: "
+VERSIONS_SPLIT = "🧩 Plugin versions: not at their packages' versions:"
 VERSIONS_WARN = (
-    "⚠️ A plugin is not at its package's version: "
-    "the → lines under the plugin versions row bring it level."
+    "🔶 A plugin is not at its package's version:\n"
+    "   the → lines under the plugin versions row bring it level."
 )
 RESTART = "      then restart Claude Code: a plugin update applies at its next start"
 
@@ -898,7 +1169,8 @@ def _array(name: str) -> list[str]:
 
 
 def _versions_row(out: str) -> tuple[str, list[str]]:
-    """The plugin versions row, and the indented lines under it."""
+    """The plugin versions row, and the indented lines under it. Each split
+    is a line of its own, so the row stays in 76 columns."""
     lines = out.splitlines()
     at = next(i for i, ln in enumerate(lines) if ln.startswith(VERSIONS_ROW))
     under = []
@@ -907,6 +1179,11 @@ def _versions_row(out: str) -> tuple[str, list[str]]:
             break
         under.append(ln)
     return lines[at], under
+
+
+def _split(*names: str) -> list[str]:
+    """The split lines under the row, one per plugin."""
+    return [f"      {n}" for n in names]
 
 
 def test_the_six_plugins_are_the_kit_then_cli_family():
@@ -943,8 +1220,9 @@ def test_one_plugin_behind_names_it_and_its_update_and_still_exits_0(mac: FakeMa
     r = mac.run("--check")
     assert r.rc == 0, r.out
     row, under = _versions_row(r.out)
-    assert row == VERSIONS_SPLIT + "sessionmail plugin 0.3.1, package 0.3.2"
+    assert row == VERSIONS_SPLIT
     assert under == [
+        *_split("sessionmail plugin 0.3.1, package 0.3.2"),
         "    → claude plugin marketplace update sessionkit",
         "    → claude plugin update sessionmail@sessionkit",
         RESTART,
@@ -965,10 +1243,9 @@ def test_several_plugins_behind_are_one_row_naming_each(mac: FakeMac):
     assert r.rc == 0, r.out
     row, under = _versions_row(r.out)
     names = _array("KIT_PLUGINS")
-    assert row == VERSIONS_SPLIT + "; ".join(
-        f"{n} plugin 0.3.1, package 0.3.2" for n in names
-    )
+    assert row == VERSIONS_SPLIT
     assert under == [
+        *_split(*(f"{n} plugin 0.3.1, package 0.3.2" for n in names)),
         "    → claude plugin marketplace update sessionkit",
         *(f"    → claude plugin update {n}@sessionkit" for n in names),
         RESTART,
@@ -980,7 +1257,8 @@ def test_a_plugin_ahead_of_its_package_is_a_split_too(mac: FakeMac):
     mac.everything()
     mac.flag("plugin_ver.sessionview", "0.3.2")
     row, under = _versions_row(mac.run("--check").out)
-    assert row == VERSIONS_SPLIT + "sessionview plugin 0.3.2, package 0.3.1"
+    assert row == VERSIONS_SPLIT
+    assert under[0] == _split("sessionview plugin 0.3.2, package 0.3.1")[0]
     assert "    → claude plugin update sessionview@sessionkit" in under
 
 
@@ -990,8 +1268,9 @@ def test_a_family_plugin_not_installed_gets_its_install_line(mac: FakeMac):
     r = mac.run("--check")
     assert r.rc == 0, r.out
     row, under = _versions_row(r.out)
-    assert row == VERSIONS_SPLIT + "sessionphone plugin not installed, package 0.3.1"
+    assert row == VERSIONS_SPLIT
     assert under == [
+        *_split("sessionphone plugin not installed, package 0.3.1"),
         "    → claude plugin marketplace update sessionkit",
         "    → claude plugin install sessionphone@sessionkit",
         RESTART,
@@ -1007,8 +1286,9 @@ def test_a_package_not_installed_gets_the_kits_reinstall_not_a_plugin_update(
     r = mac.run("--check")
     assert r.rc == 0, r.out
     row, under = _versions_row(r.out)
-    assert row == VERSIONS_SPLIT + "sessiontools plugin 0.3.1, package not installed"
+    assert row == VERSIONS_SPLIT
     assert under == [
+        *_split("sessiontools plugin 0.3.1, package not installed"),
         "    → uv tool install --python 3.14 --reinstall sessionkit",
         "      it puts back a package the kit installs that its tool has lost",
     ]
@@ -1045,11 +1325,10 @@ def test_a_claude_with_no_json_list_reads_not_checked(mac: FakeMac):
     r = mac.run("--check")
     assert r.rc == 0, r.out
     row, under = _versions_row(r.out)
-    assert row == (
-        "🧩 Plugin versions: not checked "
-        "(claude plugin list --json does not list sessionkit@sessionkit)"
-    )
-    assert under == []
+    assert row == "🧩 Plugin versions: not checked"
+    assert under == [
+        "   (claude plugin list --json does not list sessionkit@sessionkit)"
+    ]
 
 
 @pytest.mark.parametrize("shape", ["pretty", "minified"])
@@ -1059,8 +1338,9 @@ def test_pretty_and_minified_json_read_alike(mac: FakeMac, shape):
     if shape == "minified":
         mac.flag("plugin_json_min")
     mac.flag("plugin_ver.sessionvoice", "0.3.0")
-    row, _ = _versions_row(mac.run("--check").out)
-    assert row == VERSIONS_SPLIT + "sessionvoice plugin 0.3.0, package 0.3.1"
+    row, under = _versions_row(mac.run("--check").out)
+    assert row == VERSIONS_SPLIT
+    assert under[0] == _split("sessionvoice plugin 0.3.0, package 0.3.1")[0]
 
 
 def test_a_split_leaves_the_missing_count_and_the_exit_alone(mac: FakeMac):
@@ -1137,7 +1417,7 @@ def test_no_speech_leaves_both_speech_rows_out_and_does_not_fail(mac: FakeMac):
         (mac.state / f).unlink()
     r = mac.run("--check", "--no-speech")
     assert r.rc == 0, r.out
-    assert f"{EARS_ROW}: missing (left out: --no-speech)" in r.out
+    assert f"{EARS_ROW}: left out (--no-speech)" in r.out
     assert f"{SERVER_ROW}: not checked (left out: --no-speech)" in r.out
     assert not any(c.startswith("curl") for c in r.calls)
     assert "\n    ears services install --agent claude\n" in r.out  # for later
@@ -1241,6 +1521,273 @@ def test_the_installer_itself_never_probes_the_speech_server(mac: FakeMac):
         mac.with_brew()
         r = mac.run(*args)
         assert not any(SPEECH_PROBE_URL in c for c in r.calls), r.calls
+
+
+# --- Every line fits in 76 columns, and every emoji keeps its space (SK-272) -------
+#
+# The rule, from the 0.3.3 walk: every line install.sh prints is 76 display
+# columns or less, an emoji counted at its width. tests/_printed.py reads every
+# line from the source at its widest; the runs below measure what each path
+# really prints.
+
+
+def test_every_line_the_source_can_print_fits_in_76_columns():
+    rows = Script(SOURCE).printed()
+    assert len(rows) > 250  # every say, the printfs and the usage text
+    wide = [
+        f"{n}: {func}: {display_width(t)}: {t}"
+        for n, func, t in rows
+        if display_width(t) > WIDTH
+    ]
+    assert wide == [], "\n".join(wide)
+
+
+def test_the_static_read_sees_the_lines_that_once_wrapped():
+    # The two that once wrapped, as they now read: the speech row and the
+    # disk line.
+    lines = [t for _, _, t in Script(SOURCE).printed()]
+    assert any(
+        t.endswith("👂 the speech server and the ears: calls and hearing you")
+        for t in lines
+    )
+    assert any(t.startswith("   Disk: about 8 GB") for t in lines)
+
+
+def test_an_expansion_with_no_bound_fails_the_static_read():
+    import _printed
+
+    with pytest.raises(_printed.Unbounded):
+        Script(
+            SOURCE.replace('say "🧪 Dry run', 'say "$SOMETHING_NEW 🧪 Dry run')
+        ).printed()
+
+
+def test_display_width_counts_an_emoji_as_two_and_a_selector_as_none():
+    assert display_width("🎤 ears") == 7
+    # The walk's 🎙️: its base is narrow by Unicode and the selector asks for
+    # wide, so terminals disagree. Counted here as Unicode has it: 1.
+    assert display_width("🎙️ ears") == 6
+    assert display_width("\x1b[32mfound\x1b[0m") == 5
+    assert display_width("→ x") == 3
+
+
+def _normal(mac: FakeMac, out: str) -> str:
+    """The fake Mac's scratch paths, as long as a real Mac's are."""
+    root = str(mac.root)
+    return (
+        out.replace(f"{root}/opt/homebrew", "/opt/homebrew")
+        .replace(f"{root}/usr/local", "/usr/local")
+        .replace(str(mac.home), "/Volumes/Mac/account")
+        .replace(root, "/Volumes/Mac/account/Downloads")
+    )
+
+
+def _all_here_but(mac: FakeMac, *gone: str) -> FakeMac:
+    mac.everything()
+    for f in gone:
+        (mac.state / f).unlink()
+    return mac
+
+
+# Each path the harness can drive: (name, set the Mac up, run it).
+RUNS = {
+    "fresh dry run": (lambda m: m, lambda m: m.run("--dry-run")),
+    "fresh dry run, no speech": (
+        lambda m: m,
+        lambda m: m.run("--dry-run", "--no-speech"),
+    ),
+    "help": (lambda m: m, lambda m: m.run("--help")),
+    "unknown option": (lambda m: m, lambda m: m.run("--an-unknown-option")),
+    "check with yes": (lambda m: m, lambda m: m.run("--check", "--yes")),
+    "no terminal": (lambda m: m, lambda m: m.run()),
+    "no terminal, piped": (lambda m: m, lambda m: m.run_stdin()),
+    "yes, Homebrew needs a password": (lambda m: m, lambda m: m.run("--yes")),
+    "not an administrator": (
+        lambda m: (m.flag("not_admin"), m)[1],
+        lambda m: m.run_tty(answers=("y",)),
+    ),
+    "answer no, after one it cannot read": (
+        lambda m: m,
+        lambda m: m.run_tty(answers=("maybe", "n")),
+    ),
+    "a full install": (lambda m: m.with_brew(), lambda m: m.run("--yes")),
+    "a full install, no speech": (
+        lambda m: m.with_brew(),
+        lambda m: m.run("--yes", "--no-speech"),
+    ),
+    "Homebrew installed at the terminal": (
+        lambda m: m,
+        lambda m: m.run_tty(answers=("",)),
+    ),
+    "a held port": (
+        lambda m: (m.flag("port_holder", "python3.1"), m.with_brew())[1],
+        lambda m: m.run("--yes"),
+    ),
+    "a port lsof cannot see": (
+        lambda m: (m.flag("port_open"), m.with_brew())[1],
+        lambda m: m.run("--yes"),
+    ),
+    "setup leaves mail steps": (
+        lambda m: (
+            _all_here_but(m, "setup"),
+            m.flag("setup_dry_rc", "4"),
+            m.flag("setup_run_rc", "4"),
+        )[0],
+        lambda m: m.run("--yes"),
+    ),
+    "setup leaves a step it never fixes": (
+        lambda m: _setup_left(m, LEFT_BLOCKED),
+        lambda m: m.run("--yes"),
+    ),
+    "setup leaves a step that waits on another": (
+        lambda m: _setup_left(m, LEFT_WAITS),
+        lambda m: m.run("--yes"),
+    ),
+    "setup leaves a sudo line": (
+        lambda m: _setup_left(m, LEFT_SUDO),
+        lambda m: m.run("--yes"),
+    ),
+    "a foreign port holder": (
+        lambda m: (
+            m.flag("port_holder", "cupsd"),
+            m.flag("port_foreign"),
+            m.with_brew(),
+        )[2],
+        lambda m: m.run("--yes"),
+    ),
+    "setup fails": (
+        lambda m: (_all_here_but(m, "setup"), m.flag("setup_run_rc", "1"))[0],
+        lambda m: m.run("--yes"),
+    ),
+    "a step fails": (
+        lambda m: (m.flag("kit_fails"), m.with_brew())[1],
+        lambda m: m.run("--yes"),
+    ),
+    "the hooks refused": (
+        lambda m: (m.flag("pager_on_rc", "2"), m.with_brew())[1],
+        lambda m: m.run("--yes"),
+    ),
+    "a pager with no hooks verb": (
+        lambda m: (m.flag("pager_old"), m.with_brew())[1],
+        lambda m: m.run("--yes"),
+    ),
+    "nothing to do": (lambda m: m.everything(), lambda m: m.run()),
+    "nothing to do, a pager with no verb": (
+        lambda m: (m.everything(), m.flag("pager_old"), (m.home / HOOKS_FILE).unlink())[
+            0
+        ],
+        lambda m: m.run("--no-speech"),
+    ),
+    "Homebrew off the PATH, five shell files": (
+        lambda m: (
+            [
+                (m.home / f).write_text("", encoding="utf-8")
+                for f in (".bashrc", ".bash_profile", ".bash_login")
+            ],
+            m.with_brew(on_path=False),
+        )[1],
+        lambda m: m.run("--dry-run"),
+    ),
+    "an Intel Mac, local bin on the PATH": (
+        lambda m: (m.flag("arch", "x86_64"), setattr(m, "local_bin_on_path", True), m)[
+            2
+        ],
+        lambda m: m.run("--dry-run"),
+    ),
+    "check, fresh": (lambda m: m, lambda m: m.run("--check")),
+    "check, fresh, no speech": (lambda m: m, lambda m: m.run("--check", "--no-speech")),
+    "check, not an administrator": (
+        lambda m: (m.flag("not_admin"), m)[1],
+        lambda m: m.run("--check"),
+    ),
+    "check, everything": (lambda m: m.everything(), lambda m: m.run("--check")),
+    "check, every plugin behind": (
+        lambda m: (
+            m.everything(),
+            [m.flag(f"pkg_ver.{n}", "0.3.2") for n in _array("KIT_PLUGINS")],
+        )[0],
+        lambda m: m.run("--check"),
+    ),
+    "check, a package gone, a plugin absent": (
+        lambda m: (
+            m.everything(),
+            m.flag("pkg_ver.sessiontools", "not installed"),
+            m.flag("plugin_absent.sessionphone"),
+        )[0],
+        lambda m: m.run("--check"),
+    ),
+    "check, no json plugin list": (
+        lambda m: (m.everything(), m.flag("plugin_json_fails"))[0],
+        lambda m: m.run("--check"),
+    ),
+    "check, setup with mail steps left": (
+        lambda m: (_all_here_but(m, "setup"), m.flag("setup_dry_rc", "4"))[0],
+        lambda m: m.run("--check"),
+    ),
+    "check, a silent speech server": (
+        lambda m: _all_here_but(m, "speech_serving"),
+        lambda m: m.run("--check"),
+    ),
+    "check, the speech jobs gone": (
+        lambda m: _all_here_but(m, "speech", "speech_serving"),
+        lambda m: m.run("--check"),
+    ),
+    "not macOS": (lambda m: (m.flag("os", "Linux"), m)[1], lambda m: m.run()),
+    "as root": (lambda m: (m.flag("uid", "0"), m)[1], lambda m: m.run()),
+    "check, not macOS": (
+        lambda m: (m.flag("os", "Linux"), m)[1],
+        lambda m: m.run("--check"),
+    ),
+}
+
+
+# What the fake Mac's own tools print, not install.sh: the rule is the
+# script's lines. A child's output (pager's line, setup's dry run, which the
+# script indents) is the child's to keep in its width.
+CHILD_OUTPUT = re.compile(
+    r"^(pager settings hooks: |setup ran$|done$|error: |    TODO |"
+    r"message setup: |  \d+\. \S+ \([A-Z]+\): |then run `message setup`)"
+)
+
+
+@pytest.mark.parametrize("name", list(RUNS))
+def test_every_line_a_run_prints_fits_in_76_columns(mac: FakeMac, name: str):
+    dress, run = RUNS[name]
+    dress(mac)
+    r = run(mac)
+    assert r.out.strip(), r.out
+    wide = [
+        f"{display_width(ln)}: {ln}"
+        for ln in _normal(mac, r.out).splitlines()
+        if display_width(ln) > WIDTH and not CHILD_OUTPUT.match(ln)
+    ]
+    assert wide == [], "\n".join(wide)
+
+
+def test_no_emoji_uses_a_variation_selector_and_every_one_is_wide():
+    # A VS16 emoji (a base that is text by default, + U+FE0F) is 1 column or
+    # 2 as each terminal decides, so the next character can land on it: the
+    # 🎙️ and ⚙️ of the 0.3.3 walk. An emoji of East Asian Width W is 2 everywhere.
+    assert "\ufe0f" not in SOURCE
+    narrow = sorted(
+        {
+            f"U+{ord(c):04X}"
+            for c in SOURCE
+            if unicodedata.category(c) == "So"
+            and unicodedata.east_asian_width(c) != "W"
+        }
+    )
+    assert narrow == []
+
+
+def test_the_ears_install_and_setup_rows_use_wide_emoji(mac: FakeMac):
+    listed = mac.run("--dry-run").listed()
+    ears = next(i for i in listed if "ears install" in i)
+    setup = next(i for i in listed if "sessionkit setup" in i)
+    assert ears.startswith("🎤 ears install")  # a microphone, as asked
+    assert setup.startswith("📝 sessionkit setup")
+    for item in (ears, setup):
+        assert unicodedata.east_asian_width(item[0]) == "W" and item[1] == " "
 
 
 # --- The script itself --------------------------------------------------------------

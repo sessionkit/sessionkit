@@ -24,6 +24,12 @@ packages at 0.3.1 unless `pkg_ver.NAME` holds another (`not installed` too).
 `plugin_json_min`, `plugin_json_fails` and `sk_version_fails` give minified
 JSON, a claude with no --json, and a sessionkit whose --version fails.
 
+The end screen (SK-272) reads two more. `sessionkit setup` ends on setup.py's
+launch sentence on an exit of 0 or 4 (`session start`, or the `launch` flag's
+command), after the `setup_left` flag's text when it is set: a next-steps
+block as mail setup prints one. `ears services status` reports a port holder
+that is not mlx-audio when the `port_foreign` flag is set.
+
 The script has no test seam: it calls each tool by name. The one change a
 test makes to its copy is the BREW_PATHS line, pointed at the scratch
 folder, because Homebrew's real prefixes are outside any test's reach.
@@ -76,6 +82,12 @@ def _exe(path: Path, text: str) -> None:
 
 
 LOG = 'printf "%s\\n" "$(basename "$0") $*" >> "$STUB_CALLS"\nS=$STUB_STATE\n'
+# The microphone check's switch as a stub saw it ("unset" when not in its
+# environment), tab, the call: for ears, claude and sessionkit.
+MIC_ENV = (
+    'printf "%s\\t%s\\n" "${EARS_MIC_CHECK_S-unset}" "$(basename "$0") $*"'
+    ' >> "${STUB_MIC_ENV:-/dev/null}"\n'
+)
 
 SYSTEM_STUBS = {
     "uname": LOG
@@ -175,6 +187,7 @@ esac
 esac
 """,
     "claude": LOG
+    + MIC_ENV
     + """case "$*" in
   --version) echo "2.1.310 (Claude Code)" ;;
   "plugin list") [ -f "$S/plugin" ] && echo "  sessionkit@sessionkit" ;;
@@ -209,6 +222,7 @@ esac
 exit 0
 """,
     "sessionkit": LOG
+    + MIC_ENV
     + """case "$*" in
   # As cli.py version_lines() prints it: the kit, then one line per child,
   # the family, then the apps (settled, on its own version line: SK-258).
@@ -229,6 +243,12 @@ exit 0
     printf '%s' "${PAGER-unset}" > "$S/setup_saw_pager"
     rc=$(cat "$S/setup_run_rc" 2>/dev/null || echo 0)
     echo "setup ran"
+    # The next-steps block mail setup prints when it leaves steps, as given.
+    [ -f "$S/setup_left" ] && cat "$S/setup_left"
+    # setup.py's last line, the one launch step, on a run that defined the agent.
+    case "$rc" in
+      0|4) echo "To hear Delta messages, start Claude with: $(cat "$S/launch" 2>/dev/null || echo session start)" ;;
+    esac
     [ "$rc" = 0 ] && touch "$S/setup"
     exit "$rc" ;;
 esac
@@ -237,13 +257,17 @@ esac
     # only logs, so a run that asks it anything shows in calls.log.
     "settled": LOG,
     "ears": LOG
+    + MIC_ENV
     + """case "$*" in
   backends)
     echo "nemotron  ok"
     if [ -f "$S/ears_model" ]; then echo "silero    ok: /cache/silero_vad.onnx"; else echo "silero    no model: ears install"; fi ;;
   install) touch "$S/ears_model"; echo done ;;
   "services status")
-    if [ -f "$S/speech" ]; then
+    if [ -f "$S/port_foreign" ]; then
+      # Something that is not mlx-audio holds the port (ears' own words).
+      printf 'mouth  running, pid 11\\nkeeper running, pid 12\\nmail   running, pid 13\\nspeech :8890 held by something that is NOT mlx-audio: cupsd (pid 4242); the ears cannot hear through it\\n'
+    elif [ -f "$S/speech" ]; then
       printf 'mouth  running, pid 11\\nkeeper running, pid 12\\nmail   running, pid 13\\nspeech mlx-audio on :8890, pid 14\\n'
     else
       printf 'mouth  not installed\\nkeeper not installed\\nmail   not installed\\nspeech none on :8890: no listener, no mlx-audio job loaded\\n'
@@ -377,6 +401,7 @@ class FakeMac:
         self.intel_brew_dir = root / "usr" / "local" / "bin"
         self.calls = root / "calls.log"
         self.brew_env = root / "brew-env.log"
+        self.mic_env = root / "mic-env.log"
         self.extra_env: dict[str, str] = {}
         self.brew_on_path = False
         self.local_bin_on_path = False
@@ -461,6 +486,7 @@ class FakeMac:
             "STUB_STATE": str(self.state),
             "STUB_CALLS": str(self.calls),
             "STUB_BREW_ENV": str(self.brew_env),
+            "STUB_MIC_ENV": str(self.mic_env),
             "STUB_TOOLS": str(self.tools),
             "FAKE_BREW_DIR": str(self.brew_dir),
             "NO_COLOR": "1",
@@ -476,6 +502,14 @@ class FakeMac:
         if not self.brew_env.exists():
             return []
         lines = self.brew_env.read_text(encoding="utf-8").splitlines()
+        return [tuple(line.split("\t", 1)) for line in lines]
+
+    def mic_env_calls(self) -> list[tuple[str, str]]:
+        """(EARS_MIC_CHECK_S as the stub saw it, or "unset"; the call) for
+        every ears, claude and sessionkit call so far."""
+        if not self.mic_env.exists():
+            return []
+        lines = self.mic_env.read_text(encoding="utf-8").splitlines()
         return [tuple(line.split("\t", 1)) for line in lines]
 
     def _calls(self) -> list[str]:
@@ -518,12 +552,12 @@ class FakeMac:
         return Result(p.returncode, out, self._calls()[start:])
 
     def tree(self) -> list[tuple[str, str, str]]:
-        """The scratch root, every path but the two logs (calls.log and
-        brew-env.log): its mode, and its
+        """The scratch root, every path but the three logs (calls.log,
+        brew-env.log and mic-env.log): its mode, and its
         symlink target or sha256. Equal before and after = nothing written."""
         rows = []
         for p in sorted(self.root.rglob("*")):
-            if p in (self.calls, self.brew_env):
+            if p in (self.calls, self.brew_env, self.mic_env):
                 continue
             rel = str(p.relative_to(self.root))
             mode = oct(p.lstat().st_mode)

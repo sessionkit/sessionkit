@@ -10,7 +10,7 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <p class="draft-banner" role="note">DRAFT: this page is not hosted anywhere yet. Anything marked <em class="coming">coming</em> is not available yet.</p>
+  <p class="draft-banner" role="note">DRAFT: this page is not hosted anywhere yet.</p>
 
   <header class="hero">
     <h1>Session Kit</h1>
@@ -22,15 +22,19 @@
     <section id="moment" aria-labelledby="moment-title">
       <h2 id="moment-title">One agent hands work to another</h2>
       <p>An idle agent wakes when mail lands.</p>
-      <pre class="scene"><code><span class="who">reviewer</span>   pager listen        <span class="note"># idle, listening in the background</span>
-<span class="who">you</span>        message send reviewer -s "PR ready, please review" -f note.md</code></pre>
+      <dl class="scene">
+        <dt>reviewer</dt>
+        <dd><code>pager listen</code> <span class="note"># idle, listening in the background</span></dd>
+        <dt>you</dt>
+        <dd><code>message send reviewer -s "PR ready, please review" -f note.md</code></dd>
+      </dl>
       <p>The reviewer sits idle with <code>pager listen</code> running in the background. The mail lands and the reviewer wakes. The pager judges each mail, <em>wake</em> or <em>ride</em>, and records the rule that decided it. Its mailbox is also its memory.</p>
       <p class="source">Source: <a href="../README.md">the README</a> · <a href="../docs/agent-letter.md">the agent letter</a></p>
     </section>
 
     <section id="family" aria-labelledby="family-title">
       <h2 id="family-title">Six packages, one install</h2>
-      <ul class="family">
+      <ul>
         <li><strong>sessionkit</strong>: installs the family together.</li>
         <li><strong>sessionmail</strong>: mail for coding agents. <code>message</code>, <code>pager</code> and <code>memory</code> over one maildir.</li>
         <li><strong>sessiontools</strong>: the harness layer. <code>session list</code> shows every live Claude Code session and how full its context window is.</li>
@@ -43,16 +47,17 @@
 
     <section id="install" aria-labelledby="install-title">
       <h2 id="install-title">Install</h2>
-      <p>You need macOS, Claude Code and uv.</p>
-      <pre class="install"><code id="install-line">uv tool install --python 3.14 sessionkit</code></pre>
+      <p>You need a Mac on Apple silicon, Claude Code, uv and about 8 GB of free disk, or 6 GB if you already have Homebrew. The README's steps list the rest, such as ffmpeg for phone calls.</p>
+      <pre class="install"><code id="install-line">uv tool install --python 3.14 sessionkit</code><code>claude plugin marketplace add sessionkit/sessionkit</code><code>claude plugin install sessionkit@sessionkit</code></pre>
       <p>Keep <code>--python 3.14</code>: on Python 3.15 the install fails, because a voice library it needs has no 3.15 build yet. It puts fifteen commands on your PATH.</p>
-      <p>The plugins are a second step. The one-step plugin install is <em class="coming">coming</em>: the kit's own plugin does not load yet, so each plugin installs from its own clone.</p>
+      <p>Then quit and restart Claude Code, and follow the README's steps for hearing and the phone line.</p>
+      <p>Start your agent with <code>session start</code>. A plain <code>claude</code> doesn't get your agent's mail or your phone.</p>
       <p class="source">Source: <a href="../README.md#installation">the README's Installation section</a></p>
     </section>
 
     <section id="status" aria-labelledby="status-title">
       <h2 id="status-title">Status</h2>
-      <p><strong>Alpha, 0.3.3.</strong> Tested on macOS 27 on Apple silicon.</p>
+      <p><strong>Alpha, 0.4.0.</strong> Tested on macOS 27 on Apple silicon.</p>
       <p>Walked on a fresh Mac: Delta messages and a real phone call reached a session started with <code>session start claude</code>, and it answered aloud. From sessionphone 0.2.1 its bot needs no key on the drop; whether it signs follows the mail carrier (<a href="../README.md#installation">the README</a>).</p>
       <p>Not yet:</p>
       <ul>

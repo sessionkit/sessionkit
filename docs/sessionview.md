@@ -26,8 +26,9 @@ hosts. A click goes there; a right-click opens that row's menu. Bare
 - `sidebar-toggle`: hide the sidebar, or show it again
 - `sidebar`: the sidebar itself, as the frame's left pane runs it
 
-`sessionview-config`, `sessionview-session` and `sessionview-messages`
-are on PATH too: the sidebar runs them. Type the `sessionview VERB` form.
+The kit puts `sessionview` alone on your PATH. Type the `sessionview VERB`
+form: `sessionview config`, `sessionview session` and `sessionview messages`
+are verbs, not commands of their own.
 
 ## An example
 

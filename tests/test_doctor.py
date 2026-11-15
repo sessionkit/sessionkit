@@ -136,15 +136,15 @@ ROWS = (
     "🍺 Homebrew:",
     "🐍 uv:",
     "🤖 Claude Code:",
-    "🖥️ tmux:",
-    "🎞️ ffmpeg:",
+    "🪟 tmux:",
+    "🎧 ffmpeg:",
     "📨 notmuch:",
     "📦 Session Kit:",
-    "⚙️ Session Kit setup",
+    "📝 Session Kit setup",
     "🧩 Claude Code plugins:",
-    "🎙️ Ears voice model:",
+    "🧠 Ears voice model:",
     "👂 Ears services",
-    "🗣️ Speech server on port 8890:",
+    "💬 Speech server on port 8890:",
     "🔌 Port 8890",
     "📬 Mail hooks:",
     "⚙️ Settings app (settled):",
@@ -161,7 +161,7 @@ def test_all_here_exits_0_with_one_line_per_row(mac, monkeypatch):
         d.row(prefix)  # exactly one each
     assert REMEDY not in d.out
     assert d.row("📬 Mail hooks:") == "📬 Mail hooks: on"
-    assert d.row("🗣️ Speech server on port 8890:").endswith("serving")
+    assert d.row("💬 Speech server on port 8890:").endswith("serving")
     assert d.lines[-1] == "✅ sessionkit doctor: nothing the kit needs is missing."
     # The rows come in the design's order: the installer's, then the doctor's.
     at = [d.lines.index(d.row(p)) for p in ROWS]
@@ -179,15 +179,15 @@ MISSING = {
     "🍺 Homebrew:": lambda m: (_rm(m.brew_dir / "brew"), setattr(m, "brew_on_path", False)),
     "🐍 uv:": lambda m: _rm(m.home / ".local/bin/uv"),
     "🤖 Claude Code:": lambda m: _rm(m.home / ".local/bin/claude"),
-    "🖥️ tmux:": lambda m: _rm(m.state / "brew/tmux"),
-    "🎞️ ffmpeg:": lambda m: _rm(m.state / "brew/ffmpeg"),
+    "🪟 tmux:": lambda m: _rm(m.state / "brew/tmux"),
+    "🎧 ffmpeg:": lambda m: _rm(m.state / "brew/ffmpeg"),
     "📨 notmuch:": lambda m: _rm(m.state / "brew/notmuch"),
     "📦 Session Kit:": lambda m: _rm(m.state / "kit"),
-    "⚙️ Session Kit setup": lambda m: _rm(m.state / "setup"),
+    "📝 Session Kit setup": lambda m: _rm(m.state / "setup"),
     "🧩 Claude Code plugins:": lambda m: _rm(m.state / "plugin"),
-    "🎙️ Ears voice model:": lambda m: _rm(m.state / "ears_model"),
+    "🧠 Ears voice model:": lambda m: _rm(m.state / "ears_model"),
     "👂 Ears services": lambda m: _rm(m.state / "speech"),
-    "🗣️ Speech server on port 8890:": lambda m: _rm(m.state / "speech_serving"),
+    "💬 Speech server on port 8890:": lambda m: _rm(m.state / "speech_serving"),
     "📬 Mail hooks:": lambda m: hooks(m, None),
     "⚙️ Settings app (settled):": lambda m: _rm(m.home / SETTLED_CMD),
 }
@@ -212,8 +212,8 @@ def test_no_speech_leaves_the_speech_rows_out_and_does_not_fail(mac, monkeypatch
     _rm(mac.state / "speech_serving")
     d = doctor(mac, monkeypatch, "--no-speech")
     assert d.rc == 0, d.out
-    assert "(left out: --no-speech)" in d.row("👂 Ears services")
-    assert d.row("🗣️ Speech server on port 8890:").endswith("not checked (left out: --no-speech)")
+    assert d.row("👂 Ears services").endswith("left out (--no-speech)")
+    assert d.row("💬 Speech server on port 8890:").endswith("not checked (left out: --no-speech)")
     assert not any(c.startswith("curl") for c in d.calls)
 
 
@@ -242,7 +242,8 @@ def test_a_plugin_version_split_passes_through_as_a_warning(mac, monkeypatch):
     mac.flag("pkg_ver.sessionmail", "0.3.2")
     d = doctor(mac, monkeypatch)
     assert d.rc == 0, d.out
-    assert d.row("🧩 Plugin versions:").endswith("sessionmail plugin 0.3.1, package 0.3.2")
+    assert d.row("🧩 Plugin versions:").endswith("not at their packages' versions:")
+    assert "      sessionmail plugin 0.3.1, package 0.3.2" in d.under("🧩 Plugin versions:")
     assert f"{REMEDY}claude plugin update sessionmail@sessionkit" in d.under("🧩 Plugin versions:")
     assert d.lines[-1] == "✅ sessionkit doctor: nothing the kit needs is missing."
 
@@ -327,7 +328,7 @@ def test_the_speech_row_asks_the_server_not_the_stt_line(mac, monkeypatch):
     mac.flag("stt_not_installed")
     d = doctor(mac, monkeypatch)
     assert d.rc == 0, d.out
-    assert d.row("🗣️ Speech server on port 8890:").endswith("serving")
+    assert d.row("💬 Speech server on port 8890:").endswith("serving")
     assert "stt" not in d.out
 
 
@@ -381,7 +382,7 @@ def test_the_installers_hooks_step_by_hand_is_the_doctors_remedy_word_for_word(t
 # --- The hooks remedy: the pager's verb, or the hand edit ---------------------
 
 BY_HAND = f'{REMEDY}set "hooks": true in ~/.sessionkit/mail/settings/mail.json, and change no other key'
-SECTION = 'the README\'s Installation, "The mail hooks start off"'
+SECTION = 'INSTALL.md section 4, "Turn the mail hooks on", in https://github.com/sessionkit/sessionkit'
 
 
 def _no_local_pager(mac: FakeMac) -> None:

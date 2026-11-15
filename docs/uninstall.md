@@ -275,16 +275,17 @@ loop removes the five copies now. **NOT YET**: the loop has not run.
 (uv 0.13.0, this release's kit with the five 0.2.0 packages from PyPI, on
 temporary uv tool directories): `uv tool uninstall
 sessionkit` printed `Uninstalled 14 executables` and removed the kit's tool environment.
-Four of those are sessionview's commands, linked in `~/.local/bin` to the kit's tool
+Four of those were sessionview's commands, linked in `~/.local/bin` to the kit's tool
 environment in uv's tool folder, `~/.local/share/uv/tools/sessionkit/`: that line
-removes those links.
+removes those links. The kit now links one, `sessionview`; its three helpers are verbs
+of it.
 
 - **sessionview's own links and app**, only if you ran its `sessionview-install` or
   `sessionview-app-install` from a sessionview checkout (not on this path).
   `sessionview-install` linked sessionview's tools into `~/.local/bin`, and
   `sessionview-app-install` put an app in `~/Applications`. No verb reverses either.
   This lists the links to delete. It leaves out every link into uv's tool folder, so
-  run before or after the kit command, it never lists the kit's own four:
+  run before or after the kit command, it never lists the kit's own links:
 
   ```bash
   find ~/.local/bin -type l -lname '*sessionview*' -not -lname '*/uv/tools/*'
@@ -494,7 +495,7 @@ an old folder, so this page leaves it alone, with the rest of `~/.config`.
 
 `~/.sessionkit`, one folder per package. In each, `settings/` holds your choices,
 `log/` the package's logs, and `state/` what it keeps between runs (the tree
-specification, `openspec/specs/tree/spec.md`). This item deletes those three folders
+specification, kept in the project's OpenSpec store). This item deletes those three folders
 for mail, voice, the sidebar (`view`) and the phone. That is the operator file that
 `sessionkit setup` wrote (section 2), the mail hooks switch, your voice choices, the
 seats your voice wakes, the voice's state ([Voice][voice]),

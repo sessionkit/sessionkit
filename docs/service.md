@@ -119,6 +119,25 @@ package's group, from launchd alone. A footer counts such jobs, and
 package ships its files, the footer goes away. Such a job counts as a call
 hazard, so a restart of it during a live call needs `--force`.
 
+## When a package cannot write its file
+
+A package's install or uninstall can finish its launchd act and still fail
+to write the service file. That is never silent and never exit 0:
+
+- **The job stands.** The verb finishes the launchd act and does not roll
+  the job back.
+- **One line on stderr** names the file and the reason.
+- **The exit is non-zero**, with the package's own code for "the job
+  stands but the file is not written", or its code for "tried and failed".
+  That verb's help names it. The kit does not fix the number, since each
+  package's codes already mean different things.
+- **A caller checks for non-zero.** `sessionkit service status NAME` shows
+  which file is missing.
+- **A write is atomic.** A failed write leaves the previous file intact.
+
+Why: the file is how `sessionkit service list` finds a job, so an exit 0
+with a missing file is a silent partial success.
+
 ## Shell completion
 
 TAB offers the verbs, then after a service verb the names `list` shows, the

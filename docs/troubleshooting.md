@@ -12,10 +12,11 @@ nothing ([first checks][first-checks]):
 sessionkit doctor
 ```
 
-No kit yet, or `sessionkit` will not start: `bash install.sh --check`, from
-a clone of the kit, runs the same check. Once the installer's address is
-live, so does
-`curl -fsSL https://sessionkit.ai/install.sh | bash -s -- --check`.
+No kit yet, or `sessionkit` will not start? The installer runs the same
+check:
+
+- `curl -fsSL https://sessionkit.ai/install.sh | bash -s -- --check`
+- From a clone of the kit: `bash install.sh --check`
 
 ## The files to tail
 
@@ -162,6 +163,24 @@ answered it, and why a call never connected: see
   grep '"source": "call"' \
     "$(ears home state-dir)"/logs/conversations/heard_$(date +%F).jsonl |
     grep -c '"kind": "turn"'
+  ```
+
+### The owner cannot ring the bot
+
+After an update, the phone's one-time key migration can leave the
+owner's line in `callers.txt` with no key. The owner can no longer ring,
+and the bot writes the owner no chat. `sessionkit setup` and
+`sessionkit doctor` say so, before the migration as well as after, with
+the fix. `install.sh --check` alone does not: it cannot read the phone's
+callers file.
+
+- **Check:** `sessionphone callers`. The owner's line reads `UNPINNED`.
+- **Fix:** pin the owner's key, FPR from the owner's phone (the bot's
+  contact, Encryption), or re-link, the owner scanning. ([the phone][phone])
+
+  ```bash
+  sessionphone callers pin ADDR --key FPR
+  sessionphone link
   ```
 
 ### The voice chops

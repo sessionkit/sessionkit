@@ -86,7 +86,7 @@ def _shape(check):
     metavar="NAME",
     callback=_shape(operator_setup.check_mailbox_shape),
     help="Your mail box: a box `message box path NAME` finds. "
-    "Default: your OS account name, if sessionmail has a box by that name.",
+    "Default: the box sessionmail names as the operator's, if it exists.",
 )
 @click.option(
     "--address",
@@ -142,7 +142,10 @@ def setup(
 
     Before that step it adds the wake seat with `ears wake add`: NAME when
     --agent is given, else the default seat, so saying "hey" and its name
-    wakes it. Without `ears` on the PATH, or when it refuses, it says one line
+    wakes it once the ears' services run. It asks `ears services status`,
+    read only: unless the keeper and the mail service both run, the line
+    says "hey NAME" works once they do and names `ears services install`.
+    Without `ears` on the PATH, or when it refuses, it says one line
     with the step to run; that line never changes the exit. It never runs
     `ears services install`. Then it asks `ears backends`, read only. If
     the ears' voice-activity model is missing, it says one line naming

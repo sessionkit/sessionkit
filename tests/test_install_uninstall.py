@@ -799,10 +799,11 @@ def test_part_b_names_the_account_folder_and_warns_before_its_one_line():
     assert "cannot be undone: to keep your accounts, skip it" in flat
     assert [line.strip() for line in item.splitlines() if re.match(r"\s*(rm|rmdir|find) ", line)] \
         == [f'rm -rf "{ACCOUNTS}"']
-    # The kit's home points at it, and at the tree spec that puts it beside settings/.
+    # The kit's home points at it, and at the tree spec that puts it beside
+    # settings/. The spec is kept in the project's OpenSpec store, not here.
     home = " ".join(_part_b_item(HOME_ITEM).split())
-    assert "`openspec/specs/tree/spec.md`" in home
-    assert (ROOT / "openspec/specs/tree/spec.md").is_file()
+    assert "the tree specification, kept in the project's OpenSpec store" in home
+    assert "openspec/specs" not in home
     assert "The account folder beside its settings is the item above" in home
     assert "the account folder you kept" in home
 
@@ -996,7 +997,9 @@ def test_step_5_kit_route_is_measured_and_names_what_stayed():
 
 # The walk: step 4's `find` listed uv's own four links to the kit's
 # sessionview commands on a fresh Mac. The line now leaves out every link into
-# uv's tool folder, wherever it is run.
+# uv's tool folder, wherever it is run. The kit now links one, `sessionview`;
+# the fixture keeps the walk's four links: the line must leave out any link
+# into uv's tool folder, however many there are.
 SV_FIND = "find ~/.local/bin -type l -lname '*sessionview*' -not -lname '*/uv/tools/*'\n"
 UV_LINKS = ("sessionview", "sessionview-config", "sessionview-session", "sessionview-messages")
 CHECKOUT_LINKS = ("sessionview-install", "sessionview-frame", "sessionview-app-install",
@@ -1008,8 +1011,10 @@ def test_sessionviews_links_line_leaves_out_uvs_own():
     assert _blocks(step_5.split("**sessionview's own links and app**", 1)[1])[0] == SV_FIND
     flat = " ".join(step_5.split())
     assert "It leaves out every link into uv's tool folder" in flat
-    assert "Four of those are sessionview's commands" in flat
-    # It comes after the kit command, whose uninstall removes uv's four.
+    assert "Four of those were sessionview's commands" in flat
+    # The kit links sessionview alone now; its helpers are verbs of it.
+    assert "The kit now links one, `sessionview`; its three helpers are verbs of it." in flat
+    # It comes after the kit command, whose uninstall removes uv's links.
     assert step_5.index("  uv tool uninstall sessionkit\n") < step_5.index(SV_FIND.strip())
 
 

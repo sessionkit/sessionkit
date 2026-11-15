@@ -1,4 +1,5 @@
-"""scripts/release.py never re-locks (SK-180).
+"""scripts/release.py never re-locks (SK-180), and refuses an existing tag
+before it writes (SK-208).
 
 A plain `uv version X` re-locks the project, and the release commits
 uv.lock, so a cut before the deps are on PyPI failed, or committed a
@@ -10,6 +11,11 @@ local-path lock. These tests pin the fix:
   (offline) passes after it;
 - the root-line edit fails closed: no root block, two, or two version lines
   in it, and the release refuses before `uv version` writes anything;
+- an existing tag for the version the release would make is refused before
+  `uv version` writes, so the tree is left clean, real and dry;
+- tomllib is imported only on the release path: the module loads and
+  --current runs without it, and a release without it refuses before it
+  writes;
 - `make release` runs the script with python3, never a re-locking `uv run`.
 
 A dry run cannot catch the bug (`uv version --dry-run` never locks), so the
@@ -88,6 +94,9 @@ def clone(tmp_path: Path) -> Path:
     over it and committed, so the tree is clean for release.py."""
     repo = tmp_path / "repo"
     git(tmp_path, "clone", "-q", "--no-hardlinks", str(ROOT), str(repo))
+    # No origin: a test release must have nowhere to push to. The clone's origin
+    # would be this checkout, and its own origin is the real remote.
+    git(repo, "remote", "remove", "origin")
     for rel in OVERLAY:
         src, dst = ROOT / rel, repo / rel
         if src.is_dir():
@@ -100,6 +109,7 @@ def clone(tmp_path: Path) -> Path:
         git(repo, "commit", "-q", "-m", "test: the working tree's release files")
     for tag in git(repo, "tag", "-l").split():
         git(repo, "tag", "-d", tag)
+    assert git(repo, "remote").strip() == ""
     return repo
 
 
@@ -316,6 +326,122 @@ def test_missing_lock_is_refused(tmp_path: Path, monkeypatch) -> None:
     )
     with pytest.raises(SystemExit, match="uv.lock not found"):
         release.main()
+
+
+# --- an existing tag is refused before anything is written ----------------------
+# The version names the tag, and the real `uv version` is what writes it, so the
+# release asks uv for the version with --dry-run first, checks the tag, and only
+# then bumps. Before the fix the bump came first: a real run refused for an
+# existing tag left pyproject.toml modified.
+
+
+def snapshot(repo: Path) -> dict[str, bytes]:
+    files = ("pyproject.toml", "uv.lock", "CHANGELOG.md", ".claude-plugin/plugin.json", ".claude-plugin/marketplace.json")
+    return {f: (repo / f).read_bytes() for f in files if (repo / f).exists()}
+
+
+@pytest.mark.parametrize("spec", ["patch", "set"])
+@pytest.mark.parametrize("dry", [False, True])
+@needs_uv_git
+def test_an_existing_tag_is_refused_before_anything_is_written(clone: Path, spec: str, dry: bool) -> None:
+    new = next_patch(version_of(clone))
+    git(clone, "tag", "-a", f"v{new}", "-m", "test: the tag the release would make")
+    before = snapshot(clone)
+    head = git(clone, "rev-parse", "HEAD")
+    arg = "patch" if spec == "patch" else new
+
+    out = run(clone, sys.executable, "scripts/release.py", arg, *(["--dry-run"] if dry else []))
+
+    assert out.returncode != 0
+    assert f"tag v{new} already exists" in out.stderr
+    assert "nothing was written" in out.stderr
+    # uv ran once, as a dry run: the real (writing) call never came.
+    uv_calls = [line for line in out.stdout.splitlines() if line.strip().startswith("$ uv version")]
+    assert len(uv_calls) == 1 and uv_calls[0].endswith("--frozen --dry-run"), out.stdout
+    assert snapshot(clone) == before
+    assert git(clone, "status", "--porcelain").strip() == ""
+    assert git(clone, "rev-parse", "HEAD") == head
+    assert git(clone, "tag", "-l").split() == [f"v{new}"]
+
+
+@needs_uv_git
+def test_a_real_release_bumps_after_its_dry_run(clone: Path) -> None:
+    new = next_patch(version_of(clone))
+    out = run(clone, sys.executable, "scripts/release.py", "patch")
+    assert out.returncode == 0, out.stdout + out.stderr
+    uv_calls = [line.strip() for line in out.stdout.splitlines() if line.strip().startswith("$ uv version")]
+    assert uv_calls == ["$ uv version --bump patch --frozen --dry-run", "$ uv version --bump patch --frozen"]
+    assert version_of(clone) == new
+
+
+def test_a_bump_that_disagrees_with_its_dry_run_is_refused(tmp_path: Path, monkeypatch) -> None:
+    release = load_release()
+    (tmp_path / "pyproject.toml").write_text('[project]\nname = "sessionkit"\nversion = "0.3.3"\n')
+    (tmp_path / "uv.lock").write_text(
+        'version = 1\n\n[[package]]\nname = "sessionkit"\nversion = "0.3.3"\nsource = { editable = "." }\n'
+    )
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(sys, "argv", ["release.py", "patch"])
+    calls: list[list[str]] = []
+
+    def fake_run(args, **kwargs):
+        args = list(args)  # sh() passes a tuple
+        calls.append(args)
+        if args[:2] == ["uv", "version"]:
+            new = "0.3.4" if "--dry-run" in args else "0.3.5"
+            return subprocess.CompletedProcess(args, 0, stdout=f"sessionkit 0.3.3 => {new}\n", stderr="")
+        return subprocess.CompletedProcess(args, 0, stdout="", stderr="")  # clean tree, no such tag
+
+    monkeypatch.setattr(release.subprocess, "run", fake_run)
+    with pytest.raises(SystemExit, match="uv version made 0.3.5, its dry run said 0.3.4"):
+        release.main()
+    assert not any(c[:2] == ["git", "commit"] or c[:2] == ["git", "tag"] and "-a" in c for c in calls)
+    assert "0.3.3" in (tmp_path / "uv.lock").read_text()
+
+
+# --- a python3 older than 3.11 (no tomllib) ------------------------------------
+# `make release` runs `python3 scripts/release.py`, and a stock macOS python3 is
+# 3.9. Only the release reads pyproject with tomllib, so only the release may
+# need 3.11+, and it refuses before it writes. Simulated: tomllib is blocked in
+# sys.modules, so `import tomllib` raises as it does on 3.9.
+
+NO_TOMLLIB = (
+    "import runpy, sys; sys.modules['tomllib'] = None; "
+    "sys.argv = ['scripts/release.py', *sys.argv[1:]]; "
+    "runpy.run_path('scripts/release.py', run_name='__main__')"
+)
+
+
+def test_the_module_loads_without_tomllib(monkeypatch) -> None:
+    monkeypatch.setitem(sys.modules, "tomllib", None)
+    with pytest.raises(ImportError):
+        import tomllib  # noqa: F401  (the block holds)
+    release = load_release()
+    assert callable(release.main)
+
+
+@needs_uv_git
+def test_current_runs_without_tomllib(clone: Path) -> None:
+    out = run(clone, sys.executable, "-c", NO_TOMLLIB, "--current")
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == version_of(clone)  # after the echoed `$ uv version --short`
+
+
+@pytest.mark.parametrize("dry", [False, True])
+@needs_uv_git
+def test_a_release_without_tomllib_is_refused_before_anything_is_written(clone: Path, dry: bool) -> None:
+    before = snapshot(clone)
+    head = git(clone, "rev-parse", "HEAD")
+
+    out = run(clone, sys.executable, "-c", NO_TOMLLIB, "patch", *(["--dry-run"] if dry else []))
+
+    assert out.returncode != 0
+    assert "a release needs Python 3.11+ (tomllib)" in out.stderr
+    assert "nothing was written" in out.stderr
+    assert "uv version" not in out.stdout  # refused BEFORE uv ran
+    assert snapshot(clone) == before
+    assert git(clone, "status", "--porcelain").strip() == ""
+    assert git(clone, "rev-parse", "HEAD") == head
 
 
 # --- make release ----------------------------------------------------------------

@@ -9,6 +9,188 @@ stamps this file.
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-15
+
+- The kit puts `sessionvoice-web` on the PATH, beside sessionvoice's other
+  commands: the web front door runs `sessionvoice-web web-room` to ask
+  for Talk's room. It ships in sessionvoice 0.4.0. `talk` is unchanged.
+- The family floor is 0.4.0: the kit now needs sessionmail, sessiontools,
+  sessionphone, sessionview and sessionvoice at 0.4.0 or later (was 0.3.3);
+  settled stays at 0.1.0 or later.
+- The one-line installer runs its speech step, `ears services install`,
+  with the microphone check off (`EARS_MIC_CHECK_S=0`, for that one
+  command): the installer runs unattended, and the check would wait for a
+  sound nobody is there to make. Running `ears services install` by hand
+  still checks.
+- The docs' paste guard catches an unquoted `[...]` in a shell block. A
+  usage line such as `message list [BOX]`, pasted into zsh, is a glob that
+  matches nothing, so zsh stops with "no matches found" and the line does
+  not run. The guard lets through what zsh reads as written: a quoted or
+  escaped bracket, `[ ... ]` and `[[ ... ]]` tests, array subscripts and an
+  assignment's value. Each case is measured in a real zsh by the tests. No
+  shipped doc had the problem.
+- `docs/service.md` states what a package's install or uninstall does
+  when its launchd act succeeds but its service file is not written: it
+  keeps the job, prints one line on stderr naming the file and the
+  reason, and exits non-zero with its own code, named in that verb's
+  help. A write is atomic, so a failed one leaves the previous file
+  intact. Exit 0 with a missing file would hide the job from
+  `sessionkit service list`.
+- The family's notes gain `docs/family-web.md`, for the web pages a
+  package serves, with one rule: a package that serves a page behind the
+  kit's web front door ships a command named `<package>-web`, which cannot
+  collide with a system program. `sessionvoice-web`, for Talk, is the
+  example; a page a package serves on its own, outside the front door, is
+  outside the rule. It is linked from `docs/family-conventions.md` and,
+  like the other family notes, left out of the release archive.
+- The settings and tree specifications moved out of this repo, into the
+  project's OpenSpec store. `openspec/` now holds one file,
+  `openspec/config.yaml`, which reads `store: sessionkit`: run in a
+  checkout, the openspec CLI follows it to the store, so `openspec list
+  --specs` still lists both. The store is private, so the release archive
+  leaves `openspec/` out, and `docs/settings.md`, `docs/family-settings.md`,
+  `docs/uninstall.md` and `docs/pager.md` name each specification in plain
+  text instead of linking a file that is no longer here. The kit's tests no
+  longer check the specs' form; that goes with the specs to the store.
+- The kit puts `sessionview` alone on your PATH, not its three helpers.
+  `sessionview-config`, `sessionview-session` and `sessionview-messages`
+  are verbs of `sessionview` now: `sessionview config`, `sessionview
+  session` and `sessionview messages`. The kit installs 13 commands, beside
+  the phone's `dc-*` tools, and INSTALL.md says so. To change the agent
+  sessionview starts, run `sessionview config set autostart_agent VALUE`.
+  A test pins the list of commands the kit installs. The kit asks for
+  sessionview 0.4.0 or later: an older sessionview still runs
+  `sessionview-messages` in its messages tab.
+- `make install-dev` installs the whole kit from your clones of the
+  family, for working across the packages. With the five family repos
+  cloned beside this one (or in the folder `SRC=` names), one `uv tool
+  install --reinstall` takes this checkout and four of them editable, and
+  sessionview built, since its commands need files only a build makes. A
+  re-run picks up sessionview edits. It names any clone that is missing or
+  is the wrong package before uv runs, prints where each package came from
+  when it is done, and what to restart. `DRY_RUN=1` prints the uv command
+  and changes nothing; `PYTHON=` overrides the Python. `make install` is
+  unchanged.
+- The mail hooks hint points at a step that exists. The installer's end
+  screen and `sessionkit doctor` sent readers to a README step, "The mail
+  hooks start off", that the one-screen README no longer has. Both now name
+  INSTALL.md section 4, "Turn the mail hooks on", and INSTALL.md no longer
+  names the README step. A test reads every INSTALL.md or README section
+  and step the installer and the doctor name, and fails if one is missing.
+- The installer's disk check uses a disk figure. It asked for 10 GB because
+  a 16 GB Mac had 9.9 GB in use, which was memory, not disk. It now asks for
+  about 8 GB, what the whole list took on a fresh macOS VM, and INSTALL.md
+  section 1 states the same figure with that measurement. A test ties the
+  two together.
+- INSTALL.md section 2 states the floor the kit asks for, 0.4.0, as
+  pyproject.toml sets it. Its PyPI reading stays labelled with the 0.3.2
+  release it ran on. A test ties the stated floor to pyproject.toml.
+- INSTALL.md's note that a bare `session start` starts plain while the
+  default seat is held links the session page's "The default seat", which
+  says so, instead of the README's Quick start, which no longer does.
+- A kit install puts the phone's `dc-*` tools on the PATH: `dc-say`,
+  `dc-answer`, `dc-hangup` and the fourteen others. `uv tool install` links
+  only the kit's own commands, so they stayed in uv's tool folder and
+  `command -v dc-say` found nothing. The kit now re-declares all seventeen,
+  each `sessionphone.dctools:main`, as sessionphone ships them. `dc-env` is a
+  library and is not one of them. `scripts/command_docs.py` gives them no
+  page, since sessionphone documents them in its topic pages, and no longer
+  stops on `settled`, which has no page either.
+- The PyPI page's links work again. README.md keeps relative links so a
+  clone can follow them, and PyPI cannot. `make publish` now builds through
+  `make pypi-dist`: it builds the wheel and sdist from the release tag, never
+  the checkout, pins the README's relative links to that tag
+  (`scripts/pypi_readme.py`), and fails if either dist still carries a
+  relative link. It also refuses until the tag is on the public repo
+  (`PUBLIC_REMOTE`), because the links point there, and unless the local
+  tag it builds from is the same commit as the public one: a moved or stale
+  local tag is refused with both commits named. Every family repo runs the
+  same check with `pypi_readme.py tag-check --tag vX.Y.Z --remote URL`.
+- The installer's lines fit an 80-column terminal: every line `install.sh`
+  prints is 76 columns or less, an emoji counted at its width, and a test
+  holds every line of the script to it, and every line of each run the
+  tests drive. The lines that wrapped (the speech server row, the disk
+  line, the shell-file lines, the end screen's bullets) now break where
+  they read. Every emoji is one terminals all draw 2 columns wide, so none
+  runs into its text: `ears install` shows 🎤, setup 📝, the warnings 🔶
+  and the shell-file lines 📄. A port holder's name is cut to 20
+  characters, and a refusal from `pager` is folded under the hooks line,
+  every word kept.
+
+- The installer's end screen says only what is left to do. It no longer
+  makes `~/work` (`session start` offers it), and says `session start`
+  once: setup's own launch line is kept back during the run, and the end
+  screen gives its command. Over an existing install it names each mail
+  step setup left, one line each, instead of printing setup's plan and dry
+  run again, and the words "Left for you" are gone. The kit's own speech
+  server holding port 8890 is no longer shown as a fault; a holder that is
+  not mlx-audio still is. "Run sessionkit setup again", there and in
+  `sessionkit setup`'s own "re-run sessionkit setup after", appears only
+  when a re-run can change the outcome: a step setup applies itself, or one
+  that waits on another. A step setup never fixes is named once, with its
+  own words.
+- `sessionkit setup` asks sessionmail which box is the operator's, instead of
+  working it out itself: the first `box:` line of `message setup --dry-run`.
+  The two read different homes, so with `$HOME` set to a folder that is not
+  the account's home, setup refused a box sessionmail had just made, or named
+  another. `--mailbox NAME` still wins. When sessionmail gives no usable
+  answer (no `message setup`, a refusal, no `box:` line, no operator's box),
+  setup writes no operator and says what sessionmail said.
+- `sessionkit setup` no longer promises a wake it cannot keep. After it adds
+  the wake seat, it asks `ears services status`, which only reads. It says
+  `"hey NAME" wakes it` only when the ears' keeper and mail services both
+  run. Otherwise, as on a fresh Mac, the line says the wake works once they
+  are installed and running, and names the step and its size: `ears services
+  install --agent NAME` (about 4.1 GB). Setup still never installs them. The
+  README's quick start now says that asking Claude to call you, or ringing
+  your session, is when you agree to be heard, and recorded if recording is
+  on.
+- The family's test notes now say a backgrounded suite must start with
+  SIGINT at its default, and never as `( nohup ... & )`: a `&` job from a
+  script starts with SIGINT ignored, and signal tests then fail as false
+  load flakes (found in the 0.3.3 cut, SM-1035). `docs/family-tests.md`
+  lists the launch forms that keep the default and the ones that lose it,
+  each measured in bash and zsh, and the one-line receipt to run first;
+  `docs/family-release.md` points there.
+- The family's docs notes gain a draft standard for each repo's security
+  page, `docs/family-docs-security.md`: the headings every
+  `docs/security.md` has (how to report a vulnerability privately, what to
+  expect, scope, supported versions, what the package touches), the
+  optional ones a package adds for each surface it has, and the open
+  choices left to the owner. It is listed in `docs/family-docs.md` and, like
+  the other family notes, left out of the release archive.
+- `make validate` runs `claude plugin validate --strict` on what ships:
+  HEAD's `git archive`, extracted to a temp dir that is removed on every
+  exit, with claude's exit status. Run in a checkout, the strict check
+  failed on the root `CLAUDE.md`, which is export-ignored and never ships.
+  With no `claude` on the PATH it exits 2 and says so. The pre-public
+  checklist's item 10 now names `make validate`.
+### Fixed
+
+- A release refused for an existing tag no longer leaves the tree dirty.
+  `scripts/release.py` bumped pyproject.toml first and checked the tag after,
+  so a refused release left pyproject.toml modified. It now asks
+  `uv version --frozen --dry-run` for the new version, refuses an existing
+  tag `vX.Y.Z` before anything is written, and only then bumps. The script
+  also runs `--current` on a python3 older than 3.11 again (a stock macOS
+  python3 is 3.9): it imports tomllib only where a release needs it, and a
+  release on an older python3 is refused before it writes.
+- `sessionkit setup` and `sessionkit doctor` warn when the phone's owner
+  is, or may be, locked out of the bot: the owner's line in sessionphone's
+  callers file has no key, so after the one-time key migration the owner
+  cannot ring and the bot writes the owner no chat (SK-283, the kit half
+  of PHONE-318). The warning comes before the migration too, while the
+  owner is at hand, and names the fix: `sessionphone callers pin ADDR --key
+  FPR`, or `sessionphone link`. The kit reads sessionphone's own readers and
+  never judges a key; when it cannot read them, the doctor says "not
+  checked" and setup says nothing. It is never part of an exit.
+  `install.sh --check` alone does not show it: it cannot read the callers
+  file, so run `sessionkit doctor`.
+- INSTALL.md section 4 and `docs/troubleshooting.md` lead with the
+  installer's one-line `--check`, now that `https://sessionkit.ai/install.sh`
+  is served. From a clone, `bash install.sh --check` follows as the
+  alternative (SK-288).
+
 ## [0.3.3] - 2026-11-08
 
 - The kit now needs sessionmail, sessiontools, sessionphone, sessionview and
@@ -92,6 +274,15 @@ stamps this file.
 
 - Docs: what-listens names the strip's button Turn off.
 
+### Fixed
+
+- The overview page in `site/` no longer cuts off its code on a phone. The
+  install line needed 417 px in a 350 px box at 390 px wide, and the mail
+  example needed 629 px. The install line now fits on one line there, and
+  the example stacks. A tap on the install line selects all of it.
+- The overview page no longer says the kit's plugin does not load. It gives
+  the README's three install lines, the rest of what you need, and says to
+  start an agent with `session start`.
 ### Known issues
 
 - sessionphone: an agent can add a guest to a live call by mail without asking the caller (alpha). It goes off by default, with a setting, in the next release. Any process running as the same OS user can also speak into, or listen to, a live call.

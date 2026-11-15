@@ -26,13 +26,22 @@ Every test runs in a temp HOME with a PATH holding only two fake programs:
   is a maildir (`new/`, `cur/`, `tmp/`: a bare directory is no box to the
   real `message`), else 2. A mode file switches it to exit 3 or slow.
   `message setup` is a FAKE of sessionmail's mail setup verb: by default it
-  answers `--help`, prints one DONE line and exits 0, making nothing. A
+  answers `--help`, prints one DONE line and exits 0, making nothing. With
+  `--dry-run` it prints the plan's box rows first, as the real verb does:
+  the operator's box FIRST, then each `--box`. The operator's box follows
+  sessionmail's rule, not the kit's: `operator.mailbox` from the session
+  tool's settings under the ACCOUNT's home (the path in
+  `message.passwdhome`, else `$HOME`), else, with no `operator` key there,
+  the account's name in `message.account` (the rig writes `stranger`),
+  case-folded; neither is a MANUAL `box:operator` row. A
   `message.setup` file switches it: `absent` (0.1.0: "No such command",
-  exit 2, `--help` too), `left` (4), `failed` (1), `refused` (2), `weird`
-  (9), `slow`, or `makes-boxes` (makes the root, the account's box named in
-  `message.account` (or `operator.mailbox` when the host layer sets it),
-  and each `--box`, like the real verb). Every call's
-  argv is logged, one JSON list a line, to `message.calls`.
+  exit 2, `--help` too), `left` (4), `failed` (1, a real run only: a dry
+  run applies nothing, so nothing fails), `refused` (2), `weird` (9),
+  `slow`, `rowless` (a dry run that prints no `box:` row), or
+  `makes-boxes` (a real run makes the root, the operator's box
+  and each `--box`, like the real verb; a dry run marks a box not made yet
+  TODO and exits 4). Every call's argv is logged, one JSON list a line, to
+  `message.calls`.
 
 Setup is never run against a real HOME (S7).
 """
@@ -42,8 +51,10 @@ from __future__ import annotations
 import ast
 import json
 import os
+import pwd
 import re
 import stat
+import subprocess
 import sys
 import time
 import tomllib
@@ -188,52 +199,100 @@ if sys.argv[1:2] == ["setup"]:
     if sys.argv[2:] == ["--help"]:
         print("Usage: message setup [--box NAME]... [--dry-run]")
         sys.exit(0)
+    dry = "--dry-run" in sys.argv
     if setup == "slow":
         time.sleep(5)
-    if setup == "left":
-        print("  notmuch-hook  BLOCKED  run notmuch new once")
-        print("message setup: done what it can; 1 step(s) left for you", file=sys.stderr)
-        sys.exit(4)
-    if setup == "failed":
-        print("message setup: box:x failed", file=sys.stderr)
-        sys.exit(1)
     if setup == "refused":
         print("message setup: REFUSED - nothing was applied", file=sys.stderr)
         sys.exit(2)
     if setup == "weird":
         sys.exit(9)
-    if setup == "makes-boxes" and "--dry-run" in sys.argv:
-        # A fresh host, as measured on the real verb: a dry run applies
-        # nothing and exits 4 while any step is still to do.
-        print("  box:" + here.with_name("message.account").read_text().strip()
-              + "  TODO  make the box")
-        print("dry run: nothing applied (1 step(s) TODO)")
+    if setup == "rowless" and "--dry-run" in sys.argv:
+        print("message setup: every step DONE")
+        sys.exit(0)
+    # The operator's box as the real verb picks it (sessionmail's
+    # operator_box): `operator.mailbox` from the session tool's settings
+    # read under the ACCOUNT's home (`message.passwdhome`, else $HOME),
+    # never $HOME as such; else, with no `operator` key at all, the
+    # account's name (`message.account`), case-folded. Neither: None.
+    passwd_home = here.with_name("message.passwdhome")
+    account_home = (Path(passwd_home.read_text().strip()) if passwd_home.exists()
+                    else Path(os.environ["HOME"]))
+    tool = account_home / ".sessionkit" / "tools" / "settings"
+    layers = [tool / "session.json"] if (tool / "session.json").is_file() else []
+    if (tool / "session.d").is_dir():
+        layers += sorted(p for p in (tool / "session.d").iterdir()
+                         if p.is_file() and p.suffix == ".json")
+    blocks = [json.loads(f.read_text()) for f in layers]
+    blocks = [b["operator"] for b in blocks if "operator" in b]
+    account_file = here.with_name("message.account")
+    account = account_file.read_text().strip() if account_file.exists() else ""
+    if blocks:
+        op = None
+        for b in blocks:
+            if isinstance(b, dict) and b.get("mailbox"):
+                op = b["mailbox"].strip()
+    else:
+        op = account.casefold() or None
+    args = sys.argv[2:]
+    wanted = [args[i + 1] for i, a in enumerate(args) if a == "--box"]
+    names = [op] if op else []
+    names += [n for n in dict.fromkeys(wanted) if n not in names]
+    agents = Path(os.environ["HOME"]) / ".mail" / "agents"
+    def made(name):
+        return all((agents / name / sub).is_dir() for sub in ("new", "cur", "tmp"))
+    if dry:
+        # The plan, as the real verb prints it: the operator's box FIRST
+        # (a MANUAL `box:operator` when there is none), then each --box.
+        # "done" claims every step DONE, as that mode's real run does.
+        rows = [] if op else [("box:operator", "MANUAL",
+                               "no operator box: set operator.mailbox, or pass --box NAME")]
+        for name in names:
+            done = setup != "makes-boxes" or made(name)
+            rows.append(("box:" + name, "DONE" if done else "TODO",
+                         "the box exists" if done else "make the box"))
+        width = max([len(r[0]) for r in rows] + [8])
+        print("steps:")
+        for rid, state, detail in rows:
+            print(f"  {rid:<{width}}  {state:<7}  {detail}")
+        todo = sum(1 for r in rows if r[1] != "DONE")
+        if setup == "left":
+            print("  notmuch-hook  BLOCKED  run notmuch new once")
+            print("message setup: done what it can; 1 step(s) left for you", file=sys.stderr)
+            sys.exit(4)
+        if todo:
+            # A fresh host, as measured on the real verb: a dry run applies
+            # nothing and exits 4 while any step is still to do.
+            print(f"dry run: nothing applied ({todo} step(s) TODO)")
+            sys.exit(4)
+        print("message setup: every step DONE")
+        sys.exit(0)
+    if setup == "left":
+        print("  notmuch-hook  BLOCKED  run notmuch new once")
+        print("message setup: done what it can; 1 step(s) left for you", file=sys.stderr)
         sys.exit(4)
+    if setup in ("left-blocked", "left-waits", "left-sudo"):
+        # sessionmail's next-steps block, as next_steps prints it (SK-272).
+        steps = {
+            "left-blocked": ["notmuch-hook-post-insert (BLOCKED): /h/post-insert links "
+                             "to ../x, not a sessionmail hook: setup never replaces it"],
+            "left-waits": ["notmuch-index (BLOCKED): notmuch: 'notmuch' not found",
+                           "notmuch-hook (BLOCKED): waits on notmuch-index"],
+            "left-sudo": ["maps (TODO): NOT RUN (no tty to ask for a password): "
+                          "run it yourself: sudo -- postmap /etc/postfix/virtual"],
+        }[setup]
+        print(f"message setup: done what it can; {len(steps)} step(s) left for you:")
+        for n, step in enumerate(steps, 1):
+            print(f"  {n}. {step}")
+        print("then run `message setup` again.")
+        sys.exit(4)
+    if setup == "failed":
+        print("message setup: box:x failed", file=sys.stderr)
+        sys.exit(1)
     if setup == "makes-boxes":
-        # The operator's box as the real verb picks it: `operator.mailbox`
-        # from the host layer, else (no `operator` key at all) the account's
-        # name, case-folded.
-        tool = Path(os.environ["HOME"]) / ".sessionkit" / "tools" / "settings"
-        layers = [tool / "session.json"] if (tool / "session.json").is_file() else []
-        if (tool / "session.d").is_dir():
-            layers += sorted(p for p in (tool / "session.d").iterdir()
-                             if p.is_file() and p.suffix == ".json")
-        blocks = [json.loads(f.read_text()) for f in layers]
-        blocks = [b["operator"] for b in blocks if "operator" in b]
-        if blocks:
-            mailbox = None
-            for b in blocks:
-                if isinstance(b, dict) and b.get("mailbox"):
-                    mailbox = b["mailbox"].strip()
-            boxes = [mailbox] if mailbox else []
-        else:
-            boxes = [here.with_name("message.account").read_text().strip().casefold()]
-        args = sys.argv[2:]
-        boxes += [args[i + 1] for i, a in enumerate(args) if a == "--box"]
-        for name in boxes:
+        for name in names:
             for sub in ("new", "cur", "tmp"):
-                (Path(os.environ["HOME"]) / ".mail" / "agents" / name / sub).mkdir(
-                    parents=True, exist_ok=True)
+                (agents / name / sub).mkdir(parents=True, exist_ok=True)
     print("message setup: every step DONE")
     sys.exit(0)
 if sys.argv[1:3] != ["box", "path"] or len(sys.argv) != 4:
@@ -247,6 +306,9 @@ sys.exit(2)
 """
 
 STRANGER = "stranger"
+# The operator step's one question to sessionmail (SK-154): the plan, read
+# only, with no `--box`, so its first `box:` row is the operator's box.
+OPERATOR_QUERY = ["setup", "--dry-run"]
 # The folder sessiontools names for agents on a fresh host, under
 # HOME: what the fake verb answers by default.
 FRESH_AGENTS = ".sessionkit/tools/state/agent/config"
@@ -270,6 +332,12 @@ class Rig(SimpleNamespace):
         """What the fake `session agent default` answers (module docstring)."""
         (self.bin / "session.seat").write_text(word)
 
+    def set_account(self, name: str) -> None:
+        """The installing account's name, as the password database and
+        sessionmail both see it."""
+        self.account.pw_name = name
+        (self.bin / "message.account").write_text(name)
+
     def setup_mode(self, mode: str) -> None:
         """Switch the fake `message setup` (see the module docstring)."""
         (self.bin / "message.setup").write_text(mode)
@@ -282,8 +350,17 @@ class Rig(SimpleNamespace):
         return [json.loads(line) for line in log.read_text().splitlines()]
 
     def setup_calls(self) -> list[list[str]]:
-        """The fake verb's runs, its `--help` probes left out."""
-        return [c for c in self.calls() if c[:1] == ["setup"] and c[1:] != ["--help"]]
+        """The fake verb's runs: its `--help` probes left out, and the
+        operator step's question (OPERATOR_QUERY, a dry run with no `--box`)."""
+        return [
+            c
+            for c in self.calls()
+            if c[:1] == ["setup"] and c[1:] != ["--help"] and c != OPERATOR_QUERY
+        ]
+
+    def operator_queries(self) -> int:
+        """How often the operator step asked sessionmail for the operator's box."""
+        return self.calls().count(OPERATOR_QUERY)
 
     @property
     def settings(self) -> Path:
@@ -343,8 +420,13 @@ def rig(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Rig:
     monkeypatch.setenv("PATH", str(bindir))
     for var in ("AGENT_OPERATOR_ADDR", "USER", "LOGNAME", "MAIL", "AGENTS_DIR"):
         monkeypatch.delenv(var, raising=False)
-    account = SimpleNamespace(pw_name=STRANGER)
-    monkeypatch.setattr(setup_mod, "pwd", SimpleNamespace(getpwuid=lambda uid: account))
+    # The process's account, as the password database answers it in-process.
+    # The kit must never consult it for the operator's box (SK-154): the fake
+    # `message setup` reads its own account name from `message.account`. A
+    # test that wants both to agree says so with rig.set_account().
+    account = SimpleNamespace(pw_name=STRANGER, pw_dir=str(home))
+    monkeypatch.setattr(pwd, "getpwuid", lambda uid: account)
+    (bindir / "message.account").write_text(STRANGER)
     assert Path.home() == home
     return Rig(home=home, bin=bindir, account=account)
 
@@ -442,7 +524,7 @@ def test_no_flag_and_no_box_writes_nothing_and_says_how(rig: Rig) -> None:
 
 def test_the_m5_shape_an_account_with_no_box_is_refused(rig: Rig) -> None:
     """S2b: the account is `admin`, the human's box is another name."""
-    rig.account.pw_name = "admin"
+    rig.set_account("admin")
     rig.box("human")
     result = rig.run()
     assert result.exit_code == 1
@@ -774,7 +856,7 @@ def test_mailbox_and_address_together_is_a_usage_error(rig: Rig) -> None:
 
 
 def test_an_account_name_of_the_wrong_shape_is_refused_not_written(rig: Rig) -> None:
-    rig.account.pw_name = "-weird"
+    rig.set_account("-weird")
     result = rig.run()
     assert result.exit_code == 1
     assert "--mailbox NAME" in result.output
@@ -978,7 +1060,8 @@ def test_mail_setup_runs_first_by_the_one_argv(rig: Rig) -> None:
     verb = list(setup_mod.MAIL_SETUP_ARGV[1:])
     assert calls[0] == [*verb, "--help"]  # the probe
     assert calls[1] == [*verb, "--box", "claude"]  # the run: the agent's box only
-    assert calls[2][:2] == ["box", "path"]  # the operator's box check, after
+    assert calls[2] == [*verb, "--dry-run"]  # the operator's box: sessionmail's answer
+    assert calls[3] == ["box", "path", STRANGER]  # that box's check, after
     assert "message setup: every step DONE" in result.output
     assert rig.target.read_text() == expected({"mailbox": STRANGER})
 
@@ -991,10 +1074,13 @@ def test_the_verb_name_lives_in_one_constant(
     monkeypatch.setattr(setup_mod, "MAIL_SETUP_ARGV", ("message", "renamed"))
     result = rig.run()
     assert ["renamed", "--help"] in rig.calls()
+    assert ["renamed", "--dry-run"] in rig.calls()  # the operator's question too
     assert not rig.setup_calls()
-    # The fake has no `renamed`, so it reads as a sessionmail without the verb.
+    # The fake has no `renamed`, so it reads as a sessionmail without the verb,
+    # and the operator step, with no answer from it, refuses (SK-154).
     assert "run: message renamed" in result.output
-    assert result.exit_code == setup_mod.EXIT_STEPS_LEFT
+    assert "`message renamed --dry-run` exited 2" in result.output
+    assert result.exit_code == setup_mod.EXIT_REFUSED
 
 
 @pytest.mark.parametrize(
@@ -1108,12 +1194,182 @@ def test_the_kit_names_the_operator_box_the_verb_made(rig: Rig) -> None:
     assert not rig.target.exists()
 
 
+# --- SK-154: the operator's box is sessionmail's answer, never recomputed --------
+#
+# sessionmail reads the operator from the PASSWORD-DATABASE home; `$HOME` can be
+# another folder (a scratch HOME, `sudo -E`, some launchers). The kit asks
+# sessionmail which box is the operator's (the first `box:` row of
+# `message setup --dry-run`) instead of naming one itself.
+
+
+def split_home(rig: Rig, tmp_path: Path, mailbox: str) -> Path:
+    """The account's passwd home is not $HOME, and its settings name MAILBOX
+    as the operator's box: the split-home shape, as measured on a real host."""
+    passwd_home = tmp_path / "passwd-home"
+    tool = passwd_home / ".sessionkit" / "tools" / "settings"
+    tool.mkdir(parents=True)
+    (tool / "session.json").write_text(json.dumps({"operator": {"mailbox": mailbox}}))
+    (rig.bin / "message.passwdhome").write_text(str(passwd_home))
+    rig.account.pw_dir = str(passwd_home)
+    return passwd_home
+
+
+@pytest.mark.parametrize("mode", ["done", "makes-boxes"])
+def test_home_not_the_passwd_home_writes_the_box_sessionmail_names(
+    rig: Rig, tmp_path: Path, mode: str
+) -> None:
+    """The repro: account `acct`, sessionmail names `opbox` from the passwd
+    home's settings, and `session operator` (reading $HOME) sees no operator.
+    The kit writes `opbox`; it never asks for a box named `acct`."""
+    rig.set_account("acct")
+    split_home(rig, tmp_path, "opbox")
+    if mode == "done":
+        rig.box("opbox")
+    rig.setup_mode(mode)
+    result = rig.run()
+    assert result.exit_code == 0, result.output
+    assert rig.target.read_text() == expected({"mailbox": "opbox"})
+    assert ["box", "path", "opbox"] in rig.calls()
+    assert ["box", "path", "acct"] not in rig.calls()
+    assert rig.operator_queries() == 1
+
+
+def test_home_is_the_passwd_home_writes_the_box_sessionmail_names(rig: Rig) -> None:
+    """HOME is the passwd home and nothing is configured: sessionmail names
+    the account's box, and the kit writes exactly that box."""
+    rig.set_account("acct")
+    rig.box("acct")
+    result = rig.run()
+    assert result.exit_code == 0, result.output
+    assert rig.target.read_text() == expected({"mailbox": "acct"})
+    assert rig.operator_queries() == 1
+
+
+def test_the_kit_takes_sessionmails_name_not_the_process_account(rig: Rig) -> None:
+    """sessionmail says `opbox`, the process's account is `acct`: `opbox`. The
+    kit has no rule of its own for the name to disagree with."""
+    rig.account.pw_name = "acct"
+    (rig.bin / "message.account").write_text("opbox")
+    rig.box("opbox")
+    rig.box("acct")
+    result = rig.run()
+    assert result.exit_code == 0, result.output
+    assert rig.target.read_text() == expected({"mailbox": "opbox"})
+    assert ["box", "path", "acct"] not in rig.calls()
+
+
+def test_an_explicit_mailbox_wins_and_sessionmail_is_not_asked(
+    rig: Rig, tmp_path: Path
+) -> None:
+    split_home(rig, tmp_path, "opbox")
+    rig.box("opbox")
+    rig.box("someone")
+    result = rig.run("--mailbox", "someone")
+    assert result.exit_code == 0, result.output
+    assert rig.target.read_text() == expected({"mailbox": "someone"})
+    assert rig.operator_queries() == 0
+
+
+def test_a_dry_run_names_the_box_sessionmail_names(rig: Rig, tmp_path: Path) -> None:
+    rig.set_account("acct")
+    split_home(rig, tmp_path, "opbox")
+    rig.box("opbox")
+    result = rig.run("--dry-run")
+    assert f"Would write {rig.target}:" in result.output, result.output
+    assert '"mailbox": "opbox"' in result.output
+    assert_nothing_written(rig)
+
+
+@pytest.mark.parametrize(
+    ("how", "says"),
+    [
+        ("absent", "`message setup --dry-run` exited 2: Error: No such command 'setup'."),
+        ("refused", "`message setup --dry-run` exited 2: message setup: REFUSED"),
+        ("weird", "`message setup --dry-run` exited 9"),
+        ("rowless", "`message setup --dry-run` named no box (no `box:` row)"),
+        ("manual", "sessionmail has no operator's box (box:operator MANUAL: no operator box"),
+        ("no-message", "could not ask sessionmail (`message` not found or did not answer)"),
+        ("slow", "could not ask sessionmail (`message` not found or did not answer)"),
+    ],
+)
+def test_no_usable_answer_from_sessionmail_is_refused_never_recomputed(
+    rig: Rig, how: str, says: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The account's own box exists, so a kit that fell back to recomputing
+    the name would write it. It refuses instead, naming what sessionmail said."""
+    rig.box(STRANGER)
+    if how == "manual":
+        (rig.bin / "message.account").write_text("")
+    elif how == "no-message":
+        rig.remove("message")
+    elif how == "slow":
+        rig.setup_mode("slow")
+        monkeypatch.setattr(setup_mod, "MAIL_SETUP_TIMEOUT", 0.5)
+    else:
+        rig.setup_mode(how)
+    result = rig.run()
+    assert result.exit_code == 1, result.output
+    assert_nothing_written(rig)
+    assert f"No operator written: {says}" in result.output, result.output
+    assert "--mailbox NAME" in result.output
+    assert ["box", "path", STRANGER] not in rig.calls()
+
+
+@pytest.mark.parametrize(
+    ("out", "answer"),
+    [
+        # The real verb's render (sessionmail _setup.py run_plan): a header,
+        # the privileged section, then the steps; the operator's box first.
+        (
+            (
+                "message setup: the plan, printed whole before anything is applied\n"
+                "privileged steps (sudo):\n"
+                "  none\n"
+                "steps:\n"
+                "  mail-root     DONE     /x/.mail/agents exists\n"
+                "  box:opbox     TODO     make /x/.mail/agents/opbox\n"
+                "  box:claude    DONE     /x/.mail/agents/claude exists\n"
+                "message setup: done what it can; 1 step(s) left for you:\n"
+                "  1. box:opbox (TODO): make /x/.mail/agents/opbox\n"
+            ),
+            ("opbox", ""),
+        ),
+        ("steps:\n  box:ops  DONE  exists\n", ("ops", "")),
+        (
+            "steps:\n  box:operator  MANUAL   no operator box: unset\n  box:claude  DONE  x\n",
+            (
+                None,
+                (
+                    "sessionmail has no operator's box (box:operator MANUAL: "
+                    "no operator box: unset)"
+                ),
+            ),
+        ),
+        (
+            "steps:\n  box:Bad      BLOCKED  the operator's box 'Bad': uppercase\n",
+            (
+                None,
+                (
+                    "sessionmail cannot make the operator's box (box:Bad BLOCKED: "
+                    "the operator's box 'Bad': uppercase)"
+                ),
+            ),
+        ),
+        ("message setup: every step DONE\n", (None, "named no box (no `box:` row)")),
+        ("  1. box:opbox (TODO): make it\n", (None, "named no box (no `box:` row)")),
+    ],
+)
+def test_the_operator_box_is_the_first_box_row(out: str, answer) -> None:
+    box, why = setup_mod.operator_box_from_plan(out)
+    assert box == answer[0]
+    assert answer[1] in why
+
+
 def test_a_dry_run_passes_dry_run_and_writes_nothing(rig: Rig) -> None:
     """The real verb's dry run on a fresh host exits 4 (steps still to do),
     makes nothing, and the kit says the real run does them."""
     rig.box(STRANGER)
     rig.setup_mode("makes-boxes")
-    (rig.bin / "message.account").write_text("made-by-setup")
     result = rig.run("--dry-run")
     assert result.exit_code == setup_mod.EXIT_STEPS_LEFT, result.output
     assert rig.setup_calls() == [["setup", "--dry-run", "--box", "claude"]]
@@ -1121,7 +1377,7 @@ def test_a_dry_run_passes_dry_run_and_writes_nothing(rig: Rig) -> None:
     assert "Dry run: mail setup has steps still to do (above)." in result.output
     assert "Without --dry-run it does what it can and names the rest." in result.output
     assert "left steps for you" not in result.output
-    assert not (rig.home / ".mail" / "agents" / "made-by-setup").exists()
+    assert not (rig.home / ".mail" / "agents" / "claude").exists()  # the agent's
     assert_nothing_written(rig)
 
 
@@ -1154,13 +1410,28 @@ def test_a_sessionmail_without_the_verb_gets_the_exact_step(rig: Rig) -> None:
     rig.box(STRANGER)
     rig.setup_mode("absent")
     result = rig.run()
-    assert result.exit_code == setup_mod.EXIT_STEPS_LEFT
+    assert result.exit_code == setup_mod.EXIT_REFUSED
     assert rig.setup_calls() == []  # probed, never run
     assert "this sessionmail has no `message setup`" in result.output
     assert "exited 2" in result.output
     assert f'INSTALL.md, "Mail between agents", in {setup_mod.REPOSITORY}' in result.output
     assert "run: message setup --box claude" in result.output  # the agent's box
-    # The operator still runs, and is written.
+    # The operator still runs, but only the verb can name the operator's box
+    # (SK-154): with no verb it refuses, and names what sessionmail said.
+    assert (
+        "No operator written: `message setup --dry-run` exited 2: "
+        "Error: No such command 'setup'."
+    ) in result.output
+    assert_nothing_written(rig)
+
+
+def test_a_sessionmail_without_the_verb_writes_a_named_mailbox(rig: Rig) -> None:
+    """`--mailbox NAME` names the box itself: no question to the verb."""
+    rig.box(STRANGER)
+    rig.setup_mode("absent")
+    result = rig.run("--mailbox", STRANGER)
+    assert result.exit_code == setup_mod.EXIT_STEPS_LEFT, result.output
+    assert rig.operator_queries() == 0
     assert rig.target.read_text() == expected({"mailbox": STRANGER})
 
 
@@ -1189,7 +1460,10 @@ def test_the_printed_step_carries_the_boxes_setup_would_ask_for(
     rig.box("named")
     rig.setup_mode("absent")
     result = rig.run(*args)
-    assert result.exit_code == setup_mod.EXIT_STEPS_LEFT, result.output
+    # Without --mailbox the operator step has no verb to name the box: it
+    # refuses (SK-154), and a refusal is the run's exit.
+    code = setup_mod.EXIT_STEPS_LEFT if "--mailbox" in args else setup_mod.EXIT_REFUSED
+    assert result.exit_code == code, result.output
     assert result.output.count(f"once you do, run: {step}\n") == 1, result.output
 
 
@@ -1214,6 +1488,38 @@ def test_steps_left_is_exit_4_and_passes_the_verbs_lines(rig: Rig) -> None:
 
 
 @pytest.mark.parametrize(
+    ("mode", "rerun"),
+    [("left-blocked", False), ("left-waits", True), ("left-sudo", True)],
+)
+def test_the_re_run_hint_only_where_a_re_run_can_change_the_outcome(
+    rig: Rig, mode: str, rerun: bool
+) -> None:
+    """SK-272: "re-run sessionkit setup after" only when a step left is one
+    setup applies itself (a TODO, or a step waiting on another). A BLOCKED
+    step nothing waits on is named once, by the verb, with what to do."""
+    rig.box(STRANGER)
+    rig.setup_mode(mode)
+    result = rig.run()
+    assert result.exit_code == setup_mod.EXIT_STEPS_LEFT, result.output
+    assert ("re-run sessionkit setup" in result.output) is rerun
+    assert "Mail setup left steps for you (above)" in result.output
+    if not rerun:
+        assert result.output.count("notmuch-hook-post-insert") == 1
+
+
+def test_rerun_can_help_reads_the_next_steps_block() -> None:
+    assert setup_mod.rerun_can_help(["  1. x (TODO): sudo -- y"])
+    assert setup_mod.rerun_can_help(
+        ["  1. a (BLOCKED): no a", "  2. b (BLOCKED): waits on a"]
+    )
+    assert not setup_mod.rerun_can_help(["  1. a (BLOCKED): never replaced"])
+    assert not setup_mod.rerun_can_help(["  1. a (MANUAL): do it by hand"])
+    # No block to read (an older verb's lines): the hint stays.
+    assert setup_mod.rerun_can_help(["  notmuch-hook  BLOCKED  run notmuch new once"])
+    assert setup_mod.rerun_can_help([])
+
+
+@pytest.mark.parametrize(
     ("mode", "says"),
     [
         ("failed", "A mail setup step failed"),
@@ -1228,7 +1534,14 @@ def test_a_failed_or_refused_verb_is_exit_1(rig: Rig, mode: str, says: str) -> N
     assert result.exit_code == 1
     assert says in result.output
     # The operator half still ran: one refusal does not hide the other's work.
-    assert rig.target.read_text() == expected({"mailbox": STRANGER})
+    # A dry run applies nothing, so it never fails: after a failed step the
+    # verb still names the operator's box, and it is written. A refusal or an
+    # exit the verb never gives is no answer: the operator refuses (SK-154).
+    if mode == "failed":
+        assert rig.target.read_text() == expected({"mailbox": STRANGER})
+    else:
+        assert "No operator written: `message setup --dry-run` exited" in result.output
+        assert_nothing_written(rig)
 
 
 def test_a_verb_that_does_not_answer_is_exit_1(
@@ -2207,6 +2520,12 @@ def test_the_agent_file_holds_no_name_of_ours(rig: Rig) -> None:
 # newline) and exits 0 when the seat is already there; list is read only,
 # exit 0 either way. An `ears.wake` file switches them: `refuse` (exit 1,
 # `ears wake: <reason>` on stderr) or `slow`.
+#
+# `ears services status` models sessionvoice's read-only report (its rows are
+# `f"{name:6s} {state}"`, the state `running, pid N`, `loaded, not running` or
+# `not installed`; exit 0 with nothing installed). An `ears.services` file
+# switches it: `none` (the default, a fresh Mac), `running` (keeper and mail
+# run), `keeper` (the keeper alone), `loaded`, `slow`, `error` or `garbage`.
 FAKE_EARS = r"""
 import json, os, sys, tempfile, time
 from pathlib import Path
@@ -2249,6 +2568,28 @@ if args[:1] == ["wake"]:
         print(f"{key}: {'|'.join(entry['names'])}  ({target})")
         sys.exit(0)
     sys.exit(2)
+if args == ["services", "status"]:
+    svc_file = here.with_name("ears.services")
+    svc = svc_file.read_text().strip() if svc_file.exists() else "none"
+    if svc == "slow":
+        time.sleep(30)
+    if svc == "error":
+        print("ears: something broke", file=sys.stderr)
+        sys.exit(1)
+    if svc == "garbage":
+        print("nothing like a service list")
+        sys.exit(0)
+    state = {"running": "running, pid 4242", "loaded": "loaded, not running"}
+    rows = {n: state.get(svc, "not installed") for n in ("keeper", "mail")}
+    if svc == "keeper":
+        rows["keeper"] = "running, pid 4242"
+    print("stt    not installed (the optional --apple STT server)")
+    print(f"mouth  {'running, pid 4241' if svc == 'running' else 'not installed'}")
+    for n, st in rows.items():
+        print(f"{n:6s} {st}")
+    print("speakers not installed")
+    print("speech mlx-audio on :8890, holder unknown: lsof does not see it")
+    sys.exit(0)
 if args != ["backends"]:
     sys.exit(2)
 if mode == "slow":
@@ -2290,7 +2631,7 @@ def test_a_present_model_adds_no_line(rig: Rig) -> None:
     assert result.exit_code == 0, result.output
     assert setup_mod.EARS_MODEL_LINE not in result.output
     assert "ears install" not in result.output
-    assert ears_calls(rig) == [["wake", "add", "claude"], ["backends"]]
+    assert ears_calls(rig) == [["wake", "add", "claude"], ["services", "status"], ["backends"]]
 
 
 @pytest.mark.parametrize("verb_mode, code", [(None, 0), ("left", 4)])
@@ -2309,7 +2650,7 @@ def test_a_missing_model_says_one_line_and_keeps_the_exit(
     assert lines[-1] == SEAT_SENTENCE
     assert lines[-2] == setup_mod.EARS_MODEL_LINE
     # Read only: setup asked, and never ran `ears install`.
-    assert ears_calls(rig) == [["wake", "add", "claude"], ["backends"]]
+    assert ears_calls(rig) == [["wake", "add", "claude"], ["services", "status"], ["backends"]]
 
 
 def test_the_model_line_names_ears_install_and_why() -> None:
@@ -2400,14 +2741,126 @@ def wake_mode(rig: Rig, mode: str) -> None:
     (rig.bin / "ears.wake").write_text(mode)
 
 
+def services_mode(rig: Rig, mode: str) -> None:
+    (rig.bin / "ears.services").write_text(mode)
+
+
+WAKE_PROMISE = "Wake seat 'claude': \"hey claude\" wakes it."
+WAKE_WAITING = (
+    "Wake seat 'claude' added: \"hey claude\" wakes it once the ears' services "
+    "are installed and running (about 4.1 GB): ears services install --agent claude"
+)
+
+
 def test_a_fresh_home_gets_the_default_seat_as_its_wake_seat(rig: Rig) -> None:
+    """A fresh Mac: the seat is added, and nothing listens yet, so the line
+    names the step instead of promising a wake."""
     rig.box(STRANGER)
     add_ears(rig)
     assert not wake_file(rig).exists()
     result = rig.run()
     assert result.exit_code == 0, result.output
     assert wake_seats(rig) == {"claude": {"names": ["claude"]}}
-    assert "Wake seat 'claude': \"hey claude\" wakes it." in result.output.splitlines()
+    assert wake_lines(result.output) == [WAKE_WAITING]
+    assert WAKE_PROMISE not in result.output
+
+
+def test_the_wake_promise_is_made_only_with_keeper_and_mail_running(rig: Rig) -> None:
+    rig.box(STRANGER)
+    add_ears(rig)
+    services_mode(rig, "running")
+    result = rig.run()
+    assert result.exit_code == 0, result.output
+    assert wake_lines(result.output) == [WAKE_PROMISE]
+    assert ["services", "status"] in ears_calls(rig)
+
+
+@pytest.mark.parametrize("mode", ["none", "keeper", "loaded", "error", "garbage"])
+def test_anything_short_of_both_running_names_the_install_step(
+    rig: Rig, mode: str
+) -> None:
+    """Not installed, the keeper alone, loaded but stopped, a failure or
+    output we do not know: never the promise, and the exit is unchanged."""
+    rig.box(STRANGER)
+    add_ears(rig)
+    services_mode(rig, mode)
+    result = rig.run()
+    assert result.exit_code == 0, result.output
+    assert wake_lines(result.output) == [WAKE_WAITING]
+    assert wake_seats(rig) == {"claude": {"names": ["claude"]}}
+
+
+def test_a_slow_services_status_is_not_waited_on(
+    rig: Rig, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    rig.box(STRANGER)
+    add_ears(rig)
+    services_mode(rig, "slow")
+    monkeypatch.setattr(setup_mod, "EARS_PROBE_TIMEOUT", 0.5)
+    start = time.monotonic()
+    result = rig.run()
+    assert time.monotonic() - start < 10
+    assert result.exit_code == 0, result.output
+    assert wake_lines(result.output) == [WAKE_WAITING]
+
+
+def test_the_waiting_line_names_the_agent_given(rig: Rig) -> None:
+    rig.box(STRANGER)
+    add_ears(rig)
+    result = rig.run("--agent", "alice")
+    assert result.exit_code == 0, result.output
+    assert wake_lines(result.output) == [
+        (
+            "Wake seat 'alice' added: \"hey alice\" wakes it once the ears' services "
+            "are installed and running (about 4.1 GB): ears services install --agent alice"
+        )
+    ]
+
+
+def test_no_wake_seat_added_asks_no_services_status(rig: Rig) -> None:
+    """A refusal promises nothing, so there is nothing to measure."""
+    rig.box(STRANGER)
+    add_ears(rig)
+    wake_mode(rig, "refuse")
+    rig.run()
+    assert ["services", "status"] not in ears_calls(rig)
+
+
+@pytest.mark.parametrize(
+    ("stdout", "running"),
+    [
+        ("keeper running, pid 1\nmail   running, pid 2\n", True),
+        ("mail   running, pid 2\nkeeper running, pid 1\n", True),
+        ("keeper running, pid 1\n", False),
+        ("keeper running, pid 1\nmail   loaded, not running\n", False),
+        ("keeper not installed\nmail   not installed\n", False),
+        ("mailer running, pid 3\nkeeper running, pid 1\n", False),
+        ("", False),
+    ],
+)
+def test_wake_services_running_reads_the_keeper_and_mail_rows(
+    monkeypatch: pytest.MonkeyPatch, stdout: str, running: bool
+) -> None:
+    monkeypatch.setattr(
+        setup_mod,
+        "_run",
+        lambda argv, environ, timeout=None: subprocess.CompletedProcess(argv, 0, stdout, ""),
+    )
+    assert setup_mod.wake_services_running({}) is running
+
+
+def test_wake_services_running_is_false_when_ears_is_absent_or_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(setup_mod, "_run", lambda argv, environ, timeout=None: None)
+    assert setup_mod.wake_services_running({}) is False
+    ok = "keeper running, pid 1\nmail   running, pid 2\n"
+    monkeypatch.setattr(
+        setup_mod,
+        "_run",
+        lambda argv, environ, timeout=None: subprocess.CompletedProcess(argv, 1, ok, ""),
+    )
+    assert setup_mod.wake_services_running({}) is False
 
 
 def test_a_rerun_leaves_the_wake_file_byte_identical(rig: Rig) -> None:
@@ -2460,10 +2913,15 @@ def test_setup_never_runs_ears_services_install(rig: Rig) -> None:
         (rig.bin / "ears.calls").unlink(missing_ok=True)
         rig.run(*args)
         calls = ears_calls(rig)
-        assert all(call[:1] != ["services"] for call in calls), calls
+        # `ears services status` is read only, and the one services verb asked.
+        assert all(
+            call[:1] != ["services"] or call == ["services", "status"] for call in calls
+        ), calls
         assert calls[0][:2] in (["wake", "add"], ["wake", "list"]), calls
         assert calls[-1] == ["backends"], calls
-    assert '"services"' not in (ROOT / "src/sessionkit/setup.py").read_text()
+    source = (ROOT / "src/sessionkit/setup.py").read_text()
+    assert '"services", "install"' not in source
+    assert '"install"' not in source
 
 
 @pytest.mark.parametrize(
@@ -2527,7 +2985,7 @@ def test_the_wake_line_comes_before_the_model_line_and_the_launch_step(
     add_ears(rig, "missing")
     lines = rig.run().output.splitlines()
     assert lines[-4:] == [
-        "Wake seat 'claude': \"hey claude\" wakes it.",
+        WAKE_WAITING,
         *docs_lines(rig),
         setup_mod.EARS_MODEL_LINE,
         SEAT_SENTENCE,

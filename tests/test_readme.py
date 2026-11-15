@@ -2,10 +2,12 @@
 
 The mail hooks note (SK-58): sessionmail writes its host settings
 file with the hooks OFF on first use, by design, and only the boolean
-`true` turns them on. The README must say so, at sessionmail's path and
-key, measured in `sessionmail/_settings.py` (RELATIVE, `_parse`) and
+`true` turns them on. INSTALL.md section 4's step "Turn the mail hooks
+on" must say so (since SK-287; the one-screen README keeps only the
+command), at sessionmail's path and key, measured in
+`sessionmail/_settings.py` (RELATIVE, `_parse`) and
 `settings.template.json` at sessionmail master 83c7eff. If sessionmail
-moves the file, this test is where the README's copy goes stale.
+moves the file, this test is where the doc's copy goes stale.
 """
 from __future__ import annotations
 
@@ -38,16 +40,28 @@ def _section(title: str) -> str:
     return match.group(1)
 
 
-def test_installation_says_the_mail_hooks_start_off():
-    install = _section("Installation")
-    assert "mail hooks start off" in install
-    assert MAIL_SETTINGS in install
-    assert '"hooks": true' in install
+# The hooks step lives in INSTALL.md section 4, "Turn the mail hooks on":
+# the bullet the installer's end screen and `sessionkit doctor` both name.
+# The one-screen README keeps only its command, in the install block.
+INSTALL_TEXT = (ROOT / "INSTALL.md").read_text(encoding="utf-8")
+HOOKS_STEP_TITLE = "**Turn the mail hooks on."
+
+
+def _install_s4() -> str:
+    start = INSTALL_TEXT.index("## 4. ")
+    return INSTALL_TEXT[start:INSTALL_TEXT.index("## 5. ", start)]
+
+
+def test_install_section_4_says_the_mail_hooks_start_off():
+    flat = " ".join(_hooks_note().split())
+    assert "The hooks stay off until you turn them on." in flat
+    assert MAIL_SETTINGS in flat
+    assert '"hooks": true' in flat
 
 
 def test_the_hooks_note_follows_the_install_block():
-    install = _section("Installation")
-    assert install.index("uv tool install") < install.index("mail hooks start off")
+    # The kit is installed (section 2) before its hooks are turned on.
+    assert INSTALL_TEXT.index("uv tool install") < INSTALL_TEXT.index(HOOKS_STEP_TITLE)
 
 
 HOOKS_ON, HOOKS_OFF, HOOKS_READ = (
@@ -55,9 +69,11 @@ HOOKS_ON, HOOKS_OFF, HOOKS_READ = (
 
 
 def _hooks_note() -> str:
-    install = _section("Installation")
-    note = install[install.index("mail hooks start off"):]
-    return note.split("\n\nStep by step", 1)[0]
+    """INSTALL section 4's hooks step: its bullet, up to the next one at
+    the same depth."""
+    s4 = _install_s4()
+    note = s4[s4.index(f"- {HOOKS_STEP_TITLE}"):]
+    return note[:note.index("\n- **", 1)]
 
 
 def test_the_hooks_note_turns_them_on_off_and_reads_them_with_sessionmails_verb():
@@ -83,7 +99,7 @@ def _pager() -> Path:
 
 # A mail.json can hold any keys, in any layout, the hooks key among them or
 # not: one made by hand with only a `sendmail` key has none. Each case runs
-# the README's block as written, twice, with the pager the kit installs, and
+# INSTALL section 4's block as written, twice, with the pager the kit installs, and
 # must leave a JSON object that sessionmail reads as hooks on, with every
 # other key as it was.
 _HOOKS_CASES = {
@@ -896,15 +912,17 @@ def test_install_doc_no_longer_waits_for_the_release():
     assert "until the release" not in INSTALL_DOC.lower()
     assert "--find-links" not in INSTALL_DOC
     flat = " ".join(kit.split())
-    assert ("the five packages this release needs are on PyPI, each at 0.3.2: sessionmail, "
-            "sessionphone, sessiontools, sessionview and sessionvoice. The kit asks for 0.3.2 "
-            "or later of each.") in flat
+    # The floor is pyproject's (tests/test_doc_figures.py ties the two); the
+    # PyPI read stays labelled with the release it ran on.
+    assert ("The kit asks for 0.4.0 or later of each of the five packages it needs: "
+            "sessionmail, sessionphone, sessiontools, sessionview and sessionvoice.") in flat
+    assert ("**MEASURED** (read-only against PyPI, when the kit asked for 0.3.2): the five "
+            "were on PyPI, each at 0.3.2. Not yet measured at 0.4.0.") in flat
     # 0.3.0: four sessionview verbs run instead of answering --help, so the
     # doc no longer says every --help answers, and names the four.
     assert "and every `--help` answers" not in flat
     for verb in ("install", "autostart", "from", "sidebar"):
         assert f"`sessionview {verb} --help`" in flat, verb
-    assert "**MEASURED** (read-only against PyPI)" in kit
 
 
 # 0.3.0: the kit floors all five family packages at 0.3.0, so INSTALL.md
@@ -949,7 +967,10 @@ def test_install_doc_states_the_size_and_when_calls_download():
     assert "**The install size.**" in kit
     assert "uv downloaded about 93 MB, and the kit's tool folder is about 280 MB on disk" in flat
     assert "about 52 MB of the 280 MB" in flat
-    assert "63 packages" in flat and "15 commands" in flat
+    assert "63 packages" in flat and "13 commands on your PATH" in flat
+    # sessionview's three helpers are its verbs now, never on the PATH.
+    for helper in ("sessionview-config", "sessionview-session", "sessionview-messages"):
+        assert helper not in kit, helper
     assert ("**Phone calls are installed, and walked for a session started with "
             "`session start <name>`.** A plain `claude` session does not hear calls you make to it "
             "yet.") in flat
@@ -1133,7 +1154,8 @@ def test_install_doc_names_the_homebrew_command():
 def test_install_doc_disk_line_matches_the_measured_install():
     prereqs = _install_section(1)
     assert "About 10 GB" not in prereqs
-    assert "At least 2.1 GB free disk" in prereqs
+    assert "By parts: at least 2.1 GB free disk" in " ".join(prereqs.split())
+    assert "About 8 GB free disk for everything the installer lists" in prereqs
 
 
 # SK-88 (0.2.1): section 1's kit figure agrees with section 2's measured size.
@@ -1213,12 +1235,23 @@ def test_section_2_quotes_setups_wake_seat_line(monkeypatch):
     two = INSTALL_DOC[INSTALL_DOC.index("## 2. Install the kit"):INSTALL_DOC.index("## 3. Install the plugins")]
     # setup's own line for an `ears wake add` that answered 0, so the two cannot drift.
     monkeypatch.setattr(kit_setup, "_find", lambda program, environ: "/bin/" + program)
+    # Nothing installed (a fresh Mac): `ears services status` names no running row.
     monkeypatch.setattr(kit_setup, "_run", lambda argv, environ, timeout=None:
-                        subprocess.CompletedProcess(argv, 0, "", ""))
+                        subprocess.CompletedProcess(argv, 0, "keeper not installed\n", ""))
+    [waiting] = kit_setup.run_wake(name="claude", dry_run=False, environ={})
+    assert waiting.startswith("Wake seat 'claude' added: ")
+    assert "ears services install --agent claude" in waiting
+    # The keeper and the mail service both run: the promise.
+    running = "keeper running, pid 1\nmail   running, pid 2\n"
+    monkeypatch.setattr(kit_setup, "_run", lambda argv, environ, timeout=None:
+                        subprocess.CompletedProcess(argv, 0, running, ""))
     [line] = kit_setup.run_wake(name="claude", dry_run=False, environ={})
     assert line == "Wake seat 'claude': \"hey claude\" wakes it."
     assert "**Then the wake seat:**" in two
+    assert f"```text\n{waiting}\n```" in two
     assert f"```text\n{line}\n```" in two
+    assert two.index(waiting) < two.index(line)
+    assert "Setup never runs that step itself." in _flat(two)
     flat = _flat(two)
     assert "so you do not add it by hand in section 5" in flat
     assert "The exit does not change." in flat
@@ -2790,14 +2823,33 @@ def test_readme_installation_gives_the_doctor_and_the_check_for_a_mac_without_th
     assert ["sessionkit doctor"] in [b.strip().splitlines() for b in _bash_blocks(after)]
     assert _doctor_one_liner() in _block_lines(after)
     assert "`bash install.sh --check`" in after
-    assert "Its address is not live yet." in after
+    assert "not live" not in after
+
+
+def test_install_doc_says_the_installer_address_is_live():
+    # SK-288: https://sessionkit.ai/install.sh answers 200 (measured 2026-11-15),
+    # so no line waits for it to go live.
+    lowered = INSTALL_DOC.lower()
+    assert "not live" not in lowered
+    assert "once the address is live" not in lowered
+
+
+def test_no_kit_doc_waits_for_the_installer_address():
+    # SK-288 review: docs/troubleshooting.md said "Once the installer's address
+    # is live", which the INSTALL.md grep missed. Every doc of the kit's own.
+    stale = re.compile(r"not\s+live|address\s+is\s+live", re.IGNORECASE)
+    hits = [name for name, text in _kits_own_docs().items() if stale.search(text)]
+    assert hits == []
 
 
 def test_install_section_4_leads_with_the_doctor_and_names_its_rows():
     first = _install_section(4)
     assert first.index("sessionkit doctor") < first.index("ears install")
     blocks = [b.strip() for b in _bash_blocks(first)]
-    assert blocks[:3] == ["sessionkit doctor", "bash install.sh --check", _doctor_one_liner()]
+    # SK-288: the installer's address is live (HTTP 200), so its one line
+    # leads and the clone form follows as the alternative.
+    assert blocks[:3] == ["sessionkit doctor", _doctor_one_liner(), "bash install.sh --check"]
+    assert "From a clone of this repository:" in first
     flat = " ".join(first.split())
     assert "The mail hooks (the step below) fail it while they are off." in flat
     assert "neither fails it" in flat
@@ -2830,6 +2882,11 @@ def test_troubleshooting_starts_with_the_doctor():
     assert [b.strip() for b in _bash_blocks(top)] == ["sessionkit doctor"]
     assert "`bash install.sh --check`" in top
     assert _doctor_one_liner() in " ".join(top.split())
+    # SK-288: the installer's address is live, so its one line leads and the
+    # clone form follows, each a bullet of its own.
+    assert f"- `{_doctor_one_liner()}`" in top
+    assert "- From a clone of the kit: `bash install.sh --check`" in top
+    assert top.index(_doctor_one_liner()) < top.index("bash install.sh --check")
     assert "[first checks][first-checks]" in top
     assert "[first-checks]: ../INSTALL.md#4-first-checks" in TROUBLESHOOTING
 
@@ -2877,3 +2934,13 @@ def test_the_imported_pages_are_left_out_of_the_naming_scan():
     assert "docs/sessionview.md" not in names
     assert "docs/pager.md" not in names
     assert "docs/components.md" in names
+
+
+def test_quick_start_says_calling_in_is_when_you_agree_to_be_heard():
+    """The consent moment is said where the reader is told to call: once,
+    in the call paragraph, and without claiming every call is recorded."""
+    flat = _flat(_section("Quick start"))
+    line = ("Asking Claude to call you, or ringing your session, is when you "
+            "agree to be heard, and recorded if recording is on.")
+    assert flat.count(line) == 1
+    assert flat.index("Ask Claude to call you.") < flat.index(line)

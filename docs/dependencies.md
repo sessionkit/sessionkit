@@ -35,13 +35,16 @@ you turn on needs it, or a command still works without it but does less.
 
 The Python packages are the kit's own and settled, and they bring their own:
 
-- [sessionmail][pkg-mail] 0.3.3 or later: `message`, `pager`, `memory`.
-- [sessiontools][pkg-tools] 0.3.3 or later: `session`.
-- [sessionphone][pkg-phone] 0.3.3 or later, with its `media` extra, which
+- [sessionmail][pkg-mail] 0.4.0 or later: `message`, `pager`, `memory`.
+- [sessiontools][pkg-tools] 0.4.0 or later: `session`.
+- [sessionphone][pkg-phone] 0.4.0 or later, with its `media` extra, which
   the bot, the calls and `sessionphone web` need.
-- [sessionview][pkg-view] 0.3.3 or later: `sessionview`.
-- [sessionvoice][pkg-voice] 0.3.3 or later, with its `capture` extra, so the
-  ears can hear the room: `ears`, `ears-serve`, `mouth`, `talk`.
+- [sessionview][pkg-view] 0.4.0 or later: `sessionview`. Its helpers are verbs
+  of it, and an older one runs `sessionview-messages`, which the kit no longer
+  puts on the PATH.
+- [sessionvoice][pkg-voice] 0.4.0 or later, with its `capture` extra, so the
+  ears can hear the room: `ears`, `ears-serve`, `mouth`, `talk`,
+  `sessionvoice-web`.
 - [settled][pkg-settled] 0.1.0 or later, with its `kit` extra: `settled`, the
   Settings app, where you see and change the kit's settings from a web
   page. The `kit` extra is what lets it list the kit's own tools and check

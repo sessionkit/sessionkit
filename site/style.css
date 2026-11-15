@@ -59,10 +59,6 @@ body {
   text-align: center;
 }
 
-.draft-banner .coming {
-  color: inherit;
-}
-
 .hero,
 main,
 footer {
@@ -93,8 +89,20 @@ h2 {
   line-height: 1.25;
 }
 
+section {
+  padding-bottom: 1.5rem;
+}
+
 section + section {
   border-top: 1px solid var(--rule);
+}
+
+ul {
+  padding-left: 1.25rem;
+}
+
+li + li {
+  margin-top: 0.35rem;
 }
 
 a {
@@ -113,33 +121,90 @@ pre {
   background: var(--code-bg);
 }
 
+/* A block wraps and never scrolls sideways: on a phone, a sideways scroll
+   hides the end of the line. A soft wrap still pastes as one line. */
 pre {
-  overflow-x: auto;
   padding: 0.9rem 1rem;
   border-radius: 6px;
   background: var(--code-bg);
   line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
-.scene .who {
+/* The example: who, then what they type. */
+.scene {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 0.25rem 1.25rem;
+  margin: 1rem 0;
+  padding: 0.9rem 1rem;
+  border-radius: 6px;
+  background: var(--code-bg);
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+
+.scene dt {
   color: var(--accent);
   font-weight: 600;
+}
+
+.scene dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.scene code {
+  padding: 0;
+  background: none;
+  font-size: 1em;
 }
 
 .scene .note {
   color: var(--muted);
 }
 
+/* The lines people copy, each its own block. A tap selects a whole line; the
+   page has no script for a button. In WebKit the first line stays on one line
+   down to 375 px wide; the longer plugin lines wrap and hang on a phone.
+   The 25.2 is the first line's width in em at SF Mono's advance, plus a small
+   margin. A longer first line would wrap sooner, so change it with the line. */
+.install {
+  container-type: inline-size;
+  padding-inline: 0.75rem;
+}
+
 .install code {
-  font-size: 1rem;
+  display: block;
+  padding-left: 2ch;
+  text-indent: -2ch;
+  font-size: 0.8125rem;
+  font-size: clamp(0.75rem, 100cqi / 25.2, 1rem);
+  -webkit-user-select: all;
+  user-select: all;
 }
 
-.family {
-  padding-left: 1.25rem;
-}
+@media (max-width: 42rem) {
+  .scene {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+  }
 
-.family li + li {
-  margin-top: 0.35rem;
+  .scene dd + dt {
+    margin-top: 0.6rem;
+  }
+
+  /* A wrapped command hangs, so its second line reads as a continuation. */
+  .scene dd {
+    padding-left: 2ch;
+    text-indent: -2ch;
+  }
+
+  .scene .note {
+    display: block;
+  }
 }
 
 .coming {
@@ -153,10 +218,15 @@ pre {
 }
 
 footer {
-  margin-top: 3rem;
-  padding-top: 1rem;
+  margin-top: 1.5rem;
   padding-bottom: 2rem;
-  border-top: 1px solid var(--rule);
   color: var(--muted);
   font-size: 0.875rem;
+}
+
+/* On the paragraph, so the rule lines up with the sections' rules. */
+footer p {
+  margin: 0;
+  padding-top: 1rem;
+  border-top: 1px solid var(--rule);
 }

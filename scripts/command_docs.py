@@ -47,8 +47,14 @@ PACKAGE_OF_MODULE = {
     "talk": "sessionvoice",
 }
 
-#: helpers the sidebar calls; they are leaving PATH, so they get no page
-NO_PAGE = {"sessionview-config", "sessionview-session", "sessionview-messages"}
+#: settled answers --help and has no page (docs/components.md says so).
+NO_PAGE = {"settled"}
+
+#: entry points whose commands get no page here. sessionphone.dctools:main runs
+#: the phone's dc-* tools (dc-say, dc-answer, ...), one target for all of them.
+#: sessionphone writes no docs/dc-*.md: its topic pages (calls.md and others)
+#: document the tools, so a page per tool here would only ever be a stub.
+NO_PAGE_TARGETS = {"sessionphone.dctools:main"}
 
 FOOTER = "\n<!-- Imported from {package}'s docs/{command}.md. Edit it there, then run: python3 scripts/command_docs.py import -->\n"
 STUB_MARK = "<!-- No page yet: {package} has no docs/{command}.md. -->\n"
@@ -59,7 +65,7 @@ def commands() -> dict[str, str]:
     scripts = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"]["scripts"]
     out = {}
     for command, target in scripts.items():
-        if command in NO_PAGE:
+        if command in NO_PAGE or target in NO_PAGE_TARGETS:
             continue
         module = target.split(":")[0].split(".")[0]
         package = PACKAGE_OF_MODULE.get(module)

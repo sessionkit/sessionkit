@@ -37,6 +37,16 @@ SPEECH_PROBE_URL=http://127.0.0.1:$SPEECH_PORT/v1/models
 # `sessionkit setup` exits 4 when the operator is set and mail steps are left
 # for you. For this installer that is a success: the end screen names them.
 SETUP_STEPS_LEFT=4
+# Setup ends on the one launch step (setup.py LAUNCH_SENTENCE). The installer
+# keeps that line back and says its command once, on the end screen.
+LAUNCH_PREFIX='To hear Delta messages, start Claude with: '
+LAUNCH_DEFAULT='session start'
+# A step mail setup leaves, as its next-steps block names it, one numbered
+# line: "  N. ID (STATE): DETAIL". The end screen names each, one line.
+LEFT_STEP_RE='^  [0-9]+\. ([^ ]+) \(([A-Z]+)\): (.*)$'
+# The installer's own last line after setup's, for its exit: bash 3.2 cannot
+# wait on a process substitution.
+SETUP_RC_MARK='install.sh: setup exited '
 # The mail hooks are sessionmail's setting, so sessionmail's own verb turns
 # them on: the installer never writes that file itself. The verb is
 # there when `pager settings --help` lists a `hooks` command; an older pager
@@ -51,10 +61,18 @@ PLUGIN=sessionkit@sessionkit
 # are cli.FAMILY, in its order (tests/test_install_sh.py holds them to it).
 KIT_PLUGINS=(sessionkit sessionmail sessiontools sessionphone sessionview sessionvoice)
 BREW_SET=(tmux ffmpeg notmuch)
+# Every line it prints fits in 76 columns (tests/test_install_sh.py). Two come
+# from outside: a port holder's name, as ps gives it, is cut to the room its
+# lines leave; the first line of a refusal from pager is folded to fit.
+HOLDER_NAME_MAX=20
+HOOKS_ERR_WIDTH=72
+SETUP_STEP_WIDTH=72
 # Where Homebrew lives: Apple silicon first, then Intel.
 BREW_PATHS=(/opt/homebrew/bin/brew /usr/local/bin/brew)
-# The whole list took about 9.9 GB on a fresh 16 GB Mac.
-DISK_NEED_GB=10
+# The whole list took about 8 GB of disk on a fresh macOS VM, speech server
+# included: its free disk went from 37 GiB to 29 GiB (INSTALL.md section 1).
+# warn_disk compares in GiB, as df gives it.
+DISK_NEED_GB=8
 
 SCRIPT_URL=https://sessionkit.ai/install.sh
 # The step-by-step guide is INSTALL.md at the top of this repository.
@@ -134,9 +152,9 @@ Options:
     -y, --yes      install without the question (the list is still printed)
     --dry-run      print the checks and the list, install nothing
     --no-speech    leave the speech server and the ears out of the list
-    --check        check this Mac: what is missing, and the command that adds
-                   each one. It installs nothing and asks nothing:
-                   curl -fsSL $SCRIPT_URL | bash -s -- --check
+    --check        check this Mac: what is missing, and the command that
+                   adds each one. It installs nothing and asks nothing:
+        curl -fsSL $SCRIPT_URL | bash -s -- --check
     -h, --help     this help
 
 Exits: 0 installed, nothing to do, or a dry run; 1 a step failed; 2 usage;
@@ -144,7 +162,8 @@ Exits: 0 installed, nothing to do, or a dry run; 1 a step failed; 2 usage;
 With --check: 0 nothing is missing; 1 something is missing; 2 usage;
 3 this Mac cannot be checked (not macOS, or run as root).
 
-Step by step instead: INSTALL.md, at $REPO_URL
+Step by step instead: INSTALL.md, at
+    $REPO_URL
 EOF
 }
 
@@ -231,12 +250,14 @@ uv_rc_files() {
 
 refuse_early() {
     if [[ "$(uname -s 2>/dev/null)" != Darwin ]]; then
-        say "🛑 Session Kit's installer is for macOS. On Linux, which is untested, go step by step with INSTALL.md, at:"
+        say "🛑 Session Kit's installer is for macOS. On Linux, which is untested,"
+        say "go step by step with INSTALL.md, at:"
         say "    $REPO_URL"
         exit "$EXIT_REFUSED"
     fi
     if [[ "$(id -u 2>/dev/null)" == 0 || -n "${SUDO_USER:-}" ]]; then
-        say "🛑 Run this as yourself, without sudo. Homebrew asks for your password itself."
+        say "🛑 Run this as yourself, without sudo."
+        say "Homebrew asks for your password itself."
         exit "$EXIT_REFUSED"
     fi
 }
@@ -313,8 +334,8 @@ check_all() {
     MISSING_SET=()
     for name in "${BREW_SET[@]}"; do
         case "$name" in
-            tmux) icon="🖥️" ;;
-            ffmpeg) icon="🎞️" ;;
+            tmux) icon="🪟" ;;
+            ffmpeg) icon="🎧" ;;
             *) icon="📨" ;;
         esac
         out=""
@@ -356,11 +377,11 @@ check_all() {
     SETUP_RC=$rc
     if ((rc == 0)); then
         SETUP=yes
-        say "⚙️ Session Kit setup (your mail box, you as operator): $(found "done")"
+        say "📝 Session Kit setup (your mail box, you as operator): $(found "done")"
     elif ((rc == SETUP_STEPS_LEFT)); then
-        say "⚙️ Session Kit setup (your mail box, you as operator): $(missing "not done, mail steps left")"
+        say "📝 Session Kit setup (your mail box, you as operator): $(missing "mail steps left")"
     else
-        say "⚙️ Session Kit setup (your mail box, you as operator): $(missing "not done")"
+        say "📝 Session Kit setup (your mail box, you as operator): $(missing "not done")"
     fi
     check_row setup
     check_hooks
@@ -384,9 +405,9 @@ check_all() {
         EARS_MODEL=yes
     fi
     if [[ "$EARS_MODEL" == yes ]]; then
-        say "🎙️ Ears voice model: $(found found)"
+        say "🧠 Ears voice model: $(found found)"
     else
-        say "🎙️ Ears voice model: $(missing missing)"
+        say "🧠 Ears voice model: $(missing missing)"
     fi
     check_row ears
 
@@ -408,7 +429,7 @@ hooks_verb() {
 # exits 0 for on, 3 for off. Not under --check: there the doctor's hooks row,
 # read by sessionmail's own settings reader, is the one row for them.
 check_hooks() {
-    HOOKS=unchecked HOOKS_LEFT=no HOOKS_WHY=""
+    HOOKS=unchecked HOOKS_LEFT=no HOOKS_WHY="" HOOKS_ERR=""
     [[ "$CHECK" == yes ]] && return 0
     # Never the name PAGER: that is the user's, which git and man read, and
     # every step after the checks would inherit what was put in it.
@@ -429,9 +450,18 @@ check_hooks() {
     case "$HOOKS" in
         on) say "$what: $(found on)" ;;
         off) say "$what: $(missing off)" ;;
-        fault) say "$what: $(missing "off by mistake") (pager settings hooks says why)" ;;
-        noverb) say "$what: not checked ($HOOKS_WHY)" ;;
-        *) say "$what: $(missing "not checked yet") (the kit brings the pager that turns them on)" ;;
+        fault)
+            say "$what: $(missing "off by mistake")"
+            say "   (pager settings hooks says why)"
+            ;;
+        noverb)
+            say "$what: not checked"
+            say "   ($HOOKS_WHY)"
+            ;;
+        *)
+            say "$what: $(missing "not checked yet")"
+            say "   (the kit brings the pager that turns them on)"
+            ;;
     esac
 }
 
@@ -451,7 +481,8 @@ check_plugin_versions() {
     [[ "$pkgs" == "sessionkit, version "* ]] || return 0
     listed=$(plugin_versions)
     if [[ -z "$(plugin_version "$PLUGIN" "$listed")" ]]; then
-        say "$what: not checked (claude plugin list --json does not list $PLUGIN)"
+        say "$what: not checked"
+        say "   (claude plugin list --json does not list $PLUGIN)"
         return 0
     fi
     local name plug pkg splits=() updates=() installs=() reinstall=no
@@ -474,9 +505,9 @@ check_plugin_versions() {
         return 0
     fi
     VERSIONS_SPLIT=yes
-    local row="" s
-    for s in "${splits[@]}"; do row="${row:+$row; }$s"; done
-    say "$what: $(missing "not at their packages' versions"): $row"
+    local s split
+    say "$what: $(missing "not at their packages' versions"):"
+    for split in "${splits[@]}"; do say "${REMEDY_MORE}$split"; done
     if ((${#updates[@]} + ${#installs[@]})); then
         say "${REMEDY}claude plugin marketplace update $market"
         for s in "${updates[@]}"; do say "${REMEDY}claude plugin update $s"; done
@@ -565,11 +596,11 @@ check_speech() {
 # installer's own answer, so it is missing exactly when the speech step would
 # be listed. The speech server row asks the server itself.
 check_speech_rows() {
-    local what="👂 Ears services (mouth, keeper, mail, the speech job)"
+    local what="👂 Ears services (mouth, keeper, mail, speech job)"
     if [[ "$SPEECH_HERE" == yes ]]; then
         say "$what: $(found found)"
     elif [[ "$SPEECH" == no ]]; then
-        say "$what: $(missing missing) (left out: --no-speech)"
+        say "$what: left out (--no-speech)"
     else
         say "$what: $(missing missing)"
     fi
@@ -589,7 +620,7 @@ check_speech_rows() {
 # questions, and each answers its own honestly.
 check_speech_server() {
     SERVER_MISSING=no
-    local what="🗣️ Speech server on port $SPEECH_PORT" code=""
+    local what="💬 Speech server on port $SPEECH_PORT" code=""
     if [[ "$SPEECH" == no ]]; then
         say "$what: not checked (left out: --no-speech)"
         return 0
@@ -610,7 +641,8 @@ check_speech_server() {
         remedy speech
     else
         say "${REMEDY}ears services status"
-        say "${REMEDY_MORE}it names the speech job and what it is doing; a server loading its model answers in a minute or two"
+        say "${REMEDY_MORE}it names the speech job and what it is doing;"
+        say "${REMEDY_MORE}a server loading its model answers in a minute or two"
     fi
 }
 
@@ -628,7 +660,7 @@ check_port() {
         name=${out% *} pid=${out##* }
         PORT_HOLDER="$(full_command_name "$name" "$pid") (pid $pid)"
     elif command -v nc >/dev/null 2>&1 && nc -z 127.0.0.1 "$SPEECH_PORT" </dev/null >/dev/null 2>&1; then
-        PORT_HOLDER="a server lsof does not show (another account's)"
+        PORT_HOLDER="another account's server"
     elif ! command -v lsof >/dev/null 2>&1 && ! command -v nc >/dev/null 2>&1; then
         say "🔌 Port $SPEECH_PORT (the speech server's): not checked (no lsof, no nc)"
         return 0
@@ -648,7 +680,7 @@ full_command_name() {
     full=$(ps -o comm= -p "$2" 2>/dev/null | head -1)
     full=${full##*/}
     if [[ -n "$full" && "$full" == "$1"* ]]; then
-        printf '%s' "$full"
+        printf '%s' "${full:0:HOLDER_NAME_MAX}"
     else
         printf '%s' "$1"
     fi
@@ -709,60 +741,71 @@ new_brew_path() {
     fi
 }
 
-EDIT="✏️ "
+EDIT="📄"
 INDENT="         "
 
 list_step() {
     local f files=()
     case "$1" in
         homebrew)
-            say "🍺 Homebrew, with its own installer from brew.sh (it installs Apple's Command Line Tools)"
+            say "🍺 Homebrew, with its own installer from brew.sh"
+            say "${INDENT}it installs Apple's Command Line Tools"
             say "${INDENT}🔐 asks for your Mac password, and its own [Enter]"
             if zprofile_has_brew; then
                 say "${INDENT}${EDIT} $(tildify "$(zprofile_path)") already runs brew shellenv"
             else
-                say "${INDENT}${EDIT} adds 1 line to $(tildify "$(zprofile_path)"): eval \"\$($(new_brew_path) shellenv)\""
+                say "${INDENT}${EDIT} adds 1 line to $(tildify "$(zprofile_path)"):"
+                say "${INDENT}   eval \"\$($(new_brew_path) shellenv)\""
                 SHELL_EDITS=yes
             fi
             ;;
         brewpath)
             say "🍺 Homebrew on your PATH, for new terminals"
-            say "${INDENT}${EDIT} adds 1 line to $(tildify "$(zprofile_path)"): eval \"\$($BREW shellenv)\""
+            say "${INDENT}${EDIT} adds 1 line to $(tildify "$(zprofile_path)"):"
+            say "${INDENT}   eval \"\$($BREW shellenv)\""
             SHELL_EDITS=yes
             ;;
         uv)
             say "🐍 uv, with astral.sh's installer"
             uv_rc_files
             if ((${#UV_RC[@]} == 0)); then
-                say "${INDENT}${EDIT} none: ~/.local/bin is on your PATH already, so it changes no shell file"
+                say "${INDENT}${EDIT} no shell file: ~/.local/bin is on your PATH already"
             else
                 for f in "${UV_RC[@]}"; do files+=("$(tildify "$f")"); done
                 if ((${#files[@]} == 2)); then
-                    say "${INDENT}${EDIT} adds 1 line to ${files[0]} and to ${files[1]}: . \"\$HOME/.local/bin/env\""
+                    say "${INDENT}${EDIT} adds 1 line to ${files[0]} and to ${files[1]}:"
+                    say "${INDENT}   . \"\$HOME/.local/bin/env\""
                 else
-                    say "${INDENT}${EDIT} adds 1 line to each of $(join_and "${files[@]}"): . \"\$HOME/.local/bin/env\""
+                    # One file to a line: there can be five.
+                    say "${INDENT}${EDIT} adds 1 line to each of ${#files[@]} files: . \"\$HOME/.local/bin/env\""
+                    for f in "${files[@]}"; do say "${INDENT}   $f"; done
                 fi
-                say "${INDENT}${EDIT} writes ~/.local/bin/env, ~/.local/bin/env.fish and ~/.config/fish/conf.d/uv.env.fish (for fish)"
+                say "${INDENT}${EDIT} writes ~/.local/bin/env, ~/.local/bin/env.fish and"
+                say "${INDENT}   ~/.config/fish/conf.d/uv.env.fish (for fish)"
                 SHELL_EDITS=yes
             fi
             ;;
         claude) say "🤖 Claude Code, with claude.ai's installer" ;;
-        brewset) say "🍻 $(join_and "${MISSING_SET[@]}"), from Homebrew: brew install ${MISSING_SET[*]}" ;;
+        brewset) say "🍻 $(join_and "${MISSING_SET[@]}"): brew install ${MISSING_SET[*]}" ;;
         kit) say "📦 Session Kit: uv tool install --python $KIT_PYTHON sessionkit" ;;
-        plugins) say "🧩 the plugins: claude plugin marketplace add, then claude plugin install" ;;
-        ears) say "🎙️ ears install: the voice-activity model (2.3 MB)" ;;
+        plugins) say "🧩 the plugins: claude plugin marketplace add, then install" ;;
+        ears) say "🎤 ears install: the voice-activity model (2.3 MB)" ;;
         speech)
-            say "👂 the speech server and the ears: calls and hearing you (about 2.9 GB, plus its 1.2 GB venv; the microphone asks once)"
+            say "👂 the speech server and the ears: calls and hearing you"
+            say "${INDENT}about 2.9 GB, plus its 1.2 GB venv; the microphone asks once"
             say "${INDENT}to skip it: --no-speech"
             if [[ -n "$PORT_HOLDER" ]]; then
-                say "${INDENT}port $SPEECH_PORT is held by $PORT_HOLDER: used if it is mlx-audio, else this step stops"
+                say "${INDENT}port $SPEECH_PORT is held by $PORT_HOLDER:"
+                say "${INDENT}used if it is mlx-audio, else this step stops"
             fi
             ;;
-        setup) say "⚙️ sessionkit setup: your mail box, and you as operator" ;;
+        setup) say "📝 sessionkit setup: your mail box, and you as operator" ;;
         hooks)
-            say "📬 turn on the mail hooks (so a seat hears mail while idle): pager ${HOOKS_ARGV[*]}"
+            say "📬 turn on the mail hooks (so a seat hears mail while idle):"
+            say "${INDENT}pager ${HOOKS_ARGV[*]}"
             if [[ "$HOOKS" == nopager ]]; then
-                say "${INDENT}if the kit's pager has no hooks verb yet, the end screen names the one setting instead"
+                say "${INDENT}if the kit's pager has no hooks verb yet,"
+                say "${INDENT}the end screen names the one setting instead"
             fi
             ;;
     esac
@@ -776,7 +819,9 @@ REMEDY_MORE="      "
 remedy() {
     case "$1" in
         homebrew)
-            say "${REMEDY}/bin/bash -c \"\$(curl -fsSL $BREW_INSTALLER_URL)\""
+            # Two lines, joined by the backslash: the URL alone is 66 columns.
+            say "${REMEDY}/bin/bash -c \"\$(curl -fsSL \\"
+            say "${REMEDY_MORE}$BREW_INSTALLER_URL)\""
             if [[ "$ADMIN" != yes ]]; then
                 say "${REMEDY_MORE}Homebrew's installer needs an administrator account: ask one to run it"
             fi
@@ -836,13 +881,15 @@ print_list() {
     local edits password
     if [[ "$SHELL_EDITS" == yes ]]; then edits="No other shell file changes"; else edits="No shell file changes"; fi
     if has_step homebrew; then password="no other password"; else password="no password"; fi
-    say "   Disk: up to about $DISK_NEED_GB GB (the whole list took about 9.9 GB on a fresh Mac). $edits, and $password."
+    say "   Disk: about $DISK_NEED_GB GB, measured for the whole list on a fresh Mac."
+    say "   $edits, and $password."
     say ""
 }
 
 # Said after the list when --no-speech leaves the speech server out.
 print_speech_later() {
-    say "To hear you and take phone calls later, install the speech server and the ears (about 4.1 GB):"
+    say "To hear you and take phone calls later, install the speech server"
+    say "and the ears (about 4.1 GB):"
     say "    ears ${SPEECH_ARGV[*]}"
 }
 
@@ -853,14 +900,15 @@ warnings() {
 
 warn_intel() {
     if [[ "$ARCH_WORDS" != "Apple silicon" ]]; then
-        say "⚠️ An Intel Mac: Session Kit is tested on Apple silicon."
+        say "🔶 An Intel Mac: Session Kit is tested on Apple silicon."
     fi
 }
 
 # --check: a plugin version split is a warning, not a missing row.
 warn_versions() {
     if [[ "${VERSIONS_SPLIT:-no}" == yes ]]; then
-        say "⚠️ A plugin is not at its package's version: the → lines under the plugin versions row bring it level."
+        say "🔶 A plugin is not at its package's version:"
+        say "   the → lines under the plugin versions row bring it level."
     fi
 }
 
@@ -870,7 +918,8 @@ warn_disk() {
     if [[ "$free_kb" =~ ^[0-9]+$ ]]; then
         free_gb=$((free_kb / 1048576))
         if ((free_gb < DISK_NEED_GB)); then
-            say "⚠️ Free disk: $free_gb GB, and the list needs up to about $DISK_NEED_GB GB. A fresh Mac also downloads about 8 GB of its own."
+            say "🔶 Free disk: $free_gb GB, and the list needs about $DISK_NEED_GB GB."
+            say "   A fresh Mac also downloads about 8 GB of its own."
         fi
     fi
 }
@@ -879,11 +928,13 @@ warn_disk() {
 
 refuse_late() {
     if has_step homebrew && [[ "$ADMIN" != yes ]]; then
-        say "🛑 Homebrew's installer needs an administrator account: ask one to install Homebrew, then run this again."
+        say "🛑 Homebrew's installer needs an administrator account:"
+        say "ask one to install Homebrew, then run this again."
         return "$EXIT_REFUSED"
     fi
     if has_step homebrew && [[ "$YES" == yes ]] && ! tty_available; then
-        say "🛑 Homebrew asks for your password at a terminal: run this in Terminal, or install Homebrew first."
+        say "🛑 Homebrew asks for your password at a terminal:"
+        say "run this in Terminal, or install Homebrew first."
         return "$EXIT_REFUSED"
     fi
     return 0
@@ -899,7 +950,8 @@ confirm() {
         return 0
     fi
     if ! tty_available; then
-        say "🛑 No terminal to ask on, so nothing was installed. To install without the question, add --yes:"
+        say "🛑 No terminal to ask on, so nothing was installed."
+        say "To install without the question, add --yes:"
         say "    curl -fsSL $SCRIPT_URL | bash -s -- --yes"
         return "$EXIT_REFUSED"
     fi
@@ -994,11 +1046,34 @@ install_ears() {
 }
 
 install_speech() {
-    ears "${SPEECH_ARGV[@]}" </dev/null
+    # Unattended, so the microphone check is off for this one command: it
+    # waits for a sound nobody is here to make. Run by hand, it still checks.
+    EARS_MIC_CHECK_S=0 ears "${SPEECH_ARGV[@]}" </dev/null
 }
 
+# Its lines reach the screen as it prints them, but two: the launch step,
+# said once on the end screen instead, and the installer's own exit line.
+# The steps mail setup leaves are kept, for the end screen to name.
 install_setup() {
-    sessionkit setup </dev/null
+    local line rc=1 left=no
+    LAUNCH_CMD=$LAUNCH_DEFAULT SETUP_STEPS=()
+    while IFS= read -r line; do
+        if [[ "$line" == *"$SETUP_RC_MARK"* ]]; then
+            rc=${line##*"$SETUP_RC_MARK"}
+            line=${line%"$SETUP_RC_MARK"*}
+            [[ -n "$line" ]] || continue
+        fi
+        if [[ "$line" == "$LAUNCH_PREFIX"* ]]; then
+            LAUNCH_CMD=${line#"$LAUNCH_PREFIX"}
+            continue
+        fi
+        [[ "$line" == *"step(s) left for you:" ]] && left=yes
+        if [[ "$left" == yes && "$line" =~ $LEFT_STEP_RE ]]; then
+            SETUP_STEPS+=("${BASH_REMATCH[1]}|${BASH_REMATCH[2]}|${BASH_REMATCH[3]}")
+        fi
+        printf '%s\n' "$line"
+    done < <(sessionkit setup </dev/null 2>&1; printf '%s%s\n' "$SETUP_RC_MARK" "$?")
+    return "$rc"
 }
 
 # After setup. It never fails the install: setup succeeded, so a pager with no
@@ -1023,7 +1098,8 @@ install_hooks() {
         return 0
     fi
     err=${err%%$'\n'*}
-    HOOKS_WHY="pager ${HOOKS_ARGV[*]} refused (exit $rc)${err:+: $err}"
+    HOOKS_WHY="pager ${HOOKS_ARGV[*]} refused (exit $rc)"
+    HOOKS_ERR=$err
     return 0
 }
 
@@ -1036,9 +1112,9 @@ step_label() {
         brewset) say "🍻|$(join_and "${MISSING_SET[@]}")|installing|1. Prerequisites" ;;
         kit) say "📦|Session Kit|installing|2. Install the kit" ;;
         plugins) say "🧩|the plugins|installing|3. Install the plugins" ;;
-        ears) say "🎙️|ears install|fetching the model|2. Install the kit" ;;
+        ears) say "🎤|ears install|fetching the model|2. Install the kit" ;;
         speech) say "👂|the speech server and the ears|installing|5. Hearing and speaking" ;;
-        setup) say "⚙️|sessionkit setup|running|2. Install the kit" ;;
+        setup) say "📝|sessionkit setup|running|2. Install the kit" ;;
         hooks) say "📬|the mail hooks|turning on|4. First checks" ;;
     esac
 }
@@ -1052,7 +1128,13 @@ run_step() {
     "install_$step"
     rc=$?
     if [[ "$step" == hooks && "$HOOKS_LEFT" == yes ]]; then
-        say "$icon $name: $(missing "left for you"): $HOOKS_WHY ($(duration $((SECONDS - start))))"
+        say "$icon $name: $(missing "left for you") ($(duration $((SECONDS - start))))"
+        say "   $HOOKS_WHY"
+        # fold counts bytes, never fewer than the columns they take.
+        local errline
+        fold -s -w "$HOOKS_ERR_WIDTH" <<<"$HOOKS_ERR" | while IFS= read -r errline; do
+            [[ -n "$errline" ]] && say "   $errline"
+        done
         return 0
     fi
     if ((rc == 0)); then
@@ -1068,7 +1150,8 @@ run_step() {
         setup_failed "$rc"
     else
         say ""
-        say "🛑 ${RED}$name failed (exit $rc).${RESET} Nothing after it was installed."
+        say "🛑 ${RED}$name failed (exit $rc).${RESET}"
+        say "Nothing after it was installed."
         say "What was installed stays: run this again and it picks up from here."
         say "To do this step by hand, see INSTALL.md section $section, at:"
         say "    $REPO_URL"
@@ -1083,7 +1166,8 @@ setup_failed() {
     say "🛑 ${RED}sessionkit setup did not finish (exit $1). Session Kit is not ready yet.${RESET}"
     say "What its dry run says is left:"
     sessionkit setup --dry-run </dev/null 2>&1 | sed 's/^/    /'
-    say "Fix what it names, then run this again; it picks up from here. Step by step, INSTALL.md section 2, at:"
+    say "Fix what it names, then run this again; it picks up from here."
+    say "Step by step, INSTALL.md section 2, at:"
     say "    $REPO_URL"
 }
 
@@ -1099,6 +1183,9 @@ install_all() {
     fi
     local s
     SETUP_LEFT=no
+    # The end screen's launch step, when the setup step is not in this run:
+    # setup ran before, so its own launch line is not here to read.
+    LAUNCH_CMD=$LAUNCH_DEFAULT SETUP_STEPS=()
     say ""
     for s in "${STEPS[@]}"; do
         run_step "$s" || return "$EXIT_FAILED"
@@ -1112,32 +1199,71 @@ end_screen() {
     say ""
     say "✅ ${BOLD}Session Kit is installed.${RESET}"
     say ""
-    say "Left for you:"
     say "- Open a new terminal, so the new commands are on your PATH."
     say "- Start Claude Code once and sign in with /login:"
     say "    claude"
-    say "- Quit Claude Code, every window, before your first session: plugins load at start."
-    say "- Then start your first session in a project folder:"
-    say "    mkdir -p ~/work && cd ~/work"
-    say "    session start"
+    say "- Quit Claude Code, every window, before your first session:"
+    say "  plugins load at start."
+    say "- Then start your first session:"
+    say "    $LAUNCH_CMD"
     if [[ "$SPEECH" == no && "$SPEECH_HERE" == no ]]; then
-        say "- To hear you and take phone calls, install the speech server and the ears (about 4.1 GB):"
+        say "- To hear you and take phone calls, install the speech server and"
+        say "  the ears (about 4.1 GB):"
         say "    ears ${SPEECH_ARGV[*]}"
     fi
-    if [[ "$SETUP_LEFT" == yes ]]; then
-        say "- sessionkit setup set you as operator and left mail steps for you. Its dry run names them:"
-        sessionkit setup --dry-run </dev/null 2>&1 | sed 's/^/    /'
-        say "  Do them, then run it again; it keeps the operator it wrote (INSTALL.md section 2):"
-        say "    sessionkit setup"
-    fi
+    [[ "$SETUP_LEFT" == yes ]] && print_setup_left
     if [[ "$HOOKS_LEFT" == yes ]]; then
-        say "- Turn the mail hooks on, so a seat hears mail while idle ($HOOKS_WHY):"
+        say "- Turn the mail hooks on, so a seat hears mail while idle"
+        say "  ($HOOKS_WHY):"
         print_hooks_by_hand
     fi
-    if [[ -n "$PORT_HOLDER" ]]; then
-        say "- Port $SPEECH_PORT was held by $PORT_HOLDER before this ran. Check what serves it:"
+    if [[ -n "$PORT_HOLDER" ]] && ! port_is_ours; then
+        say "- Port $SPEECH_PORT was held by $PORT_HOLDER before this ran."
+        say "  Check what serves it:"
         say "    ears services status"
     fi
+}
+
+# The mail steps setup left, one each: what the person does, never setup's
+# plan or dry run again. A line too long for the screen folds under its dash.
+# "Run sessionkit setup again" only when a re-run can change the outcome: a
+# TODO step is one setup applies itself (a sudo line it could not run without
+# a terminal), and a step that waits on another is applied once that one is
+# fixed. A BLOCKED or MANUAL step nothing waits on is the person's alone.
+print_setup_left() {
+    local entry id state detail stepline first again=no
+    if ((${#SETUP_STEPS[@]} == 0)); then
+        say "- Do the mail steps sessionkit setup named above, then run it again:"
+        say "    sessionkit setup"
+        return 0
+    fi
+    for entry in "${SETUP_STEPS[@]}"; do
+        IFS='|' read -r id state detail <<<"$entry"
+        [[ "$state" == TODO || "$detail" == *"waits on "* ]] && again=yes
+        first=yes
+        # fold counts bytes, never fewer than the columns they take.
+        while IFS= read -r stepline; do
+            stepline=${stepline% }
+            if [[ "$first" == yes ]]; then
+                say "- $stepline"
+                first=no
+            else
+                say "  $stepline"
+            fi
+        done < <(fold -s -w "$SETUP_STEP_WIDTH" <<<"$id: $detail")
+    done
+    [[ "$again" == yes ]] && say "- Then run sessionkit setup again."
+    return 0
+}
+
+# The kit's own speech server holds the port when ears says mlx-audio serves
+# it: the server the speech step adopts. Read after the steps, so a holder the
+# speech step adopted reads as its own; a foreign holder, or no ears, does not.
+port_is_ours() {
+    local ears out
+    ears=$(find_tool ears) || return 1
+    out=$("$ears" services status 2>/dev/null </dev/null)
+    grep -qE '^speech +mlx-audio on' <<<"$out"
 }
 
 nothing_to_do() {
@@ -1148,15 +1274,18 @@ nothing_to_do() {
         print_speech_later
     fi
     if [[ "$HOOKS_LEFT" == yes ]]; then
-        say "The mail hooks were not checked ($HOOKS_WHY). If they are not on yet, so a seat hears mail while idle:"
+        say "The mail hooks were not checked ($HOOKS_WHY)."
+        say "If they are not on yet, so a seat hears mail while idle:"
         print_hooks_by_hand
     fi
 }
 
 # The hooks by hand: the doctor's own remedy, word for word.
 print_hooks_by_hand() {
-    say "    $HOOKS_BY_HAND"
-    say "  The README's Installation, \"The mail hooks start off\", has the lines to paste."
+    say "    ${HOOKS_BY_HAND%%, and *},"
+    say "    and ${HOOKS_BY_HAND#*, and }"
+    say "  INSTALL.md section 4, \"Turn the mail hooks on\", has the command, at:"
+    say "    $REPO_URL"
 }
 
 front() {
@@ -1165,7 +1294,8 @@ front() {
     say "This is the fast track. It checks this Mac, lists what it will install, and"
     say "asks you before it installs anything. To run it without the question:"
     say "    curl -fsSL $SCRIPT_URL | bash -s -- --yes"
-    say "To do it step by step instead, by hand: INSTALL.md, at $REPO_URL"
+    say "To do it step by step instead, by hand: INSTALL.md, at"
+    say "    $REPO_URL"
     say "Press [Ctrl-C] at any time to stop."
     say ""
 }
@@ -1175,7 +1305,8 @@ on_interrupt() {
     if [[ "$CHECK" == yes ]]; then
         say "🛑 Stopped. Nothing was installed."
     else
-        say "🛑 Stopped. What was installed stays: run this again and it picks up from there."
+        say "🛑 Stopped. What was installed stays:"
+        say "run this again and it picks up from there."
     fi
     exit 130
 }

@@ -88,7 +88,7 @@ def test_section_1_counts_macos_own_first_downloads():
     assert "**On a fresh Mac, macOS takes about 8 GB of its own first.**" in s1
     assert "9.2 GiB free fell to 1.0 GiB within about 10 minutes" in s1
     # The existing measured line stays: added to, not contradicted.
-    assert "At least 2.1 GB free disk, plus about 3.9 GB for the speech-to-text server" in s1
+    assert "By parts: at least 2.1 GB free disk, plus about 3.9 GB for the speech-to-text server" in s1
     assert "the kit about 280 MB" in s1
 
 
@@ -150,14 +150,15 @@ def test_section_4_turns_the_hooks_on_with_sessionmails_verb():
 
 
 def test_section_4_hooks_step_matches_the_readme():
-    # INSTALL and the README give the same command, and INSTALL names the
-    # README's step by its heading, the one the doctor's hint points at.
-    assert "**The mail hooks start off.**" in README
-    assert "The README's step **The mail hooks start off** is this same command" in _flat(_section(4))
-    readme_note = README[README.index("**The mail hooks start off.**"):README.index("Step by step")]
+    # The README's install block ends on the command INSTALL's step gives,
+    # and INSTALL names no README step: the one-screen README has none.
     s4 = _section(4)
     step = s4[s4.index("**Turn the mail hooks on."):s4.index("**Claude Code asks whether you trust")]
-    assert _bash_lines(readme_note) == _bash_lines(step)
+    on = _bash_lines(step)[0]
+    assert on == "pager settings hooks on"
+    readme_block = [ln for block in _bash_lines(README) for ln in block.splitlines()]
+    assert on in readme_block
+    assert "README's step" not in _flat(s4)
 
 
 def test_section_4_measured_the_verb_on_the_release_the_kit_installs():
@@ -239,9 +240,11 @@ def test_section_7_documents_the_autostart_question():
     assert "`sessionview can start an agent for you each time it opens.`" in flat
     assert "`n) no agent -- never ask again`" in flat
     assert ("- An agent each time it opens, the agent's name in place of VALUE: ```bash "
-            "sessionview-config set autostart_agent VALUE ```") in flat
-    assert '- None: ```bash sessionview-config set autostart_agent "" ```' in flat
+            "sessionview config set autostart_agent VALUE ```") in flat
+    assert '- None: ```bash sessionview config set autostart_agent "" ```' in flat
     assert "`autostart_agent=ask (will ask on next open)`" in flat
+    # The helpers left the PATH: the verb form is the one to run.
+    assert "each `sessionview config set` above changed the answer" in flat
 
 
 # --- Section 8: /exit with the monitor -------------------------------------

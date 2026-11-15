@@ -71,8 +71,12 @@ installed, and walked on a fresh Mac for a session started with `session start <
 
   - Then the speech server, then link the phone (section 6).
   - A call without Homebrew is the workaround case. This guide does not cover it.
-- At least 2.1 GB free disk, plus about 3.9 GB for the speech-to-text server
-  (section 5): its venv, 1.2 GB, and its models, 2.7 GB.
+- About 8 GB free disk for everything the installer lists, the speech server
+  included. **MEASURED** (the one-line installer at 0.3.1, its whole list, on a fresh
+  macOS 27 VM with macOS's own updates off): the free disk went from 37 GiB to 29 GiB.
+  By parts: at least 2.1 GB free disk, plus about 3.9 GB for the speech-to-text server
+  (section 5): its venv, 1.2 GB, and its models, 2.7 GB. The parts leave out tmux,
+  ffmpeg and notmuch, which were not measured one by one.
   **MEASURED** (on the VM where Homebrew took 220 seconds): the Command Line Tools took 1.3 GB, the kit about 280 MB, Claude
   Code 230 MB, Homebrew 204 MB and uv's Python 74 MB. A fresh VM started with 9.7 GB
   free and ended with 8.7 GB.
@@ -144,15 +148,19 @@ uv cache, each line run on a fresh `--python 3.14` install, read in the tool's
   exit 1, and left the 3.14 install as it was.
 - `uv tool upgrade` has no `--refresh` on uv 0.13.4: it refuses that flag, exit 2.
 
-**MEASURED** (read-only against PyPI): the five packages this release
-needs are on PyPI, each at 0.3.2: sessionmail, sessionphone, sessiontools, sessionview
-and sessionvoice. The kit asks for 0.3.2 or later of each. This line installs the kit, its
-five packages and settled, the Settings app, 63 packages in all, and 15 commands on your
-PATH: `sessionkit message pager memory session sessionphone sessionview sessionview-config
-sessionview-messages sessionview-session ears ears-serve mouth talk settled`. **MEASURED**
+The kit asks for 0.4.0 or later of each of the five packages it needs: sessionmail,
+sessionphone, sessiontools, sessionview and sessionvoice. **MEASURED** (read-only against
+PyPI, when the kit asked for 0.3.2): the five were on PyPI, each at 0.3.2. Not yet
+measured at 0.4.0. This line installs the kit, its
+five packages and settled, the Settings app, 63 packages in all, and 13 commands on your
+PATH: `sessionkit message pager memory session sessionphone sessionview ears ears-serve
+mouth talk sessionvoice-web settled`. sessionview's helpers are verbs of it, `sessionview config`,
+`sessionview session` and `sessionview messages`, not commands on your PATH. **MEASURED**
 (the kit and settled 0.1.0 from a folder of their wheels, the five packages at 0.3.2 from
 PyPI, Python 3.14, an empty tool folder, an empty uv cache and a temporary home
-directory): 63 packages and the 15 commands. Every command's own `--help` answered. The
+directory): 63 packages and 15 commands: the 12 above other than `sessionvoice-web`,
+which sessionvoice did not ship then, and the three helpers, which the kit no longer
+links. Every command's own `--help` answered. The
 four verbs of `sessionview` that run instead of helping were not tried this time:
 `sessionview install --help` runs its requirements check, `sessionview autostart --help`
 and `sessionview from --help` do what the verb does, and `sessionview sidebar --help`
@@ -254,7 +262,15 @@ measurements above ran before setup asked it, and wrote the file to `~/.session/
 **Then the wake seat:** it makes your agent the one your voice wakes, `claude` or the
 name you gave `--agent`, so you do not add it by hand in section 5 (see
 [How waking works](#how-waking-works)). It prints one line just after the
-`--list-agents` line:
+`--list-agents` line. A seat is woken by the ears' keeper and mail services, so
+setup asks `ears services status`, which only reads. On a fresh Mac they are not
+installed yet, and the line names the step that installs them:
+
+```text
+Wake seat 'claude' added: "hey claude" wakes it once the ears' services are installed and running (about 4.1 GB): ears services install --agent claude
+```
+
+Setup never runs that step itself. Once both services run, a re-run says:
 
 ```text
 Wake seat 'claude': "hey claude" wakes it.
@@ -319,7 +335,9 @@ on a fresh temporary home directory without it, and made nothing either time.
 
 A sessionmail older than the kit asks for, with no mail setup, gets the step printed
 instead: it says it has no `message setup` and names the step, and the operator half
-still runs.
+still runs. Without `--mailbox` or `--address` it then refuses: the operator's box is
+the one sessionmail names (the first `box:` line of `message setup --dry-run`), and
+the kit never works one out by itself, so an older sessionmail cannot name it.
 
 **MEASURED** (by the test suite, and on temporary home directories): the
 refusal, `--address`, `--mailbox`, a re-run that writes nothing, and the read-back.
@@ -611,16 +629,16 @@ claude plugin install "${r:?}@${r:?}"
     asks may use their own network: asked for its plugins, `claude` reaches
     Anthropic's API over HTTPS.
   - No kit yet, or `sessionkit` will not start? The installer runs the same
-    check. Its address is not live yet. From a clone of this repository:
-
-    ```bash
-    bash install.sh --check
-    ```
-
-    Once the address is live:
+    check:
 
     ```bash
     curl -fsSL https://sessionkit.ai/install.sh | bash -s -- --check
+    ```
+
+    From a clone of this repository:
+
+    ```bash
+    bash install.sh --check
     ```
 
   **MEASURED** on one Mac without the kit (macOS 27, Apple silicon), in an
@@ -665,7 +683,7 @@ claude plugin install "${r:?}@${r:?}"
   - While one does, a second `session start claude` starts nothing. It is refused,
     exit 3, and its line names the session that holds it.
   - A bare `session start` takes `claude` when no session holds it, and starts plain
-    when one does ([the README's Quick start](README.md#quick-start)).
+    when one does ([the default seat](docs/session.md#the-default-seat)).
 
   `claude` is Claude Code's own built-in agent, so the file setup wrote rides beside
   it: its text is added to Claude Code's own system prompt. Under any other name the
@@ -697,8 +715,8 @@ claude plugin install "${r:?}@${r:?}"
   box at session start in a temporary home directory). The hooks stay off until you turn
   them on. Nothing on your screen says so: the plugin writes
   `~/.sessionkit/mail/settings/mail.json`, with the hooks off, the first time your session
-  runs a tool, and it tells your agent, not you. The README's step **The mail hooks start
-  off** is this same command, sessionmail's own:
+  runs a tool, and it tells your agent, not you. The command is sessionmail's own, the
+  one `sessionkit doctor` and the installer name:
 
   ```bash
   pager settings hooks on
@@ -1545,21 +1563,25 @@ temporary home directory cannot point it at postfix).
   - An agent each time it opens, the agent's name in place of VALUE:
 
     ```bash
-    sessionview-config set autostart_agent VALUE
+    sessionview config set autostart_agent VALUE
     ```
 
   - None:
 
     ```bash
-    sessionview-config set autostart_agent ""
+    sessionview config set autostart_agent ""
     ```
 
   **MEASURED** on a fresh macOS 27
   VM at 0.2.0: the question came first, and after `no` the frame drew the sidebar.
   **MEASURED** (sessionview 0.3.0 from PyPI, a temporary home directory):
   `sessionview autostart --status` printed
-  `autostart_agent=ask (will ask on next open)`, and each `sessionview-config set` above
-  changed it. The numbered list is read in its 0.3.0 source.
+  `autostart_agent=ask (will ask on next open)`, and each `sessionview-config set`, the
+  form 0.3.0 put on the PATH, changed it. The numbered list is read in its 0.3.0 source.
+  **MEASURED** (the kit with sessionview from its source after 0.3.3, a temporary home
+  directory and tool folder): `sessionview` was the one sessionview command on the PATH,
+  and each `sessionview config set` above changed the answer `sessionview autostart
+  --status` printed.
 
 ## 8. Uninstall
 

@@ -3,7 +3,7 @@
 What the install adds to your Mac: commands on your PATH, services you can
 run, folders in your home, and a log for each package.
 
-- **Commands:** twelve ([commands][commands]). Eleven have a page here; `settled`
+- **Commands:** thirteen ([commands][commands]). Twelve have a page here; `settled`
   answers `--help`.
 - **Services:** launchd jobs you start yourself, and the pager monitor
   ([services][services]).
@@ -27,12 +27,18 @@ Every command answers `--help`, and each verb's help is its reference.
 | [`ears-serve`][cmd-ears-serve] | A speech-to-text server over Apple's on-device speech. | [sessionvoice][pkg-voice] |
 | [`mouth`][cmd-mouth] | Speak one line at a time, on the device you choose. | [sessionvoice][pkg-voice] |
 | [`talk`][cmd-talk] | A live web view of the conversation. | [sessionvoice][pkg-voice] |
+| [`sessionvoice-web`][cmd-sessionvoice-web] | Hands the kit's web front door Talk's room: `sessionvoice-web web-room`. | [sessionvoice][pkg-voice] |
 | `settled` | The Settings app: see and change the kit's settings from a web page. `settled --help` lists its verbs. | settled |
 
-Three more, `sessionview-config`, `sessionview-session` and
-`sessionview-messages`, are helpers the sidebar calls. They are leaving your
-PATH. macOS has its own `talk` at `/usr/bin/talk`; which one runs depends on
-the order of your PATH.
+sessionview's helpers are its verbs, `sessionview config`, `sessionview
+session` and `sessionview messages`, not commands on your PATH. macOS has its
+own `talk` at `/usr/bin/talk`; which one runs depends on the order of your
+PATH.
+
+Seventeen more are the phone's `dc-*` tools, such as `dc-say`, `dc-answer`
+and `dc-hangup`. A call or a chat runs them by name, so they are on your
+PATH too. They have no page here: [sessionphone's calls.md][phone-calls]
+shows them at work.
 
 ### First commands
 
@@ -211,6 +217,7 @@ Which file to read for a symptom: [troubleshooting][troubleshooting].
 [cmd-ears-serve]: ears-serve.md
 [cmd-mouth]: mouth.md
 [cmd-talk]: talk.md
+[cmd-sessionvoice-web]: sessionvoice-web.md
 [uninstall]: ../INSTALL.md#8-uninstall
 [troubleshooting]: troubleshooting.md
 [pkg-kit]: ../README.md
@@ -225,6 +232,7 @@ Which file to read for a symptom: [troubleshooting][troubleshooting].
 [voice-logs]: https://github.com/sessionkit/sessionvoice/blob/HEAD/docs/logs.md
 [tools-logs]: https://github.com/sessionkit/sessiontools#logs
 [phone-logs]: https://github.com/sessionkit/sessionphone#logs
+[phone-calls]: https://github.com/sessionkit/sessionphone/blob/HEAD/docs/calls.md
 [phone-root]: troubleshooting.md#the-phone-bot-still-uses-the-old-root
 [tools-move]: troubleshooting.md#tools-state-is-still-in-the-old-folders
 [voice-move]: troubleshooting.md#the-voice-state-is-still-in-the-old-root

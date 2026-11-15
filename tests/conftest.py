@@ -7,8 +7,8 @@ from pathlib import Path
 import _scanlist
 import pytest
 
-# FIX LATER (Mike, 02:07 Mon 2026-11-09): the README tests that pinned the old
-# README's text are off until the crew decides how the README is tested.
+# FIX LATER: the README tests that pinned the old README's text (listed in
+# readme_fix_later.txt) are off until it is decided how the README is tested.
 _FIX_LATER = Path(__file__).with_name("readme_fix_later.txt")
 _SKIP = {line.strip() for line in _FIX_LATER.read_text(encoding="utf-8").splitlines()
          if line.strip() and not line.startswith("#")} if _FIX_LATER.exists() else set()

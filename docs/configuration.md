@@ -40,8 +40,9 @@ permission. `sessionkit setup` writes you as the operator.
 - **Change it:** edit the file. Or delete it and run `sessionkit setup`
   again.
 - **The environment:** `AGENT_OPERATOR_ADDR` can change where an agent
-  sends a question, nothing more. `setup` ignores it, and takes your
-  account name from the system, not from `$USER`.
+  sends a question, nothing more. `setup` ignores it, and asks
+  sessionmail for your box, which takes your account name from the
+  system, not from `$USER`.
 
 Each key, its type and its default: [the kit's keys][kit-keys].
 

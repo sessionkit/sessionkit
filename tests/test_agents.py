@@ -126,12 +126,14 @@ MAINTAINER_NOTES = (
     "docs/family-docs-dependencies.md",
     "docs/family-docs-license.md",
     "docs/family-docs-readme.md",
+    "docs/family-docs-security.md",
     "docs/family-file-structure.md",
     "docs/family-release.md",
     "docs/family-settings.md",
     "docs/family-services.md",
     "docs/family-skills.md",
     "docs/family-tests.md",
+    "docs/family-web.md",
     "docs/pre-public-checklist.md",
     "docs/release-numbering.md",
 )
@@ -148,7 +150,6 @@ def _shipped_docs() -> list[Path]:
         ROOT / "README.md",
         ROOT / "INSTALL.md",
         *sorted((ROOT / "docs").glob("*.md")),
-        *sorted((ROOT / "openspec" / "specs").rglob("*.md")),
     ]
     return [doc for doc in docs if str(doc.relative_to(ROOT)) not in MAINTAINER_NOTES]
 

@@ -37,6 +37,9 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from sessionkit import phoneowner
+from sessionkit.setup import REPOSITORY
+
 # install.sh --check's exits, passed straight through.
 EXIT_OK = 0
 EXIT_MISSING = 1
@@ -97,7 +100,8 @@ HOOKS_ON = "pager settings hooks on"
 # install.sh's HOOKS_BY_HAND, for a pager with no hooks verb: the file is
 # sessionmail's, so the doctor names the edit and never makes it.
 HOOKS_BY_HAND = 'set "hooks": true in {shown}, and change no other key'
-HOOKS_SECTION = 'the README\'s Installation, "The mail hooks start off"'
+# INSTALL.md ships in neither the wheel nor the sdist: the hint names the repo.
+HOOKS_SECTION = f'INSTALL.md section 4, "Turn the mail hooks on", in {REPOSITORY}'
 # How long the pager's help may take. A pager that does not answer in time is
 # read as one with no verb: the hand edit works with any pager.
 HELP_TIMEOUT = 10
@@ -170,7 +174,14 @@ def phone_row(env: Mapping[str, str]) -> Row:
     """The phone bot: optional, so it never fails the run. sessionphone names
     the bot as its own install would, and asks launchd, read-only. Never
     `sessionphone bot status`: that sends a clip to the job's speech URL,
-    which can be any host."""
+    which can be any host. Under it, the owner's key pin, read from
+    sessionphone's callers readers (phoneowner): info, never missing."""
+    row = _bot_row(env)
+    row.under += phoneowner.doctor_lines(env)
+    return row
+
+
+def _bot_row(env: Mapping[str, str]) -> Row:
     what = "📞 Phone bot (optional, for calls)"
     # The call ear is not checked: sessionphone has no read-only check for it
     # yet. A row for it waits for the release that adds one.

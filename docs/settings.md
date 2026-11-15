@@ -107,9 +107,10 @@ folder (`session path sessions <session-id>`):
 That session reads `text` as `good morning`, from its own file, and
 `volume` as `40`, because the host locked it.
 
-The requirements are written down in [the settings
-specification][spec-settings], which also lists what it does not yet
-specify, and [the tree specification][spec-tree], for where the files live.
+The requirements are written down in the settings specification, which
+also lists what it does not yet specify, and the tree specification, for
+where the files live. Both are kept in the project's OpenSpec store, not in
+this repository.
 
 ## Each package's settings
 
@@ -140,7 +141,7 @@ setup` writes them.
 
 | Key | Type | Default | What it does | Written by |
 | --- | --- | --- | --- | --- |
-| `operator.mailbox` | string | none | The operator's mail box: one plain box name on this machine. Other sessions send their questions there. | `sessionkit setup`, or `setup --mailbox NAME`. With no flag, your account name, if sessionmail has a box by that name. |
+| `operator.mailbox` | string | none | The operator's mail box: one plain box name on this machine. Other sessions send their questions there. | `sessionkit setup`, or `setup --mailbox NAME`. With no flag, the box sessionmail names as the operator's (your account name on a fresh install), if that box exists. |
 | `operator.address` | string | none | The operator's full mail address (`name@host`), used as written. | `sessionkit setup --address ADDR` |
 | `operator.privileged` | list of strings | empty: the operator alone | The seats or addresses that may act as administrators. The operator is always one of them. A later file's list replaces an earlier one whole, so keep every name in one list. | You, by hand, in a file of your own, such as `session.d/20-administrators.json`. `setup` never writes it. |
 
@@ -157,5 +158,3 @@ setup` writes them.
 [phone]: https://github.com/sessionkit/sessionphone/blob/HEAD/docs/settings.md
 [phone-root]: troubleshooting.md#the-phone-bot-still-uses-the-old-root
 [view]: https://github.com/sessionkit/sessionview/blob/HEAD/docs/settings.md
-[spec-settings]: ../openspec/specs/settings/spec.md
-[spec-tree]: ../openspec/specs/tree/spec.md

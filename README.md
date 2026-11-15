@@ -10,7 +10,7 @@ curl -fsSL https://sessionkit.ai/install.sh | bash
 This repo is the kit's home: the installer, the [manual steps][manual]
 and the docs.
 
-<!-- Hero image goes here: Talk on a phone, mid-conversation (Mike's shot). -->
+<!-- Hero image goes here: Talk on a phone, mid-conversation. -->
 
 ## Features
 
@@ -32,7 +32,8 @@ session start
 
 Ask Claude to call you. It shows a QR code: scan it with your phone and
 follow the steps to install Delta Chat. Then you can text or ring your
-session.
+session. Asking Claude to call you, or ringing your session, is when you
+agree to be heard, and recorded if recording is on.
 
 ## What it installs
 
@@ -105,9 +106,13 @@ Where each log is: [logs][logs]. Which to read for a symptom:
 
 `make install`, then `make check`. The rules: [AGENTS.md][agents].
 
+Working across the family? With your clones of the five packages beside this
+one, `make install-dev` installs the whole kit from them (`DRY_RUN=1` first
+to see the command).
+
 ## Status
 
-Alpha, 0.3.3. A new release most Sundays. [Known gaps][gaps] · Licence
+Alpha, 0.4.0. A new release most Sundays. [Known gaps][gaps] · Licence
 [AGPL-3.0][licence].
 
 [voicemode]: https://voicemode.dev

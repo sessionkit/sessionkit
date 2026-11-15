@@ -1,10 +1,10 @@
 # FIX LATER: tests switched off for the one-screen README.
 #
-# Mike, voice 02:07 Mon 2026-11-09: "just disable them for now ... put a
-# comment saying fix later." The README went from 2108 words to ~600 and its
-# install detail lives in INSTALL.md, so these tests, which pinned the old
-# README text, fail. Each line is one test id; tests/conftest.py skips them.
-# Open question for the crew (his): should the README be under test at all?
+# They are disabled for now, to be fixed later. The README went from 2108
+# words to ~600 and its install detail lives in INSTALL.md, so these tests,
+# which pinned the old README text, fail. Each line is one test id;
+# tests/conftest.py skips them.
+# Open question: should the README be under test at all?
 # Delete this file, and the hook in conftest.py, when they are fixed.
 tests/test_call_prereqs.py::test_readme_and_install_each_give_brew_install_ffmpeg_in_a_block
 tests/test_call_prereqs.py::test_readme_call_item_is_in_the_list_with_homebrew_before_ffmpeg
@@ -15,7 +15,6 @@ tests/test_configuration_docs.py::test_readme_configuration_links_the_kits_page_
 tests/test_configuration_docs.py::test_readme_logs_points_at_the_components_logs
 tests/test_configuration_docs.py::test_readme_sections_follow_the_template_order
 tests/test_dependencies_docs.py::test_readme_requirements_is_the_systems_and_a_link
-tests/test_install_clean_mac.py::test_section_4_hooks_step_matches_the_readme
 tests/test_phone_name_quote.py::test_readme_shows_a_quoted_name_in_a_block
 tests/test_readme.py::test_development_clones_the_public_url
 tests/test_readme.py::test_every_brew_install_ffmpeg_is_followed_by_homebrew_s_y_n
@@ -30,7 +29,6 @@ tests/test_readme.py::test_installation_leads_with_the_pinned_install_and_the_pl
 tests/test_readme.py::test_installation_names_homebrew_or_the_command_line_tools_first
 tests/test_readme.py::test_installation_says_new_terminal_between_uv_installer_and_first_uv
 tests/test_readme.py::test_installation_says_the_command_line_tools_dialog_can_hide
-tests/test_readme.py::test_installation_says_the_mail_hooks_start_off
 tests/test_readme.py::test_installation_says_why_the_pin_and_that_the_kit_is_tested_on_3_14
 tests/test_readme.py::test_installation_warns_of_the_command_line_tools_dialog_before_git_is_needed
 tests/test_readme.py::test_no_doc_promises_that_calls_work[\\bring (a|your) session]
@@ -52,20 +50,6 @@ tests/test_readme.py::test_readme_requirements_are_a_list_with_no_paragraph
 tests/test_readme.py::test_readme_requirements_give_each_path_its_label_before_its_block
 tests/test_readme.py::test_readme_requirements_put_each_follow_up_in_its_own_bullet
 tests/test_readme.py::test_readme_restart_is_its_own_step_before_ears_install
-tests/test_readme.py::test_the_hooks_note_follows_the_install_block
-tests/test_readme.py::test_the_hooks_note_hand_edits_nothing
-tests/test_readme.py::test_the_hooks_note_reads_off_on_off_as_it_says
-tests/test_readme.py::test_the_hooks_note_turns_them_on_off_and_reads_them_with_sessionmails_verb
-tests/test_readme.py::test_the_hooks_step_turns_the_hooks_on_in_any_mail_json[empty-object-multi-line]
-tests/test_readme.py::test_the_hooks_step_turns_the_hooks_on_in_any_mail_json[empty-object]
-tests/test_readme.py::test_the_hooks_step_turns_the_hooks_on_in_any_mail_json[false-multi-line]
-tests/test_readme.py::test_the_hooks_step_turns_the_hooks_on_in_any_mail_json[false-one-line]
-tests/test_readme.py::test_the_hooks_step_turns_the_hooks_on_in_any_mail_json[install-postfix-example]
-tests/test_readme.py::test_the_hooks_step_turns_the_hooks_on_in_any_mail_json[no-file]
-tests/test_readme.py::test_the_hooks_step_turns_the_hooks_on_in_any_mail_json[no-key-multi-line]
-tests/test_readme.py::test_the_hooks_step_turns_the_hooks_on_in_any_mail_json[no-key-no-newline]
-tests/test_readme.py::test_the_hooks_step_turns_the_hooks_on_in_any_mail_json[no-key-sendmail-only]
-tests/test_readme.py::test_the_hooks_step_turns_the_hooks_on_in_any_mail_json[true-unchanged]
 tests/test_readme.py::test_the_phone_link_step_is_its_own_block_after_the_speech_server
 tests/test_readme.py::test_the_quick_start_voice_bullet_comes_after_the_pinned_two
 tests/test_readme.py::test_the_readme_says_how_sessionview_is_said_where_the_family_names_it

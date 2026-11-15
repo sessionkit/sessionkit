@@ -76,5 +76,9 @@ A future part page goes at `site/<part>/index.html`. It links
 So the CSP `<meta>` stays, and the fallback (drop the meta, and rely on the
 grep and the test) is not needed.
 
-Also measured in WebKit: at 320 px and 375 px wide, the page's scroll width
-equals the viewport, and nothing outside a code block overflows.
+Also measured in WebKit, at content widths of 320, 360, 375, 390 and 430 px:
+the page's scroll width equals its width, nothing overflows, and no code
+block scrolls sideways. The first install line stays on one line from 375 px
+up and wraps below that; the two plugin lines wrap at all of these widths.
+Headless Chrome gave the same except at 360 px, where its fallback font fits
+the first line on one line.

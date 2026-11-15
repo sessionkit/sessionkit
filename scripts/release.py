@@ -15,6 +15,12 @@ vX.Y.Z. Never pushes: it prints the push line. Refuses a dirty tree, a
 missing CHANGELOG, a missing [Unreleased], an existing tag, and a uv.lock
 without exactly one root sessionkit block holding one version line.
 
+AN EXISTING TAG IS REFUSED BEFORE ANYTHING IS WRITTEN. The new version is
+needed to name the tag, so it comes from the same `uv version` call with
+--dry-run added, which writes nothing; an existing tag vX.Y.Z is refused
+then, and only after that does the real `uv version` write pyproject. A
+real bump that disagrees with its dry run is refused.
+
 A RELEASE NEVER RE-LOCKS. A plain `uv version X` (or --bump) is a
 project write: it re-locks against the index, and this script commits
 uv.lock. Cut before the deps are on PyPI, that fails (unsatisfiable); with
@@ -28,7 +34,9 @@ manifests. The result is the bytes uv's own re-lock writes when the deps are
 unchanged: measured, the two locks are byte for byte the same. The lock is
 checked BEFORE `uv version` writes anything, so a refusal leaves pyproject
 untouched. It is stdlib-only, and `make release` runs it with python3, never
-a re-locking `uv run`.
+a re-locking `uv run`. tomllib is imported only where a release reads
+pyproject's name, so --current runs on a python3 older than 3.11 (a stock
+macOS python3 is 3.9); a release on one is refused before it writes.
 
 The version lives in pyproject.toml and the release mirrors it; sessionmail's
 script (version in plugin.json) is the ancestor.
@@ -39,7 +47,6 @@ from __future__ import annotations
 import re
 import subprocess
 import sys
-import tomllib
 from datetime import datetime
 from pathlib import Path
 
@@ -74,6 +81,20 @@ def bump(spec: str, dry: bool) -> str:
         args.append("--dry-run")
     out = sh(*args, capture=True)  # "name old => new"
     return out.split("=>")[-1].strip()
+
+
+def project_name() -> str:
+    """pyproject's [project] name. tomllib is imported here, not at the top,
+    so --current still runs on a python3 older than 3.11; a release on one
+    refuses before it writes anything."""
+    try:
+        import tomllib
+    except ModuleNotFoundError:
+        sys.exit(
+            f"release: a release needs Python 3.11+ (tomllib); {sys.executable} is "
+            f"{sys.version.split()[0]} - nothing was written"
+        )
+    return tomllib.loads(PYPROJECT.read_text())["project"]["name"]
 
 
 def lock_root(text: str, name: str) -> tuple[int, int]:
@@ -154,11 +175,15 @@ def main() -> None:
     if not LOCK.exists():
         sys.exit(f"release: {LOCK} not found - the release records its version there")
     lock = LOCK.read_text()
-    span = lock_root(lock, tomllib.loads(PYPROJECT.read_text())["project"]["name"])  # before uv writes
-    version = bump(args[0], dry)
+    span = lock_root(lock, project_name())  # before uv writes
+    version = bump(args[0], dry=True)  # the version the release will make; writes nothing
     tag = f"v{version}"
     if subprocess.run(["git", "tag", "-l", tag], capture_output=True, text=True, check=False).stdout.strip():
-        sys.exit(f"release: tag {tag} already exists")
+        sys.exit(f"release: tag {tag} already exists - nothing was written")
+    if not dry:
+        made = bump(args[0], dry=False)
+        if made != version:
+            sys.exit(f"release: uv version made {made}, its dry run said {version} - check pyproject.toml")
     set_lock_root(lock, span, version, dry)
     files = [str(PYPROJECT), str(LOCK), str(CHANGELOG)]
     for p in (PLUGIN, MARKET):

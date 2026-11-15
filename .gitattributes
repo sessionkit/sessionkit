@@ -3,17 +3,17 @@
 # CLAUDE.md is agent context for this checkout, not for a plugin user, and
 # `claude plugin validate --strict` fails on it at the plugin root.
 /CLAUDE.md export-ignore
-# openspec/specs/ is the published specification and ships. openspec/changes/
-# (proposals while they are worked on) and openspec/RATIFICATION.md are the
-# maintainers' working record and are left out. A pattern that matches a
-# directory does not match the paths inside it, so `/openspec/changes/**` sets
-# export-ignore on each file, and `/openspec/changes` drops the directory entry
-# that would otherwise be left in the archive, empty. Every line is anchored
-# with a leading `/`. docs/internal/ does not exist in this repo; add its two
-# lines here if it is ever created.
-/openspec/changes export-ignore
-/openspec/changes/** export-ignore
-/openspec/RATIFICATION.md export-ignore
+# openspec/ holds one file, config.yaml, `store: sessionkit`: a pointer that
+# sends the openspec CLI to the project's OpenSpec store, where the specs live.
+# That store is private, so the pointer means nothing to a reader of the
+# archive, and the archive leaves openspec/ out. To ship the pointer, delete
+# the two lines below. A pattern that matches a directory does not match the
+# paths inside it, so `/openspec/**` sets export-ignore on each file, and
+# `/openspec` drops the directory entry that would otherwise be left in the
+# archive, empty. Every line is anchored with a leading `/`. docs/internal/
+# does not exist in this repo; add its two lines here if it is ever created.
+/openspec export-ignore
+/openspec/** export-ignore
 # The docs below are the maintainers' working notes (the family's conventions
 # and the docs/family-*.md files each area of them has, the pre-release
 # checklist, how versions are numbered). They are not for a user of the
@@ -28,6 +28,7 @@
 /docs/family-docs-dependencies.md export-ignore
 /docs/family-docs-license.md export-ignore
 /docs/family-docs-readme.md export-ignore
+/docs/family-docs-security.md export-ignore
 /docs/family-docs.md export-ignore
 /docs/family-file-structure.md export-ignore
 /docs/family-release.md export-ignore
@@ -35,6 +36,7 @@
 /docs/family-services.md export-ignore
 /docs/family-skills.md export-ignore
 /docs/family-tests.md export-ignore
+/docs/family-web.md export-ignore
 /docs/images/settings-order.svg export-ignore
 /docs/pre-public-checklist.md export-ignore
 /docs/release-numbering.md export-ignore
